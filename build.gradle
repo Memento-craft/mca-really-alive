@@ -30,6 +30,10 @@ neoForge {
             programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
+        gameTestServer {
+            type = 'gameTestServer'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             logLevel = org.slf4j.event.Level.DEBUG
@@ -44,8 +48,24 @@ neoForge {
 }
 
 repositories {
-    // MCA Reborn, for running alongside it in dev. Drop the jar for your MCA version into libs/.
+    exclusiveContent {
+        forRepository { maven { url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup 'maven.modrinth' }
+    }
+    // Any other mods to try alongside it in dev can be dropped into libs/.
     flatDir { dirs 'libs' }
+}
+
+// Mods that are only present in dev runs, never a dependency of the published jar.
+configurations {
+    localRuntime
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    // MCA Reborn, so dev runs have MCA villagers to drive. The addon itself only touches vanilla
+    // villager classes, so it does not compile against MCA.
+    localRuntime "maven.modrinth:minecraft-comes-alive-reborn:${mca_version}"
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {

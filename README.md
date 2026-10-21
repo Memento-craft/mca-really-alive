@@ -74,14 +74,22 @@ Brains are saved to `<world>/reallyalive/brains/<uuid>.brain`, not in chunk data
 ```
 ./gradlew -p brain-core test   # the neural core alone: no Minecraft needed
 ./gradlew build                # the mod
-./gradlew runClient
+./gradlew runGameTestServer    # in-game tests with MCA Reborn loaded
+./gradlew runClient            # dev client, with MCA Reborn
 ```
+
+Dev runs pull MCA Reborn (NeoForge 1.21.1) from Modrinth's maven; the addon's jar does not depend
+on it. The game tests spawn MCA villagers and check that the brain takes over and hands back their
+body, that MCA's own AI cannot move them while it runs, that the brain's own keys move them, and
+that holding the same keys as a player (walk, sprint, sprint-jump, sneak up to a ledge) moves them
+exactly as far as the player on every tick.
 
 ## Status (phase 1)
 
 - The neural core builds and its tests pass: stable firing, reward-learned key presses, decay and
   rebirth, cementing, growth, inheritance, save/load, simultaneous keys.
-- The Minecraft side has **not been compiled or run yet**: the environment it was written in could
-  not reach the NeoForge maven. Expect some fixes on the first build.
+- The mod builds and runs with MCA Reborn 7.7.36 on NeoForge 21.1.264, and the game tests pass.
+  MCA's inherited speed gene is ignored while a brain drives a villager, so it moves at exactly a
+  player's speed. Not yet tried in a client by hand.
 - Learning to turn toward something it sees is **not reliable yet**. The toy-world benchmark
   `MovementLearningTest` is disabled until it passes; that is the next milestone.
