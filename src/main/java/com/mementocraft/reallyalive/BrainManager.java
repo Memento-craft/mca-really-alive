@@ -246,8 +246,8 @@ public final class BrainManager {
     }
 
     /**
-     * Pain from damage and burning; pleasure from reaching, nearing and turning to face the goal it
-     * can see.
+     * Pain from damage and burning; pleasure from spotting, reaching, nearing and turning to face the
+     * goal it can see.
      */
     private static void feelings(Villager v, Handle h, SensoryFrame f) {
         float health = v.getHealth();
@@ -275,6 +275,8 @@ public final class BrainManager {
             boolean inView = Math.abs(bearing) < Senses.FOV_H / 2f;
             if (inView && h.lastGoalFacing > -2f) {
                 pleasure += Math.max(0f, (facing - h.lastGoalFacing) * 10f);
+            } else if (inView) {
+                pleasure += 0.3f; // spotted it
             }
             h.lastGoalFacing = inView ? facing : -2f;
 

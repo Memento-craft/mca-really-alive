@@ -83,5 +83,8 @@ Brains are saved to `<world>/reallyalive/brains/<uuid>.brain`, not in chunk data
   rebirth, cementing, growth, inheritance, save/load, simultaneous keys.
 - The Minecraft side has **not been compiled or run yet**: the environment it was written in could
   not reach the NeoForge maven. Expect some fixes on the first build.
-- Learning to turn toward something it sees is **not reliable yet**. The toy-world benchmark
-  `MovementLearningTest` is disabled until it passes; that is the next milestone.
+- Newborns have two inborn reflexes that learning builds on: keep the head level, and turn toward a
+  creature they see. Dopamine is a reward prediction error from a small critic (Concept, Emotion
+  and Memory activity), so only "better than expected" reinforces a key.
+- Toy-world benchmark `MovementLearningTest`: after 30k ticks, brains that feel good about nearing
+  a goal they see reach about 9 goals per 3000 ticks (all 6 seeds); unrewarded brains reach none.

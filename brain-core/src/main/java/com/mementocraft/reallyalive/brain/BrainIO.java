@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -80,6 +80,15 @@ public final class BrainIO {
         }
         out.writeBoolean(fm.hasPrediction);
         out.writeFloat(fm.surprise);
+
+        Critic c = b.critic;
+        for (int i = 0; i < b.n; i++) {
+            out.writeFloat(c.weights[i]);
+        }
+        out.writeFloat(c.bias);
+        out.writeFloat(c.lastValue);
+        out.writeBoolean(c.hasLast);
+        c.writeLast(out);
     }
 
     public static Brain read(DataInput in) throws IOException {
@@ -185,6 +194,16 @@ public final class BrainIO {
         }
         fm.hasPrediction = in.readBoolean();
         fm.surprise = in.readFloat();
+
+        Critic c = b.critic;
+        c.ensureCapacity(b.lobe.length);
+        for (int i = 0; i < count; i++) {
+            c.weights[i] = in.readFloat();
+        }
+        c.bias = in.readFloat();
+        c.lastValue = in.readFloat();
+        c.hasLast = in.readBoolean();
+        c.readLast(in);
         return b;
     }
 

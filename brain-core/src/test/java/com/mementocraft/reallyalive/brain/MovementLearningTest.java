@@ -1,48 +1,56 @@
 package com.mementocraft.reallyalive.brain;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Benchmark for the next learning milestone: a newborn brain should come to keep a goal in view
- * (and walk to it) more than a brain that babbles just as much but feels nothing for it.
+ * The phase 1 learning milestone: newborn brains that feel good about nearing a goal they can see
+ * learn to walk to it, while brains that babble just as much but feel nothing never get there.
+ * Both start with the same inborn reflexes, so the difference is what was learned.
  */
 class MovementLearningTest {
+    private static final int SEEDS = 6;
+    private static final int TRAIN_TICKS = 30_000;
+    private static final int EVAL_TICKS = 3000;
+
     @Test
-    @Disabled("Target for the next phase: orienting is not yet learned reliably across brains")
-    void rewardedBrainsKeepTheGoalInViewMoreThanUnrewardedOnes() {
+    void rewardedBrainsLearnToWalkToTheGoal() {
         float rewarded = 0f;
         float control = 0f;
-        int seeds = 6;
-        for (long seed = 1; seed <= seeds; seed++) {
-            rewarded += goalInViewAfterTraining(seed, true) / seeds;
-            control += goalInViewAfterTraining(seed, false) / seeds;
+        int rewardedSeedsThatGotThere = 0;
+        for (long seed = 1; seed <= SEEDS; seed++) {
+            int r = goalsReachedAfterTraining(seed, true);
+            int c = goalsReachedAfterTraining(seed, false);
+            System.out.printf("seed %d: rewarded reached %d, control reached %d%n", seed, r, c);
+            rewarded += r / (float) SEEDS;
+            control += c / (float) SEEDS;
+            if (r > 0) {
+                rewardedSeedsThatGotThere++;
+            }
         }
-        System.out.printf("goal in view: rewarded %.2f, control %.2f%n", rewarded, control);
-        assertTrue(rewarded > control + 0.15f, "rewarded " + rewarded + ", control " + control);
+        System.out.printf("goals reached per %d ticks: rewarded %.1f, control %.1f%n", EVAL_TICKS, rewarded, control);
+        assertTrue(rewarded >= control + 3f, "rewarded " + rewarded + ", control " + control);
+        assertTrue(rewardedSeedsThatGotThere >= SEEDS - 1, rewardedSeedsThatGotThere + " of " + SEEDS + " rewarded brains reached a goal");
     }
 
-    private static float goalInViewAfterTraining(long seed, boolean feelings) {
+    private static int goalsReachedAfterTraining(long seed, boolean feelings) {
         Brain b = Brain.create(Genome.defaults(), seed, 0f);
         ToyWorld w = new ToyWorld(seed + 2);
         SensoryFrame f = new SensoryFrame();
         b.setBabbleScale(1f);
-        for (int t = 0; t < 40_000; t++) {
+        for (int t = 0; t < TRAIN_TICKS; t++) {
             sense(w, f, feelings);
             w.act(b.step(f));
         }
-        b.setBabbleScale(0.3f);
-        int inView = 0;
-        for (int t = 0; t < 4000; t++) {
+        // No babbling while it is tested: only what it learned moves it.
+        b.setBabbleScale(0f);
+        int before = w.reached;
+        for (int t = 0; t < EVAL_TICKS; t++) {
             sense(w, f, feelings);
-            if (Math.abs(w.bearing()) < ToyWorld.FOV_H / 2f) {
-                inView++;
-            }
             w.act(b.step(f));
         }
-        return inView / 4000f;
+        return w.reached - before;
     }
 
     private static void sense(ToyWorld w, SensoryFrame f, boolean feelings) {

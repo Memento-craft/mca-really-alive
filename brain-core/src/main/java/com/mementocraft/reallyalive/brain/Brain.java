@@ -49,7 +49,11 @@ public final class Brain {
     static final float A_MINUS = 1.05f;
     static final float ELIG_DECAY = 0.8f;
     static final float HEBB_BASE = 0.15f;
-    static final float MOTOR_LEARNING_BOOST = 5f;
+    /**
+     * Scales reward learning on cerebellum-to-motor synapses. Larger steps let one unlucky moment wipe
+     * an inborn reflex in a few ticks; smaller ones learn too slowly to see within a day.
+     */
+    static final float MOTOR_LEARNING_BOOST = 0.25f;
     /** How strongly a reward that beats expectations turns into dopamine. Too high and it clips. */
     static final float DOPAMINE_GAIN = 1.5f;
     static final float MOTOR_ELIG_DECAY = 0.9f;
@@ -67,6 +71,7 @@ public final class Brain {
     static final int EMOTION_PER_CHANNEL = 8;
     static final int CANDIDATES = 3;
     static final float REFLEX_WEIGHT = 2.0f;
+    static final float ORIENT_WEIGHT = 0.8f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
      * same place on the sheet. This keeps maps intact, like the retinotopic maps of a real visual
@@ -128,6 +133,10 @@ public final class Brain {
     final float[] emotionRates = new float[SenseLayout.EMOTION_RECEPTORS];
     final MotorDecoder decoder = new MotorDecoder();
     final ForwardModel forwardModel;
+    final Critic critic;
+    static final LobeId[] CRITIC_LOBES = {LobeId.CONCEPT, LobeId.EMOTION, LobeId.MEMORY};
+    private final int[][] criticInputs = new int[CRITIC_LOBES.length][];
+    private final int[] criticCounts = new int[CRITIC_LOBES.length];
     private final int[] resetQueue = new int[MAX_RESETS_PER_TICK];
 
     float maturity;
@@ -152,6 +161,7 @@ public final class Brain {
             }
         }
         this.forwardModel = new ForwardModel(lobe.length);
+        this.critic = new Critic(lobe.length);
     }
 
     /** A newborn brain with its receptors, motor pools and an initial, randomly wired interior. */
@@ -183,14 +193,27 @@ public final class Brain {
     }
 
     /**
-     * Inborn reflex arcs, present before any learning, like a baby's balance reflexes: feeling the
-     * head tipped down drives the look-up pool and the reverse, so a newborn's gaze settles near the
-     * horizon instead of drifting to the floor or sky. Learning can still reshape these synapses.
+     * Inborn reflex arcs, present before any learning, like a baby's reflexes. Feeling the head
+     * tipped down drives the look-up pool and the reverse, so a newborn's gaze settles near the
+     * horizon instead of drifting to the floor or sky. A creature seen to one side drives turning
+     * toward it. Learning can still strengthen, weaken or override these synapses.
      */
     private void wireReflexes() {
         int headDown = IN_FEEL + FeelChannel.HEAD_DOWN.ordinal();
         int headUp = IN_FEEL + FeelChannel.HEAD_UP.ordinal();
         for (int i = 0; i < n; i++) {
+            int slot = inputSlot[i] - IN_VISION;
+            if (slot >= 0 && slot < SenseLayout.VISION_SIZE
+                    && slot % SenseLayout.VISION_CHANNELS == SenseLayout.CH_CREATURE) {
+                // Orienting: a creature seen off to one side pulls the gaze that way, harder the
+                // further out it is.
+                int column = slot / SenseLayout.VISION_CHANNELS % SenseLayout.VISION_W;
+                float offset = (column + 0.5f) / SenseLayout.VISION_W * 2f - 1f;
+                MotorChannel turn = offset < 0 ? MotorChannel.YAW_LEFT : MotorChannel.YAW_RIGHT;
+                for (int m : motorPools[turn.ordinal()]) {
+                    connect(i, m, ORIENT_WEIGHT * Math.abs(offset));
+                }
+            }
             int[] pool = inputSlot[i] == headDown ? motorPools[MotorChannel.PITCH_UP.ordinal()]
                     : inputSlot[i] == headUp ? motorPools[MotorChannel.PITCH_DOWN.ordinal()] : null;
             if (pool != null) {
@@ -364,7 +387,13 @@ public final class Brain {
         }
         float drive = emotionRates[SenseLayout.EMO_PLEASURE] - emotionRates[SenseLayout.EMO_PAIN]
                 + 0.3f * emotionRates[SenseLayout.EMO_CURIOSITY];
-        dopamine = clamp(DOPAMINE_GAIN * (drive - dopamineBaseline), -1.5f, 1.5f);
+        for (int l = 0; l < CRITIC_LOBES.length; l++) {
+            IntList m = targetable[CRITIC_LOBES[l].ordinal()];
+            criticInputs[l] = m.data;
+            criticCounts[l] = m.size;
+        }
+        float error = critic.step(drive, criticInputs, criticCounts, fastRate);
+        dopamine = clamp(DOPAMINE_GAIN * error, -1.5f, 1.5f);
         dopamineBaseline = dopamineBaseline * 0.995f + drive * 0.005f;
     }
 
@@ -594,6 +623,7 @@ public final class Brain {
             allocate(n * 3 / 2);
             if (forwardModel != null) {
                 forwardModel.ensureCapacity(lobe.length);
+                critic.ensureCapacity(lobe.length);
             }
         }
         int i = n++;
