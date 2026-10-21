@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Gives brain-driven entities a player's hitbox and a player's air control. No effect otherwise. */
+/** Gives brain-driven entities player pose sizes and a player's air control. No effect otherwise. */
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityMixin implements BrainDriven {
     @Unique
@@ -35,11 +35,11 @@ public abstract class LivingEntityMixin implements BrainDriven {
         }
     }
 
-    @Inject(method = "getDimensions", at = @At("HEAD"), cancellable = true)
-    private void reallyalive$playerHitbox(Pose pose, CallbackInfoReturnable<EntityDimensions> cir) {
-        if (reallyalive$driven && pose != Pose.SLEEPING) {
-            LivingEntity self = (LivingEntity) (Object) this;
-            cir.setReturnValue(PlayerMovement.dimensions(pose).scale(self.getScale()));
+    /** Keeps the villager's own (MCA) size, shrunk for crouching or swimming the way a player is. */
+    @Inject(method = "getDimensions", at = @At("RETURN"), cancellable = true)
+    private void reallyalive$poseSize(Pose pose, CallbackInfoReturnable<EntityDimensions> cir) {
+        if (reallyalive$driven) {
+            cir.setReturnValue(PlayerMovement.poseDimensions(cir.getReturnValue(), pose));
         }
     }
 }

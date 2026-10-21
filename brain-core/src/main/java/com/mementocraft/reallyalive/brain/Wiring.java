@@ -27,7 +27,6 @@ public final class Wiring {
         local(EMOTION, 6);
         local(WERNICKE, 6);
         local(MEMORY, 10);
-        local(DECISION, 6);
         local(CEREBELLUM, 4);
 
         // Sensory block -> Concept and -> Wernicke's.
@@ -44,10 +43,9 @@ public final class Wiring {
         both(CONCEPT, MEMORY, 4);
         both(WERNICKE, MEMORY, 4);
         both(EMOTION, MEMORY, 4);
-        // The "maybe??" row, approved: Concept -> Decision -> Cerebellum.
-        add(CONCEPT, DECISION, 8);
-        add(DECISION, CEREBELLUM, 10);
-        // Approved addition: body sense straight to the cerebellum, for balance and reflexes.
+        // Concept and Feely drive the cerebellum (Joshua, 2026-10-21; the "maybe??" Decision lobe
+        // on page 111 was only brainstorming).
+        add(CONCEPT, CEREBELLUM, 10);
         add(FEELY, CEREBELLUM, 6);
         // Cerebellum -> motor pools (the player's controls).
         add(CEREBELLUM, MOTOR, 10);

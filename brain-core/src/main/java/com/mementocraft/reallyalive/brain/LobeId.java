@@ -13,7 +13,6 @@ public enum LobeId {
     WERNICKE(false, 0.85f),
     // Slow leak so activity lingers: the memory lobe holds recent state.
     MEMORY(false, 0.95f),
-    DECISION(false, 0.85f),
     CEREBELLUM(false, 0.75f),
     MOTOR(false, 0.70f);
 

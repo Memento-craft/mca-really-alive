@@ -18,13 +18,11 @@ birth, growing with age) split into lobes:
 | Emotion | Innate pleasure, pain and curiosity pools that set the dopamine level |
 | Wernicke's | Language area (wired in, unused until language arrives) |
 | Memory | Slow-leaking recurrent lobe that holds recent state |
-| Decision | Between Concept and the Cerebellum |
 | Cerebellum | Motor control; also predicts what the body will feel next |
 | Motor | One pool of neurons per player control |
 
 Wiring follows page 111: Sensory → Concept and Wernicke's, Occipital → Memory, Concept ↔ Emotion,
-Concept ↔ Wernicke's, Concept/Wernicke's/Emotion ↔ Memory, Concept → Decision → Cerebellum, plus
-Feely → Cerebellum for balance. Connections between lobes keep a map of where things are, like
+Concept ↔ Wernicke's, Concept/Wernicke's/Emotion ↔ Memory, and Concept and Feely → Cerebellum. Connections between lobes keep a map of where things are, like
 the retinotopic maps of a real visual system.
 
 Learning happens live, in game:
@@ -45,9 +43,9 @@ Learning happens live, in game:
 The output is never one chosen action. Every tick each motor pool is read and decoded into the
 full set of player inputs at once: W/A/S/D, jump, sneak, sprint and mouse look. A brain-driven
 villager then moves through the same physics a player does. It has a player's walk speed, sneak
-speed, sprint rules and air control. It has a player's hitbox for each pose (standing, crouching,
-swimming), sneaking stops it at ledges, and it shares step height, gravity, swimming and ladders
-with players. Vanilla and MCA path-finding are switched off for that villager while its brain runs.
+speed, sprint rules and air control, sneaking stops it at ledges, and it shares step height,
+gravity, swimming and ladders with players. It keeps its own MCA size (villagers vary in height
+and width), and crouching or swimming shrinks it by the same proportions they shrink a player. Vanilla and MCA path-finding are switched off for that villager while its brain runs.
 
 ## Using it
 
@@ -67,7 +65,7 @@ Brains are saved to `<world>/reallyalive/brains/<uuid>.brain`, not in chunk data
 ## Compatibility
 
 - It never replaces MCA or vanilla classes. Three small mixins (move/look control access, player
-  hitbox and air speed, sneak edge stop) only change anything for villagers whose brain is on.
+  pose sizes and air speed, sneak edge stop) only change anything for villagers whose brain is on.
 - Brains attach to anything that is a villager, which includes MCA's villagers.
 - Brains run on worker threads; the server thread only reads senses and applies keys.
 

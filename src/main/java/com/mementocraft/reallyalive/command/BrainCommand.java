@@ -158,9 +158,9 @@ public final class BrainCommand {
             }
             BrainManager.Handle h = BrainManager.get().handle(v);
             Brain b = h.brain();
-            String hud = String.format("%s | VIS %s CON %s DEC %s CER %s | dopa %+.2f",
+            String hud = String.format("%s | VIS %s CON %s MEM %s CER %s | dopa %+.2f",
                     h.command().keys(), bar(b.lobeActivity(LobeId.OCCIPITAL)), bar(b.lobeActivity(LobeId.CONCEPT)),
-                    bar(b.lobeActivity(LobeId.DECISION)), bar(b.lobeActivity(LobeId.CEREBELLUM)), b.dopamine());
+                    bar(b.lobeActivity(LobeId.MEMORY)), bar(b.lobeActivity(LobeId.CEREBELLUM)), b.dopamine());
             p.displayClientMessage(Component.literal(hud), true);
         });
     }

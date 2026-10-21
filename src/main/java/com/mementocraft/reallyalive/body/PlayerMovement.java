@@ -16,7 +16,8 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * The rules that make a brain-driven villager move exactly as a player can: player speed, player
- * hitbox per pose, sprint rules, sneaking that stops at ledges, and player air control. Everything
+ * pose proportions, sprint rules, sneaking that stops at ledges, and player air control. The
+ * villager keeps its own size, since MCA villagers vary in height and width. Everything
  * else (gravity, friction, step height, jumping, swimming, ladders) already comes from the living
  * entity physics that players and villagers share.
  */
@@ -34,13 +35,32 @@ public final class PlayerMovement {
     private static final EntityDimensions DYING = EntityDimensions.fixed(0.2f, 0.2f).withEyeHeight(1.62f);
 
     /** A player's hitbox for each pose. */
-    public static EntityDimensions dimensions(Pose pose) {
+    private static EntityDimensions dimensions(Pose pose) {
         return switch (pose) {
             case CROUCHING -> CROUCHING;
             case SWIMMING, FALL_FLYING, SPIN_ATTACK -> LOW;
             case DYING -> DYING;
             default -> STANDING;
         };
+    }
+
+    /**
+     * The entity's own standing size, resized for a pose by the same proportions a player's hitbox
+     * changes (for example crouching is 1.5/1.8 of standing height).
+     */
+    public static EntityDimensions poseDimensions(EntityDimensions own, Pose pose) {
+        if (pose == Pose.SLEEPING || pose == Pose.STANDING) {
+            return own;
+        }
+        EntityDimensions player = dimensions(pose);
+        float heightRatio = player.height() / STANDING.height();
+        float widthRatio = player.width() / STANDING.width();
+        float eyeRatio = player.eyeHeight() / STANDING.height();
+        float height = own.height() * heightRatio;
+        EntityDimensions resized = own.fixed()
+                ? EntityDimensions.fixed(own.width() * widthRatio, height)
+                : EntityDimensions.scalable(own.width() * widthRatio, height);
+        return resized.withEyeHeight(own.height() * eyeRatio);
     }
 
     /**
@@ -110,7 +130,7 @@ public final class PlayerMovement {
     }
 
     private static boolean canFit(LivingEntity e, Pose pose) {
-        AABB box = dimensions(pose).scale(e.getScale()).makeBoundingBox(e.position()).deflate(1.0E-7);
+        AABB box = e.getDimensions(pose).makeBoundingBox(e.position()).deflate(1.0E-7);
         return e.level().noCollision(e, box);
     }
 

@@ -32,12 +32,11 @@ public final class Genome {
         lobe[LobeId.OLFACTORY.ordinal()] = 0.04f;
         lobe[LobeId.OCCIPITAL.ordinal()] = 0.16f;
         lobe[LobeId.FEELY.ordinal()] = 0.06f;
-        lobe[LobeId.CONCEPT.ordinal()] = 0.20f;
+        lobe[LobeId.CONCEPT.ordinal()] = 0.25f;
         lobe[LobeId.EMOTION.ordinal()] = 0.06f;
         lobe[LobeId.WERNICKE.ordinal()] = 0.06f;
         lobe[LobeId.MEMORY.ordinal()] = 0.14f;
-        lobe[LobeId.DECISION.ordinal()] = 0.10f;
-        lobe[LobeId.CEREBELLUM.ordinal()] = 0.18f;
+        lobe[LobeId.CEREBELLUM.ordinal()] = 0.23f;
         lobe[LobeId.MOTOR.ordinal()] = 0f;
         for (LobeId l : LobeId.values()) {
             float v = lobe[l.ordinal()];
