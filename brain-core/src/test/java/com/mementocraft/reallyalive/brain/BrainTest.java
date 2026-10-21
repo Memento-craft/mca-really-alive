@@ -138,4 +138,25 @@ class BrainTest {
         }
         return pressed / 1000f;
     }
+
+    @Test
+    void newbornsLevelTheirGazeByReflex() {
+        Brain b = Brain.create(Genome.defaults(), 7L, 0f);
+        b.setBabbleScale(0f);
+        Rng r = new Rng(8);
+        float lookingDown = 0f;
+        float lookingUp = 0f;
+        for (int t = 0; t < 200; t++) {
+            SensoryFrame f = noisyFrame(r);
+            f.set(FeelChannel.HEAD_DOWN, 0.8f);
+            lookingDown += b.step(f).pitchDelta();
+        }
+        for (int t = 0; t < 200; t++) {
+            SensoryFrame f = noisyFrame(r);
+            f.set(FeelChannel.HEAD_UP, 0.8f);
+            lookingUp += b.step(f).pitchDelta();
+        }
+        assertTrue(lookingDown < 0f, "head tipped down should make it look up: " + lookingDown);
+        assertTrue(lookingUp > 0f, "head tipped up should make it look down: " + lookingUp);
+    }
 }

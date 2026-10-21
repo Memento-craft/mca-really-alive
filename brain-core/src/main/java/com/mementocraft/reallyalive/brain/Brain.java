@@ -66,6 +66,7 @@ public final class Brain {
     static final int FEELY_PER_CHANNEL = 2;
     static final int EMOTION_PER_CHANNEL = 8;
     static final int CANDIDATES = 3;
+    static final float REFLEX_WEIGHT = 2.0f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
      * same place on the sheet. This keeps maps intact, like the retinotopic maps of a real visual
@@ -177,7 +178,27 @@ public final class Brain {
         for (int i = 0; i < b.n; i++) {
             b.wireOut(i);
         }
+        b.wireReflexes();
         return b;
+    }
+
+    /**
+     * Inborn reflex arcs, present before any learning, like a baby's balance reflexes: feeling the
+     * head tipped down drives the look-up pool and the reverse, so a newborn's gaze settles near the
+     * horizon instead of drifting to the floor or sky. Learning can still reshape these synapses.
+     */
+    private void wireReflexes() {
+        int headDown = IN_FEEL + FeelChannel.HEAD_DOWN.ordinal();
+        int headUp = IN_FEEL + FeelChannel.HEAD_UP.ordinal();
+        for (int i = 0; i < n; i++) {
+            int[] pool = inputSlot[i] == headDown ? motorPools[MotorChannel.PITCH_UP.ordinal()]
+                    : inputSlot[i] == headUp ? motorPools[MotorChannel.PITCH_DOWN.ordinal()] : null;
+            if (pool != null) {
+                for (int m : pool) {
+                    connect(i, m, REFLEX_WEIGHT);
+                }
+            }
+        }
     }
 
     private void buildFixedNeurons() {
