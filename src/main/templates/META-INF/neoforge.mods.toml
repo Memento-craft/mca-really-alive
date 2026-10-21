@@ -1,0 +1,36 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description='''${mod_description}'''
+
+[[mixins]]
+config="${mod_id}.mixins.json"
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="${neo_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
+
+# Brains attach to any villager, so MCA's villagers (which are villagers underneath) get them too.
+# Marked optional until an MCA build for NeoForge 1.21.1 is confirmed.
+[[dependencies.${mod_id}]]
+modId="mca"
+type="optional"
+versionRange="*"
+ordering="AFTER"
+side="BOTH"
