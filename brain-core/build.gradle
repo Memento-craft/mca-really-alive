@@ -1,0 +1,25 @@
+// The neural core has no Minecraft dependencies, so it builds and tests on its own:
+//   gradle -p brain-core test
+// The mod build compiles these same sources into the mod jar.
+plugins {
+    id 'java'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'failed'
+        showStandardStreams = true
+    }
+}
