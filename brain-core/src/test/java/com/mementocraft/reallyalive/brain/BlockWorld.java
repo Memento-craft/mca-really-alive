@@ -50,7 +50,7 @@ final class BlockWorld {
     // Hands: dig the block in the crosshair by holding attack, place a held block with use.
     static final float REACH = 4.5f;
     /** Dirt dug by hand: 0.75 seconds, as in vanilla. */
-    static final int DIG_TICKS = 15;
+    static int DIG_TICKS = 15;
     /** Vanilla places at most one block every 4 ticks while use is held. */
     static final int USE_COOLDOWN = 4;
     int blocks;
@@ -60,6 +60,11 @@ final class BlockWorld {
     int dug, placed;
     float damageTaken;
     float pendingPain;
+    float pendingPleasure;
+    /** Pleasure for picking up an item; 0 turns the collecting motive off. */
+    static float COLLECT_PLEASURE = 0f;
+    /** Pleasure per tick of watching a block crack while digging it; 0 turns it off. */
+    static float DIG_PLEASURE = 0f;
 
     BlockWorld(long seed, float width, float height) {
         rng = new Rng(seed);
@@ -349,7 +354,8 @@ final class BlockWorld {
         }
         // No feelings for nearing a goal it cannot see: rewarding scent-following made every move
         // away from an unseen goal hurt, and brains stopped walking at all.
-        f.pleasure = Math.max(0f, feeling);
+        f.pleasure = Math.max(0f, feeling) + pendingPleasure;
+        pendingPleasure = 0f;
         f.pain = Math.max(0f, -feeling) + pendingPain;
         pendingPain = 0f;
         lastDist = d;
@@ -472,10 +478,12 @@ final class BlockWorld {
                 digK = t[1];
                 digTicks = 0;
             }
+            pendingPleasure += DIG_PLEASURE;
             if (++digTicks >= DIG_TICKS) {
                 top[digI][digK] -= 1f; // the column loses its top block
                 blocks++;
                 dug++;
+                pendingPleasure += COLLECT_PLEASURE; // picked up what was dug
                 digTicks = 0;
                 digI = -1;
             }
