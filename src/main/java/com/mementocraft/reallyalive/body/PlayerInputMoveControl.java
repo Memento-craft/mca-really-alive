@@ -36,8 +36,8 @@ public class PlayerInputMoveControl extends MoveControl {
         mob.setSpeed(PlayerMovement.walkSpeed(mob));
         mob.setZza(forward);
         mob.setXxa(strafe);
-        if (command.jump()) {
-            mob.getJumpControl().jump();
+        if (command.jump() && mob.getJumpControl() instanceof BrainJumpControl jump) {
+            jump.press();
         }
         operation = Operation.WAIT;
     }

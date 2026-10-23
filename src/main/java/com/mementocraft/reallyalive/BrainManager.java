@@ -1,6 +1,7 @@
 package com.mementocraft.reallyalive;
 
 import com.mementocraft.reallyalive.body.BrainDriven;
+import com.mementocraft.reallyalive.body.BrainJumpControl;
 import com.mementocraft.reallyalive.body.BrainLookControl;
 import com.mementocraft.reallyalive.body.PlayerInputMoveControl;
 import com.mementocraft.reallyalive.body.PlayerMovement;
@@ -17,6 +18,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.ai.control.JumpControl;
 import net.minecraft.world.entity.ai.control.LookControl;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.entity.npc.Villager;
@@ -58,6 +60,11 @@ public final class BrainManager {
     private final ExecutorService workers;
     private final ExecutorService io = Executors.newSingleThreadExecutor(daemon("reallyalive-io"));
     private final Map<UUID, Handle> handles = new HashMap<>();
+    /**
+     * When true every brain step finishes before the next tick uses its keys, so a brain never
+     * misses a tick even when the server runs faster than real time (game tests, /tick sprint).
+     */
+    private boolean lockstep;
 
     /** A running brain and the villager body it drives. */
     public static final class Handle {
@@ -66,6 +73,7 @@ public final class BrainManager {
         final PlayerInputMoveControl move;
         final MoveControl originalMove;
         final LookControl originalLook;
+        final JumpControl originalJump;
         final SensoryFrame frame = new SensoryFrame();
         final float[] vision = new float[frame.vision.length];
         final float[] scent = new float[OlfactoryChannel.COUNT];
@@ -78,12 +86,14 @@ public final class BrainManager {
         float lastGoalFacing = -2f;
         long age;
 
-        Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook) {
+        Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
+               JumpControl originalJump) {
             this.id = id;
             this.brain = brain;
             this.move = move;
             this.originalMove = originalMove;
             this.originalLook = originalLook;
+            this.originalJump = originalJump;
         }
 
         public Brain brain() {
@@ -148,6 +158,10 @@ public final class BrainManager {
         return handles.get(v.getUUID());
     }
 
+    public void setLockstep(boolean lockstep) {
+        this.lockstep = lockstep;
+    }
+
     public int activeCount() {
         return handles.size();
     }
@@ -172,10 +186,11 @@ public final class BrainManager {
         }
 
         PlayerInputMoveControl move = new PlayerInputMoveControl(v);
-        Handle h = new Handle(v.getUUID(), brain, move, v.getMoveControl(), v.getLookControl());
+        Handle h = new Handle(v.getUUID(), brain, move, v.getMoveControl(), v.getLookControl(), v.getJumpControl());
         MobAccessor body = (MobAccessor) v;
         body.reallyalive$setMoveControl(move);
         body.reallyalive$setLookControl(new BrainLookControl(v));
+        body.reallyalive$setJumpControl(new BrainJumpControl(v));
         ((BrainDriven) v).reallyalive$setDriven(true);
         v.refreshDimensions();
         handles.put(v.getUUID(), h);
@@ -192,6 +207,7 @@ public final class BrainManager {
         MobAccessor body = (MobAccessor) v;
         body.reallyalive$setMoveControl(h.originalMove);
         body.reallyalive$setLookControl(h.originalLook);
+        body.reallyalive$setJumpControl(h.originalJump);
         ((BrainDriven) v).reallyalive$setDriven(false);
         v.setShiftKeyDown(false);
         v.setSprinting(false);
@@ -223,7 +239,7 @@ public final class BrainManager {
         if (h == null) {
             return;
         }
-        if (h.pending != null && h.pending.isDone()) {
+        if (h.pending != null && (lockstep || h.pending.isDone())) {
             h.command = h.pending.join();
             h.pending = null;
         }
