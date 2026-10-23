@@ -18,6 +18,8 @@ public final class MotorDecoder {
     private boolean jump;
     private boolean sneak;
     private boolean sprint;
+    private boolean attack;
+    private boolean use;
 
     public MotorCommand decode(float[] poolRates) {
         forward = axis(forward, rate(poolRates, MotorChannel.FORWARD) - rate(poolRates, MotorChannel.BACK));
@@ -25,10 +27,12 @@ public final class MotorDecoder {
         jump = button(jump, rate(poolRates, MotorChannel.JUMP));
         sneak = button(sneak, rate(poolRates, MotorChannel.SNEAK));
         sprint = button(sprint, rate(poolRates, MotorChannel.SPRINT));
+        attack = button(attack, rate(poolRates, MotorChannel.ATTACK));
+        use = button(use, rate(poolRates, MotorChannel.USE));
         float yaw = look(rate(poolRates, MotorChannel.YAW_RIGHT) - rate(poolRates, MotorChannel.YAW_LEFT));
         float pitch = look(rate(poolRates, MotorChannel.PITCH_DOWN) - rate(poolRates, MotorChannel.PITCH_UP));
         return new MotorCommand(forward, strafe, jump, sneak, sprint,
-                yaw * MAX_YAW_PER_TICK, pitch * MAX_PITCH_PER_TICK);
+                yaw * MAX_YAW_PER_TICK, pitch * MAX_PITCH_PER_TICK, attack, use);
     }
 
     private static float rate(float[] rates, MotorChannel c) {
@@ -60,7 +64,7 @@ public final class MotorDecoder {
     }
 
     int[] state() {
-        return new int[] {forward, strafe, jump ? 1 : 0, sneak ? 1 : 0, sprint ? 1 : 0};
+        return new int[] {forward, strafe, jump ? 1 : 0, sneak ? 1 : 0, sprint ? 1 : 0, attack ? 1 : 0, use ? 1 : 0};
     }
 
     void setState(int[] s) {
@@ -69,5 +73,7 @@ public final class MotorDecoder {
         jump = s[2] != 0;
         sneak = s[3] != 0;
         sprint = s[4] != 0;
+        attack = s[5] != 0;
+        use = s[6] != 0;
     }
 }

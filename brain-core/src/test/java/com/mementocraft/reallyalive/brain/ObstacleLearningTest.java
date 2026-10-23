@@ -19,6 +19,7 @@ class ObstacleLearningTest {
 
     @Test
     void rewardedBrainsLearnToCrossObstacles() {
+        BlockWorld.courses = BlockWorld.MOVING;
         int n = BlockWorld.Course.values().length;
         int[] tried = new int[n], doneRewarded = new int[n], triedControl = new int[n], doneControl = new int[n];
         for (long seed = 1; seed <= SEEDS; seed++) {
@@ -26,7 +27,7 @@ class ObstacleLearningTest {
             evaluate(seed, false, triedControl, doneControl);
         }
         StringBuilder report = new StringBuilder("courses cleared, rewarded vs control:");
-        for (BlockWorld.Course c : BlockWorld.Course.values()) {
+        for (BlockWorld.Course c : BlockWorld.MOVING) {
             int i = c.ordinal();
             report.append(String.format("%n  %-9s %d/%d vs %d/%d", c, doneRewarded[i], tried[i], doneControl[i], triedControl[i]));
         }

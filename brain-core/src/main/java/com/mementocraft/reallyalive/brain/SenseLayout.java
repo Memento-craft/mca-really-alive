@@ -6,14 +6,15 @@ public final class SenseLayout {
     public static final int VISION_W = 16;
     /** Rays down, inside a player's vertical field of view. */
     public static final int VISION_H = 10;
-    /** Per ray: nearness, solid surface, hazard, creature. */
-    public static final int VISION_CHANNELS = 4;
+    /** Per ray: nearness, solid surface, hazard, creature, climbable (ladders, vines). */
+    public static final int VISION_CHANNELS = 5;
     public static final int VISION_SIZE = VISION_W * VISION_H * VISION_CHANNELS;
 
     public static final int CH_NEAR = 0;
     public static final int CH_SOLID = 1;
     public static final int CH_HAZARD = 2;
     public static final int CH_CREATURE = 3;
+    public static final int CH_CLIMBABLE = 4;
 
     /** Feely receptors: body channels plus an efference copy of each motor pool's activity. */
     public static final int FEELY_RECEPTORS = FeelChannel.COUNT + MotorChannel.COUNT;

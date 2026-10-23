@@ -25,7 +25,13 @@ public enum FeelChannel {
     HUNGER,
     SNEAKING,
     SPRINTING,
-    SWIMMING;
+    SWIMMING,
+    /** The hand holds a block that could be placed. */
+    HOLDING_BLOCK,
+    /** The crosshair rests on a block within arm's reach (a player sees its outline). */
+    TARGET_IN_REACH,
+    /** How far digging the targeted block has got (a player sees it crack). */
+    DIG_PROGRESS;
 
     public static final int COUNT = values().length;
 }

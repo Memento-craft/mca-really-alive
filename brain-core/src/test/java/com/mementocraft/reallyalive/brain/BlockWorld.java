@@ -46,6 +46,18 @@ final class BlockWorld {
     int reached;
     int reachedHigh;
     int falls;
+
+    // Hands: dig the block in the crosshair by holding attack, place a held block with use.
+    static final float REACH = 4.5f;
+    /** Dirt dug by hand: 0.75 seconds, as in vanilla. */
+    static final int DIG_TICKS = 15;
+    /** Vanilla places at most one block every 4 ticks while use is held. */
+    static final int USE_COOLDOWN = 4;
+    int blocks;
+    int digI = -1, digK = -1;
+    int digTicks;
+    int useCooldown;
+    int dug, placed;
     float damageTaken;
     float pendingPain;
 
@@ -65,9 +77,11 @@ final class BlockWorld {
     // ---------------------------------------------------------------- courses
 
     /** What stands between the villager and each new goal. */
-    enum Course { FLAT, STEP_UP, LOW_WALL, POND, HIGH_WALL }
+    enum Course { FLAT, STEP_UP, LOW_WALL, POND, HIGH_WALL, DIG_THROUGH, BUILD_UP }
 
-    static Course[] courses = Course.values();
+    /** Courses that need only moving. */
+    static final Course[] MOVING = {Course.FLAT, Course.STEP_UP, Course.LOW_WALL, Course.POND, Course.HIGH_WALL};
+    static Course[] courses = MOVING;
     Course course = Course.FLAT;
     int courseTicks;
     final int[] tried = new int[Course.values().length];
@@ -120,6 +134,18 @@ final class BlockWorld {
             }
             case LOW_WALL -> wall(dx, dz, mid, 4, 1f);
             case HIGH_WALL -> wall(dx, dz, mid, 2, 3f);
+            // A wall too high to jump and too long to walk around: dig it down.
+            case DIG_THROUGH -> wall(dx, dz, mid, 8, 2f);
+            case BUILD_UP -> {
+                // The goal stands on a platform two blocks up: place a block to make a step.
+                for (int i = -3; i <= 3; i++) {
+                    for (int k = -3; k <= 3; k++) {
+                        setTop(goalX + i, goalZ + k, 2f);
+                    }
+                }
+                goalY = 2f;
+                blocks = Math.max(blocks, 4);
+            }
             case POND -> {
                 // A strip of water two blocks deep across the way: swim over and climb out.
                 for (int w = -1; w <= 1; w++) {
@@ -306,6 +332,9 @@ final class BlockWorld {
         f.set(FeelChannel.HEALTH, health / 20f);
         f.set(FeelChannel.SNEAKING, sneaking ? 1f : 0f);
         f.set(FeelChannel.SWIMMING, inWater() ? 1f : 0f);
+        f.set(FeelChannel.HOLDING_BLOCK, blocks > 0 ? 1f : 0f);
+        f.set(FeelChannel.TARGET_IN_REACH, target() != null ? 1f : 0f);
+        f.set(FeelChannel.DIG_PROGRESS, digTicks / (float) DIG_TICKS);
 
         // Same feelings as the game: nearing and facing a goal it can see feel good, spotting it is a
         // small pleasure, damage hurts.
@@ -387,6 +416,7 @@ final class BlockWorld {
         vx += (strafe * cos - fwd * sin) * accel;
         vz += (fwd * cos + strafe * sin) * accel;
 
+        hands(c);
         move();
 
         if (wet && horizontalCollision && fits(x + pushX, y + STEP, z + pushZ)) {
@@ -408,6 +438,74 @@ final class BlockWorld {
             vz *= f;
             vy = (vy - GRAVITY) * 0.98f;
         }
+    }
+
+    /**
+     * The block in the crosshair within reach: {column i, column k, i of the column in front of the
+     * face that was hit, k of it, 1 if the top face was hit}. Columns of blocks stand for the world.
+     */
+    int[] target() {
+        float ex = x, ey = y + eye(), ez = z;
+        float cp = (float) Math.cos(Math.toRadians(pitch));
+        float dx = (float) -Math.sin(Math.toRadians(yaw)) * cp;
+        float dy = (float) -Math.sin(Math.toRadians(pitch));
+        float dz = (float) Math.cos(Math.toRadians(yaw)) * cp;
+        int pi = (int) Math.floor(ex), pk = (int) Math.floor(ez);
+        for (float s = 0.05f; s <= REACH; s += 0.05f) {
+            float px = ex + dx * s, py = ey + dy * s, pz = ez + dz * s;
+            int i = (int) Math.floor(px), k = (int) Math.floor(pz);
+            if (py < topAt(px, pz)) {
+                boolean topFace = i == pi && k == pk || py > topAt(px, pz) - 0.05f - 0.05f * Math.abs(dy);
+                return new int[] {i, k, pi, pk, topFace ? 1 : 0};
+            }
+            pi = i;
+            pk = k;
+        }
+        return null;
+    }
+
+    private void hands(MotorCommand c) {
+        int[] t = target();
+        if (c.attack() && t != null && t[0] > 0 && t[1] > 0 && t[0] < SIZE - 1 && t[1] < SIZE - 1 && top[t[0]][t[1]] > -2f) {
+            if (t[0] != digI || t[1] != digK) {
+                digI = t[0];
+                digK = t[1];
+                digTicks = 0;
+            }
+            if (++digTicks >= DIG_TICKS) {
+                top[digI][digK] -= 1f; // the column loses its top block
+                blocks++;
+                dug++;
+                digTicks = 0;
+                digI = -1;
+            }
+        } else {
+            digTicks = 0;
+            digI = -1;
+        }
+        if (useCooldown > 0) {
+            useCooldown--;
+        }
+        if (c.use() && t != null && blocks > 0 && useCooldown == 0) {
+            int i = t[4] == 1 ? t[0] : t[2], k = t[4] == 1 ? t[1] : t[3];
+            boolean inside = i > 0 && k > 0 && i < SIZE - 1 && k < SIZE - 1;
+            float newTop = inside ? top[i][k] + 1f : 0f;
+            boolean sideOk = inside && (t[4] == 1 || top[i][k] < top[t[0]][t[1]]);
+            if (sideOk && !overlapsBody(i, k, newTop) && water[i][k] == NO_WATER) {
+                top[i][k] = newTop;
+                blocks--;
+                placed++;
+                useCooldown = USE_COOLDOWN;
+            }
+        }
+    }
+
+    /** True when a block filling column (i, k) up to newTop would be inside the body. */
+    private boolean overlapsBody(int i, int k, float newTop) {
+        float h = width / 2f;
+        boolean overX = x + h > i && x - h < i + 1;
+        boolean overZ = z + h > k && z - h < k + 1;
+        return overX && overZ && newTop > y + 1e-4f;
     }
 
     private float pushX, pushZ;
