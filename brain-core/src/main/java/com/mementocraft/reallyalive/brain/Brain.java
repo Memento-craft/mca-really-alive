@@ -64,6 +64,8 @@ public final class Brain {
     static final float INHIBITORY_GAIN = 4f;
     static final float CURIOSITY_GAIN = 4f;
     static final float BABBLE_GAIN = 0.8f;
+    /** Ticks of living after which babbling has faded to its adult level: three Minecraft days. */
+    static final long EXPERIENCE_TICKS = 72_000L;
     static final int MAINTENANCE_INTERVAL = 20;
     static final int MAX_RESETS_PER_TICK = 4;
     static final int OLFACTORY_PER_CHANNEL = 4;
@@ -72,6 +74,7 @@ public final class Brain {
     static final int CANDIDATES = 3;
     static final float REFLEX_WEIGHT = 2.0f;
     static final float ORIENT_WEIGHT = 0.8f;
+    static final float PLACING_WEIGHT = 2.0f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
      * same place on the sheet. This keeps maps intact, like the retinotopic maps of a real visual
@@ -196,12 +199,23 @@ public final class Brain {
      * Inborn reflex arcs, present before any learning, like a baby's reflexes. Feeling the head
      * tipped down drives the look-up pool and the reverse, so a newborn's gaze settles near the
      * horizon instead of drifting to the floor or sky. A creature seen to one side drives turning
-     * toward it. Learning can still strengthen, weaken or override these synapses.
+     * toward it. The placing reflex lifts the body when the front of it bumps into something, and
+     * being in water drives the jump pool, which is how a player swims up. Learning can still
+     * strengthen, weaken or override these synapses.
      */
     private void wireReflexes() {
         int headDown = IN_FEEL + FeelChannel.HEAD_DOWN.ordinal();
         int headUp = IN_FEEL + FeelChannel.HEAD_UP.ordinal();
+        int touchFront = IN_FEEL + FeelChannel.TOUCH_FRONT.ordinal();
+        int inWater = IN_FEEL + FeelChannel.IN_WATER.ordinal();
+        int[] jump = motorPools[MotorChannel.JUMP.ordinal()];
         for (int i = 0; i < n; i++) {
+            if (inputSlot[i] == touchFront || inputSlot[i] == inWater) {
+                float w = inputSlot[i] == touchFront ? PLACING_WEIGHT : REFLEX_WEIGHT;
+                for (int m : jump) {
+                    connect(i, m, w);
+                }
+            }
             int slot = inputSlot[i] - IN_VISION;
             if (slot >= 0 && slot < SenseLayout.VISION_SIZE
                     && slot % SenseLayout.VISION_CHANNELS == SenseLayout.CH_CREATURE) {
@@ -330,11 +344,14 @@ public final class Brain {
     }
 
     /**
-     * Young brains press random keys (motor babbling) so the cerebellum can learn what each one
-     * does. The noise fades as the villager matures.
+     * New brains press random keys (motor babbling) so the cerebellum can learn what each one does.
+     * The noise fades with the brain's own experience, not the villager's age: an adult that has
+     * only just been given a brain still has everything to learn, and in game tests adults whose
+     * babbling was cut by age learned nothing at all.
      */
     private void driveMotorBabble() {
-        float amp = genome.get(Genome.BABBLE) * (1f - 0.7f * maturity) * babbleScale;
+        float experience = Math.min(1f, ticks / (float) EXPERIENCE_TICKS);
+        float amp = genome.get(Genome.BABBLE) * (1f - 0.7f * experience) * babbleScale;
         for (int c = 0; c < MotorChannel.COUNT; c++) {
             babble[c] += -0.1f * babble[c] + 0.3f * rng.gaussian();
             float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN;
