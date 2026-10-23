@@ -40,6 +40,9 @@ public final class Senses {
     public static final float FOV_V = 70f;
     public static final float FOV_H = 100f;
     public static final double SMELL_RANGE = 16.0;
+    /** Half the angle between neighbouring eye rays, as a slope. */
+    private static final double COLUMN_SPREAD = Math.tan(Math.toRadians(FOV_H / SenseLayout.VISION_W / 2.0));
+    private static final double ROW_SPREAD = Math.tan(Math.toRadians(FOV_V / SenseLayout.VISION_H / 2.0));
     private static final int SCENT_SAMPLES = 24;
 
     private Senses() {}
@@ -61,7 +64,12 @@ public final class Senses {
                 Entity seen = null;
                 double entityDist = blockDist;
                 for (Entity e : nearby) {
-                    Optional<Vec3> hit = e.getBoundingBox().inflate(e.getPickRadius()).clip(eye, end);
+                    // Each ray stands for its whole share of the view, so a creature between two
+                    // rays is still seen instead of flickering in and out as it moves.
+                    double d0 = e.getBoundingBox().getCenter().distanceTo(eye);
+                    AABB box = e.getBoundingBox().inflate(e.getPickRadius() + d0 * COLUMN_SPREAD,
+                            e.getPickRadius() + d0 * ROW_SPREAD, e.getPickRadius() + d0 * COLUMN_SPREAD);
+                    Optional<Vec3> hit = box.clip(eye, end);
                     if (hit.isPresent()) {
                         double d = hit.get().distanceTo(eye);
                         if (d < entityDist) {
