@@ -84,6 +84,18 @@ body, that MCA's own AI cannot move them while it runs, that the brain's own key
 that holding the same keys as a player (walk, sprint, sprint-jump, sneak up to a ledge) moves them
 exactly as far as the player on every tick.
 
+`SensesTests` check the eyes in game: a wall fills the view at the right distance, things on the
+left are seen on the left, cows are creatures and zombies dangerous ones, lava is a hazard and
+water a liquid, and seeing a wall stirs the occipital lobe far more than open sky. Blocks a player
+cannot see (barriers, light blocks) are looked through.
+
+`LearningTests` are obstacle courses with a still cow standing on the goal: open ground (the
+control), a one-block step, a ladder up a wall, a pool, and a ledge to sneak up to. Each course has
+a required test where a villager holding a player's keys gets through, and an optional benchmark
+where a newborn villager's own brain tries 150 times. The benchmarks run the server at sprint
+speed with the brain kept in lockstep (one step per tick, as in real time) and log how many of the
+first and last 10 tries reached the goal.
+
 ## Status (phase 1)
 
 - The neural core builds and its tests pass: stable firing, reward-learned key presses, decay and
@@ -94,5 +106,9 @@ exactly as far as the player on every tick.
 - Newborns have two inborn reflexes that learning builds on: keep the head level, and turn toward a
   creature they see. Dopamine is a reward prediction error from a small critic (Concept, Emotion
   and Memory activity), so only "better than expected" reinforces a key.
+- In-game benchmarks with newborn MCA villagers (one run; results vary between runs): open
+  ground 3/10 → 10/10, jump the step 0/10 → 10/10, swim the pool 0/10 → 3–10/10, ledge reached
+  10/10 without falling but by stopping, not sneaking (sneaks ~9% near the edge), ladder 0/10 (it
+  jumps at the wall instead of climbing).
 - Toy-world benchmark `MovementLearningTest`: after 30k ticks, brains that feel good about nearing
   a goal they see reach about 9 goals per 3000 ticks (all 6 seeds); unrewarded brains reach none.

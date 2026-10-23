@@ -1,6 +1,7 @@
 package com.mementocraft.reallyalive.mixin;
 
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.control.JumpControl;
 import net.minecraft.world.entity.ai.control.LookControl;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,4 +17,8 @@ public interface MobAccessor {
     @Mutable
     @Accessor("lookControl")
     void reallyalive$setLookControl(LookControl control);
+
+    @Mutable
+    @Accessor("jumpControl")
+    void reallyalive$setJumpControl(JumpControl control);
 }

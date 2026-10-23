@@ -20,6 +20,7 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CampfireBlock;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -54,8 +55,7 @@ public final class Senses {
             for (int x = 0; x < SenseLayout.VISION_W; x++) {
                 float yaw = body.getYRot() + ((x + 0.5f) / SenseLayout.VISION_W - 0.5f) * FOV_H;
                 Vec3 end = eye.add(Vec3.directionFromRotation(pitch, yaw).scale(range));
-                BlockHitResult block = level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER,
-                        ClipContext.Fluid.ANY, body));
+                BlockHitResult block = clipVisible(level, eye, end, body);
                 double blockDist = block.getType() == HitResult.Type.MISS ? range : block.getLocation().distanceTo(eye);
 
                 Entity seen = null;
@@ -94,6 +94,33 @@ public final class Senses {
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)] = creature;
             }
         }
+    }
+
+    /**
+     * The first block a ray hits that a player could see. Blocks that are never drawn (barriers,
+     * light blocks) are looked through, as a player's eyes would.
+     */
+    private static BlockHitResult clipVisible(Level level, Vec3 from, Vec3 end, Entity body) {
+        Vec3 start = from;
+        Vec3 dir = end.subtract(from).normalize();
+        for (int i = 0; i < 8; i++) {
+            BlockHitResult hit = level.clip(new ClipContext(start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, body));
+            if (hit.getType() == HitResult.Type.MISS
+                    || level.getBlockState(hit.getBlockPos()).getRenderShape() != RenderShape.INVISIBLE
+                    || !level.getFluidState(hit.getBlockPos()).isEmpty()) {
+                return hit;
+            }
+            // Step just past the invisible block's face and look on.
+            start = hit.getLocation().add(dir.scale(1e-3));
+            while (level.getBlockState(BlockPos.containing(start)).getRenderShape() == RenderShape.INVISIBLE
+                    && !level.getBlockState(BlockPos.containing(start)).isAir() && start.distanceToSqr(from) < end.distanceToSqr(from)) {
+                start = start.add(dir.scale(0.25));
+            }
+            if (start.distanceToSqr(from) >= end.distanceToSqr(from)) {
+                break;
+            }
+        }
+        return BlockHitResult.miss(end, net.minecraft.core.Direction.getNearest(dir.x, dir.y, dir.z), BlockPos.containing(end));
     }
 
     private static boolean isHazard(Level level, BlockPos pos, BlockState state) {

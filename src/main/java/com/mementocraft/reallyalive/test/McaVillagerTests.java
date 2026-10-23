@@ -37,7 +37,7 @@ public final class McaVillagerTests {
     /** A stone floor at y 1 (y 0 is the test's structure block), so bodies stand at y 2. */
     private static final String FLOOR = "flat_stone";
     /** Yaw that faces +x, down the long side of the test floor. */
-    private static final float EAST = -90f;
+    static final float EAST = -90f;
     private static final MotorCommand WALK = new MotorCommand(1, 0, false, false, false, 0f, 0f);
     private static final MotorCommand SPRINT = new MotorCommand(1, 0, false, false, true, 0f, 0f);
     private static final MotorCommand SPRINT_JUMP = new MotorCommand(1, 0, true, false, true, 0f, 0f);
@@ -45,7 +45,7 @@ public final class McaVillagerTests {
 
     private McaVillagerTests() {}
 
-    private static Villager spawnMcaVillager(GameTestHelper helper, Vec3 at) {
+    static Villager spawnMcaVillager(GameTestHelper helper, Vec3 at) {
         EntityType<?> type = BuiltInRegistries.ENTITY_TYPE
                 .getOptional(ResourceLocation.fromNamespaceAndPath("mca", "male_villager"))
                 .orElse(null);
@@ -65,7 +65,7 @@ public final class McaVillagerTests {
         return v;
     }
 
-    private static BrainManager.Handle attach(GameTestHelper helper, Villager v) {
+    static BrainManager.Handle attach(GameTestHelper helper, Villager v) {
         BrainManager.Handle h = BrainManager.get().attach(v);
         if (h == null) {
             helper.fail("brain did not attach", v);
