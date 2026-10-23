@@ -12,7 +12,47 @@ import static com.mementocraft.reallyalive.brain.LobeId.*;
  * chosen when the neuron is born or reborn.
  */
 public final class Wiring {
-    public record Rule(LobeId from, LobeId to, float synapsesPerNeuron) {}
+    /**
+     * One kind of connection. The target can be limited to a band of the target lobe's sheet (its y
+     * range), so one lobe can hold separate areas. A diffuse rule ignores position and links
+     * anywhere in the band, which is how a memory binds an action, a person and a place together.
+     */
+    public record Rule(LobeId from, LobeId to, float synapsesPerNeuron, Band band, boolean diffuse) {
+        /** True when a neuron at sheet height y in the target lobe can receive this rule. */
+        public boolean accepts(float y) {
+            return y >= band.y0 && y < band.y1 || band.y1 >= 1f && y >= 1f;
+        }
+    }
+
+    /**
+     * Areas of the Concept lobe from the memory layout (page 111): concepts of actions, of people
+     * and of places. Other lobes use the whole sheet.
+     */
+    public enum Band {
+        ALL(0f, 1f), ACTION(0f, 1f / 3f), PEOPLE(1f / 3f, 2f / 3f), PLACES(2f / 3f, 1f);
+
+        public final float y0;
+        public final float y1;
+
+        Band(float y0, float y1) {
+            this.y0 = y0;
+            this.y1 = y1;
+        }
+
+        /** Maps a 0..1 sheet height into this band, keeping the map's order. */
+        public float into(float y) {
+            return y0 + y * (y1 - y0);
+        }
+
+        /** Maps a height inside this band back to 0..1. */
+        public float outOf(float y) {
+            return (y - y0) / (y1 - y0);
+        }
+
+        public float share() {
+            return y1 - y0;
+        }
+    }
 
     private static final List<Rule> RULES = new ArrayList<>();
     private static final List<List<Rule>> OUT = new ArrayList<>();
@@ -29,9 +69,15 @@ public final class Wiring {
         local(MEMORY, 10);
         local(CEREBELLUM, 4);
 
-        // Sensory block -> Concept and -> Wernicke's.
+        // Sensory block -> Concept and -> Wernicke's. Inside Concept, what the body feels and does
+        // becomes concepts of actions, what is seen and smelt becomes concepts of people and places.
+        add(FEELY, CONCEPT, 6, Band.ACTION);
+        add(FEELY, CONCEPT, 2, Band.PLACES);
+        add(OCCIPITAL, CONCEPT, 4, Band.PEOPLE);
+        add(OCCIPITAL, CONCEPT, 4, Band.PLACES);
+        add(OLFACTORY, CONCEPT, 4, Band.PEOPLE);
+        add(OLFACTORY, CONCEPT, 4, Band.PLACES);
         for (LobeId s : new LobeId[] {OLFACTORY, OCCIPITAL, FEELY}) {
-            add(s, CONCEPT, 8);
             add(s, WERNICKE, 3);
         }
         // Occipital -> Memory lobe.
@@ -39,10 +85,16 @@ public final class Wiring {
         // Concept <-> Emotion, Concept <-> Wernicke's.
         both(CONCEPT, EMOTION, 4);
         both(CONCEPT, WERNICKE, 4);
-        // Concept, Wernicke's and Emotion loop through the Memory lobe and back.
-        both(CONCEPT, MEMORY, 4);
+        // The memory layout: each memory links concepts of an action, the people and the place
+        // (diffuse, across all three areas) and is recalled through them. Memories chain to other
+        // memories through the lobe's own recurrent wiring. Wernicke's and Emotion loop through
+        // the Memory lobe and back.
+        diffuse(CONCEPT, MEMORY, 4);
+        diffuse(MEMORY, CONCEPT, 4);
         both(WERNICKE, MEMORY, 4);
         both(EMOTION, MEMORY, 4);
+        // Skills: what the cerebellum is doing is remembered too.
+        add(CEREBELLUM, MEMORY, 2);
         // Concept and Feely drive the cerebellum (Joshua, 2026-10-21; the "maybe??" Decision lobe
         // on page 111 was only brainstorming).
         add(CONCEPT, CEREBELLUM, 10);
@@ -70,7 +122,15 @@ public final class Wiring {
     }
 
     private static void add(LobeId from, LobeId to, float k) {
-        RULES.add(new Rule(from, to, k));
+        add(from, to, k, Band.ALL);
+    }
+
+    private static void add(LobeId from, LobeId to, float k, Band band) {
+        RULES.add(new Rule(from, to, k, band, false));
+    }
+
+    private static void diffuse(LobeId from, LobeId to, float k) {
+        RULES.add(new Rule(from, to, k, Band.ALL, true));
     }
 
     public static List<Rule> rules() {

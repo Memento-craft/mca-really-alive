@@ -14,16 +14,18 @@ birth, growing with age) split into lobes:
 | Occipital | Vision: 16×10 eye rays inside a player's field of view (nearness, solid, hazard, creature) |
 | Olfactory | Scents drifting from nearby creatures, food, fire, flowers and water |
 | Feely | Touch, motion, balance, health, plus a copy of its own key presses |
-| Concept | Combines senses into concepts |
+| Concept | Combines senses into concepts, in three areas: actions (from Feely), people and places (from sight and smell) |
 | Emotion | Innate pleasure, pain and curiosity pools that set the dopamine level |
 | Wernicke's | Language area (wired in, unused until language arrives) |
-| Memory | Slow-leaking recurrent lobe that holds recent state |
+| Memory | Slow-leaking, fast-learning lobe: each memory binds an action, people and a place, and memories chain to each other |
 | Cerebellum | Motor control; also predicts what the body will feel next |
 | Motor | One pool of neurons per player control |
 
 Wiring follows page 111: Sensory → Concept and Wernicke's, Occipital → Memory, Concept ↔ Emotion,
 Concept ↔ Wernicke's, Concept/Wernicke's/Emotion ↔ Memory, and Concept and Feely → Cerebellum. Connections between lobes keep a map of where things are, like
-the retinotopic maps of a real visual system.
+the retinotopic maps of a real visual system. The memory layout (page 111, left) links each memory
+across all three Concept areas and to the cerebellum's skills, so part of a scene recalls the rest:
+in `MemoryRecallTest`, a person's smell alone brings to mind the place they are always found.
 
 Learning happens live, in game:
 

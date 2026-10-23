@@ -466,7 +466,7 @@ public final class Brain {
                         e -= A_MINUS * (trace[j] - (fired[j] ? 1f : 0f));
                     }
                     s.elig[k] = e;
-                    w = s.weight[k] + lr * e * gate;
+                    w = s.weight[k] + lr * e * gate * Math.max(LobeId.of(lobe[i]).plasticity, LobeId.of(lobe[j]).plasticity);
                 }
                 s.weight[k] = w < 0f ? 0f : (w > W_MAX ? W_MAX : w);
             }
@@ -549,7 +549,7 @@ public final class Brain {
                 continue;
             }
             Wiring.Rule rule = rules.get(rng.nextInt(rules.size()));
-            int j = pickDullTarget(rule.to(), i);
+            int j = pickDullTarget(rule, i);
             if (j >= 0) {
                 connect(i, j, initialWeight(rule));
             }
@@ -712,7 +712,7 @@ public final class Brain {
         for (Wiring.Rule rule : Wiring.outgoing(LobeId.of(lobe[i]))) {
             int count = stochasticRound(rule.synapsesPerNeuron() * conn);
             for (int c = 0; c < count; c++) {
-                int j = pickDullTarget(rule.to(), i);
+                int j = pickDullTarget(rule, i);
                 if (j >= 0) {
                     connect(i, j, initialWeight(rule));
                 }
@@ -729,15 +729,15 @@ public final class Brain {
         int toSize = Math.max(1, targetable[to.ordinal()].size);
         for (Wiring.Rule rule : Wiring.incoming(to)) {
             IntList from = members[rule.from().ordinal()];
-            if (from.size == 0) {
+            if (from.size == 0 || !rule.accepts(posY[i])) {
                 continue;
             }
-            float expected = rule.synapsesPerNeuron() * conn * from.size / toSize;
+            float expected = rule.synapsesPerNeuron() * conn * from.size / (toSize * rule.band().share());
             int count = stochasticRound(Math.min(expected, rule.synapsesPerNeuron() * 3f));
             for (int c = 0; c < count; c++) {
-                int src = rule.to() == LobeId.MOTOR
+                int src = rule.to() == LobeId.MOTOR || rule.diffuse()
                         ? from.get(rng.nextInt(from.size))
-                        : pickNear(memberGrid[rule.from().ordinal()], from, posX[i], posY[i]);
+                        : pickNear(memberGrid[rule.from().ordinal()], from, posX[i], rule.band().outOf(posY[i]));
                 if (src >= 0 && src != i) {
                     connect(src, i, initialWeight(rule));
                 }
@@ -746,19 +746,21 @@ public final class Brain {
     }
 
     /** Prefers quiet neurons with few incoming connections, as the notebook describes. */
-    private int pickDullTarget(LobeId l, int source) {
+    private int pickDullTarget(Wiring.Rule rule, int source) {
+        LobeId l = rule.to();
         IntList pool = targetable[l.ordinal()];
         if (pool.size == 0) {
             return -1;
         }
         int best = -1;
         float bestScore = Float.MAX_VALUE;
-        boolean mapped = l != LobeId.MOTOR;
+        boolean mapped = l != LobeId.MOTOR && !rule.diffuse();
+        Wiring.Band band = rule.band();
         for (int c = 0; c < CANDIDATES; c++) {
             int j = mapped
-                    ? pickNear(targetGrid[l.ordinal()], pool, posX[source], posY[source])
+                    ? pickNear(targetGrid[l.ordinal()], pool, posX[source], band.into(posY[source]))
                     : pool.get(rng.nextInt(pool.size));
-            if (j < 0 || j == source) {
+            if (j < 0 || j == source || !rule.accepts(posY[j])) {
                 continue;
             }
             float score = inDegree[j] + 200f * slowRate[j];
