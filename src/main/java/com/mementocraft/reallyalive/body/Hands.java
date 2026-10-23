@@ -1,6 +1,7 @@
 package com.mementocraft.reallyalive.body;
 
 import com.mementocraft.reallyalive.brain.MotorCommand;
+import com.mementocraft.reallyalive.brain.Motives;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -56,6 +57,10 @@ public final class Hands {
     /** Ticks since the last swing at a creature, for a player's attack cooldown. */
     private int sinceSwing = 100;
     private HitResult target;
+    /** Items carried at the last {@link #motivePleasure()}, or -1 to take the next count as the start. */
+    private int carried = -1;
+    private boolean dugThisTick;
+    private int placedThisTick;
 
     public Hands(Villager body) {
         this.body = body;
@@ -73,6 +78,41 @@ public final class Hands {
 
     public boolean holdingBlock() {
         return body.getMainHandItem().getItem() instanceof BlockItem;
+    }
+
+    /**
+     * The inborn pleasure of using the hands since the last call: collecting (anything it carries
+     * went up, whether a dig drop or an item picked up off the ground), each tick a block cracked
+     * further, and each block placed. Call once per tick, after the body has moved.
+     */
+    public float motivePleasure() {
+        float pleasure = 0f;
+        int now = countCarried();
+        if (carried >= 0 && now > carried) {
+            pleasure += Motives.COLLECT;
+        }
+        carried = now;
+        if (dugThisTick) {
+            pleasure += Motives.DIG_PER_TICK;
+        }
+        pleasure += placedThisTick * Motives.PLACE;
+        dugThisTick = false;
+        placedThisTick = 0;
+        return pleasure;
+    }
+
+    /** Forgets what it carried, for when something other than its own hands fills them. */
+    public void recount() {
+        carried = -1;
+    }
+
+    private int countCarried() {
+        int n = body.getMainHandItem().getCount();
+        var inventory = body.getInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            n += inventory.getItem(i).getCount();
+        }
+        return n;
     }
 
     /** Presses or releases the buttons for this tick. Runs on the server thread before the body moves. */
@@ -204,7 +244,11 @@ public final class Hands {
             digging = null;
             return;
         }
-        digProgress += destroyProgress(state, pos);
+        float dig = destroyProgress(state, pos);
+        digProgress += dig;
+        if (dig > 0f) {
+            dugThisTick = true;
+        }
         if (digProgress >= 1f) {
             breakBlock(pos);
             digProgress = 0f;
@@ -333,6 +377,7 @@ public final class Hands {
         }
         if (blockItem.place(new VillagerPlaceContext(body, held, hit)).consumesAction()) {
             body.swing(InteractionHand.MAIN_HAND);
+            placedThisTick++;
             refillHand(blockItem);
         }
     }

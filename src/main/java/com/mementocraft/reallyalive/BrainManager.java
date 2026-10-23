@@ -120,6 +120,11 @@ public final class BrainManager {
             this.held = keys;
         }
 
+        /** The pleasure felt on the last tick. */
+        public float pleasure() {
+            return frame.pleasure;
+        }
+
         public BlockPos goal() {
             return goal;
         }
@@ -286,7 +291,7 @@ public final class BrainManager {
 
     /**
      * Pain from damage and burning; pleasure from spotting, reaching, nearing and turning to face the
-     * goal it can see.
+     * goal it can see, and the inborn motives of the hands: collecting, digging and placing.
      */
     private static void feelings(Villager v, Handle h, SensoryFrame f) {
         float health = v.getHealth();
@@ -324,6 +329,7 @@ public final class BrainManager {
                 h.goal = null;
             }
         }
+        pleasure += h.hands.motivePleasure();
         f.pain = Math.min(1f, pain);
         f.pleasure = Math.min(1f, pleasure);
     }

@@ -9,8 +9,11 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LadderBlock;
@@ -47,6 +50,9 @@ public final class LearningTests {
     private static final int LANE = 12;
     private static final int EPISODES = 150;
     private static final int WINDOW = 10;
+    /** Placing is learned slowly: the step course gets a long run. */
+    private static final int STEP_EPISODES = 300;
+    private static final int STEP_DIRT = 16;
 
     private LearningTests() {}
 
@@ -131,16 +137,56 @@ public final class LearningTests {
             boolean fell(GameTestHelper h, Villager v) {
                 return v.getY() < h.absoluteVec(start()).y - 0.5;
             }
+        },
+        /**
+         * A ledge two blocks high, too high to jump: the way up is to place one of the 16 dirt it
+         * holds as a step. Each try starts with the dirt back in hand and the steps gone.
+         */
+        STEP(400, new MotorCommand(1, 0, true, false, false, 0f, 0f), STEP_EPISODES) {
+            @Override
+            void build(GameTestHelper h) {
+                fill(h, 7, 2, LANE - 1, 11, 3, LANE + 1, Blocks.STONE);
+            }
+
+            @Override
+            BlockPos goal() {
+                return new BlockPos(9, 4, LANE);
+            }
+
+            @Override
+            void prepare(GameTestHelper h, Villager v, BrainManager.Handle handle) {
+                for (int x = 0; x <= 23; x++) {
+                    for (int y = 2; y <= 11; y++) {
+                        for (int z = LANE - 1; z <= LANE + 1; z++) {
+                            if (h.getBlockState(new BlockPos(x, y, z)).is(Blocks.DIRT)) {
+                                h.setBlock(x, y, z, Blocks.AIR);
+                            }
+                        }
+                    }
+                }
+                v.getInventory().clearContent();
+                v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.DIRT, STEP_DIRT));
+                handle.hands().recount();
+            }
         };
 
         final int episodeTicks;
         /** The keys a player would hold to get through. */
         final MotorCommand playerKeys;
+        final int episodes;
 
         Course(int episodeTicks, MotorCommand playerKeys) {
+            this(episodeTicks, playerKeys, EPISODES);
+        }
+
+        Course(int episodeTicks, MotorCommand playerKeys, int episodes) {
             this.episodeTicks = episodeTicks;
             this.playerKeys = playerKeys;
+            this.episodes = episodes;
         }
+
+        /** Puts back anything the last try changed. */
+        void prepare(GameTestHelper h, Villager v, BrainManager.Handle handle) {}
 
         abstract void build(GameTestHelper h);
 
@@ -193,6 +239,7 @@ public final class LearningTests {
         v.setHealth(v.getMaxHealth());
         v.setAirSupply(v.getMaxAirSupply());
         v.clearFire();
+        c.prepare(h, v, handle);
         handle.setGoal(h.absolutePos(c.goal()));
     }
 
@@ -216,6 +263,32 @@ public final class LearningTests {
     @GameTest(template = ARENA, timeoutTicks = 400)
     public static void ledgeCourseIsPassable(GameTestHelper h) {
         passable(h, Course.LEDGE);
+    }
+
+    /** A player's way up: look down at the floor before the ledge, place a dirt step, then jump up. */
+    @GameTest(template = ARENA, timeoutTicks = 400)
+    public static void stepCourseIsPassable(GameTestHelper h) {
+        Course c = Course.STEP;
+        c.buildLane(h);
+        Villager v = spawnMcaVillager(h, new Vec3(5.5, 2, LANE + 0.5));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        c.prepare(h, v, handle);
+        handle.setGoal(h.absolutePos(c.goal()));
+        h.runAtTickTime(10, () -> {
+            v.setXRot(60f);
+            handle.hold(new MotorCommand(0, 0, false, false, false, 0f, 0f, false, true));
+        });
+        h.runAtTickTime(11, () -> handle.hold(MotorCommand.IDLE));
+        h.runAtTickTime(15, () -> {
+            h.assertTrue(v.getMainHandItem().getCount() == STEP_DIRT - 1, "no step was placed");
+            v.setXRot(0f);
+            handle.hold(c.playerKeys);
+        });
+        h.succeedWhen(() -> {
+            h.assertTrue(handle.goal() == null, "STEP: goal not reached yet");
+            LOG.info("STEP course passed by placing a step at tick {}", h.getTick());
+        });
     }
 
     private static void passable(GameTestHelper h, Course c) {
@@ -264,6 +337,16 @@ public final class LearningTests {
         learns(h, Course.LEDGE, false);
     }
 
+    @GameTest(template = ARENA, timeoutTicks = STEP_EPISODES * 400 + 200, required = false)
+    public static void learnsToPlaceAStepUpALedge(GameTestHelper h) {
+        learns(h, Course.STEP, false);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = STEP_EPISODES * 400 + 200, required = false)
+    public static void adultLearnsToPlaceAStepUpALedge(GameTestHelper h) {
+        learns(h, Course.STEP, true);
+    }
+
     @GameTest(template = ARENA, timeoutTicks = EPISODES * 200 + 200, required = false)
     public static void adultLearnsToWalkToASeenGoal(GameTestHelper h) {
         learns(h, Course.OPEN, true);
@@ -297,7 +380,7 @@ public final class LearningTests {
         // Run the server as fast as it can: learning takes many tries. Lockstep keeps the brain
         // stepping once per tick, as it would in real time.
         BrainManager.get().setLockstep(true);
-        h.getLevel().getServer().tickRateManager().requestGameToSprint(c.episodeTicks * EPISODES + 400);
+        h.getLevel().getServer().tickRateManager().requestGameToSprint(c.episodeTicks * c.episodes + 400);
         c.buildLane(h);
         // A newborn babbles the most and has its inborn reflexes; an adult starts with a fresh brain.
         Villager v = spawnMcaVillager(h, c.start());
@@ -316,19 +399,24 @@ public final class LearningTests {
         // Ticks in the last tries on a ladder, and of those, pushing forward into it.
         int[] onLadder = {0, 0};
         int[] pushingLadder = {0, 0};
+        // Ticks holding a block, and of those, pressing use, in the first and the last tries; and
+        // blocks placed in the first and the last tries.
+        int[] useHeldFirst = {0, 0};
+        int[] useHeldLast = {0, 0};
+        int[] placed = {0, 0};
         // Closest each try got to the goal, as a fraction of the start distance still left.
         double startDist = Vec3.atBottomCenterOf(c.goal()).distanceTo(c.start());
         double[] closest = {1.0};
         double[] closestSum = {0.0};
         h.onEachTick(() -> {
-            if (outcomes.size() >= EPISODES) {
+            if (outcomes.size() >= c.episodes) {
                 return;
             }
             ticks[0]++;
             if (handle.goal() != null) {
                 closest[0] = Math.min(closest[0], h.relativeVec(v.position()).distanceTo(Vec3.atBottomCenterOf(c.goal())) / startDist);
             }
-            if (outcomes.size() >= EPISODES - WINDOW) {
+            if (outcomes.size() >= c.episodes - WINDOW) {
                 onLadder[1]++;
                 if (v.onClimbable()) {
                     onLadder[0]++;
@@ -343,6 +431,13 @@ public final class LearningTests {
                     counter[0]++;
                 }
             }
+            int[] use = outcomes.size() < WINDOW ? useHeldFirst : outcomes.size() >= c.episodes - WINDOW ? useHeldLast : null;
+            if (use != null && handle.hands().holdingBlock()) {
+                use[1]++;
+                if (handle.command().use()) {
+                    use[0]++;
+                }
+            }
             if (c == Course.LEDGE && h.relativeVec(v.position()).x > 7) {
                 sneakNearEdge[1]++;
                 if (v.isShiftKeyDown()) {
@@ -354,6 +449,10 @@ public final class LearningTests {
                     : ticks[0] >= c.episodeTicks ? Outcome.TIMED_OUT : null;
             if (done == null) {
                 return;
+            }
+            if (c == Course.STEP && (outcomes.size() < WINDOW || outcomes.size() >= c.episodes - WINDOW)) {
+                int left = v.getMainHandItem().is(Items.DIRT) ? v.getMainHandItem().getCount() : 0;
+                placed[outcomes.size() < WINDOW ? 0 : 1] += STEP_DIRT - left - v.getInventory().countItem(Items.DIRT);
             }
             outcomes.add(done);
             closestSum[0] += done == Outcome.REACHED ? 0.0 : closest[0];
@@ -367,18 +466,21 @@ public final class LearningTests {
                         Math.round(100 * closestSum[0] / WINDOW), handle.brain().ticks());
                 closestSum[0] = 0.0;
             }
-            if (outcomes.size() < EPISODES) {
+            if (outcomes.size() < c.episodes) {
                 reset(h, c, v, handle);
                 return;
             }
             int first = count(outcomes.subList(0, WINDOW), 0, Outcome.REACHED);
-            int last = count(outcomes, EPISODES - WINDOW, Outcome.REACHED);
-            int lastFalls = count(outcomes, EPISODES - WINDOW, Outcome.FELL);
+            int last = count(outcomes, c.episodes - WINDOW, Outcome.REACHED);
+            int lastFalls = count(outcomes, c.episodes - WINDOW, Outcome.FELL);
             String report = String.format("%s: reached the goal in %d of the first %d tries and %d of the last %d (%d falls);"
                             + " in the last tries jump was held %d%% of the time in water, %d%% on land%s",
                     c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry),
                     c == Course.LEDGE ? String.format("; sneaking %d%% of the time near the edge",
                             percent(sneakNearEdge)) : "")
+                    + (c == Course.STEP ? String.format("; holding a block, it pressed place %d%% of the time in the first tries"
+                            + " and %d%% in the last; blocks placed: %d in the first tries, %d in the last",
+                            percent(useHeldFirst), percent(useHeldLast), placed[0], placed[1]) : "")
                     + (c == Course.CLIMB ? String.format("; on the ladder %d%% of the time, pushing W %d%% of that",
                             percent(onLadder), percent(pushingLadder)) : "");
             LOG.info("{} learning result: {}", who, report);

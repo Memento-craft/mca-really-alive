@@ -3,6 +3,7 @@ package com.mementocraft.reallyalive.test;
 import com.mementocraft.reallyalive.BrainManager;
 import com.mementocraft.reallyalive.ReallyAlive;
 import com.mementocraft.reallyalive.brain.MotorCommand;
+import com.mementocraft.reallyalive.brain.Motives;
 import com.mementocraft.reallyalive.brain.SenseLayout;
 import com.mementocraft.reallyalive.sense.Senses;
 import com.mojang.logging.LogUtils;
@@ -181,14 +182,63 @@ public final class HandsTests {
         h.setBlock(AHEAD, Blocks.DIRT);
         Villager v = worker(h, new ItemStack(Items.OAK_PLANKS, 4), 0f);
         BrainManager.Handle handle = BrainManager.get().handle(v);
+        h.runAtTickTime(8, () -> {
+            v.setYRot(EAST);
+            v.setYHeadRot(EAST);
+            v.setXRot(0f);
+        });
         h.runAtTickTime(10, () -> {
             h.assertTrue(handle.hands().holdingBlock(), "does not feel the planks in its hand");
-            h.assertTrue(handle.hands().targetInReach(), "does not feel the dirt in reach");
+            h.assertTrue(handle.hands().targetInReach(), "does not feel the dirt in reach (at "
+                    + h.relativeVec(v.position()) + ", yaw " + v.getYRot() + ", pitch " + v.getXRot() + ")");
             v.setXRot(-60f);
         });
         h.runAtTickTime(15, () -> {
             h.assertFalse(handle.hands().targetInReach(), "feels a target while looking at the sky");
             h.succeed();
+        });
+    }
+
+    /** Each tick of cracking a block, the drop reaching its hand, and each block placed feel good. */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void diggingCollectingAndPlacingFeelGood(GameTestHelper h) {
+        h.setBlock(AHEAD, Blocks.DIRT);
+        // Behind the dirt, something to place it back against.
+        h.setBlock(AHEAD.east(), Blocks.STONE);
+        Villager v = worker(h, ItemStack.EMPTY, 0f);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] digging = {0};
+        int[] collected = {0};
+        int[] placed = {0};
+        h.onEachTick(() -> {
+            tick[0]++;
+            float p = handle.pleasure();
+            if (tick[0] == 10) {
+                handle.hold(ATTACK);
+            } else if (tick[0] == 40) {
+                // The dirt it dug is in its hand: put it back.
+                handle.hold(USE);
+            } else if (tick[0] == 42) {
+                handle.hold(MotorCommand.IDLE);
+            }
+            if (tick[0] > 10 && tick[0] <= 40) {
+                if (Math.abs(p - Motives.DIG_PER_TICK) < 1e-4) {
+                    digging[0]++;
+                } else if (p >= Motives.COLLECT - 1e-4) {
+                    collected[0]++;
+                }
+            } else if (tick[0] > 40 && p >= Motives.PLACE - 1e-4) {
+                placed[0]++;
+            }
+            if (tick[0] == 60) {
+                LOG.info("pleasure: {} ticks of digging, {} of collecting, {} of placing", digging[0], collected[0], placed[0]);
+                h.assertTrue(digging[0] >= 13, "digging dirt felt good on only " + digging[0] + " ticks");
+                h.assertTrue(collected[0] == 1, "the drop reaching its hand felt good " + collected[0] + " times");
+                h.assertTrue(placed[0] == 1, "placing the dirt felt good " + placed[0] + " times");
+                h.assertFalse(h.getBlockState(AHEAD).isAir(), "the dirt was not placed back");
+                h.succeed();
+            }
         });
     }
 
