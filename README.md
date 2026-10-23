@@ -106,9 +106,10 @@ first and last 10 tries reached the goal.
 - Newborns have two inborn reflexes that learning builds on: keep the head level, and turn toward a
   creature they see. Dopamine is a reward prediction error from a small critic (Concept, Emotion
   and Memory activity), so only "better than expected" reinforces a key.
-- In-game benchmarks with newborn MCA villagers (one run; results vary between runs): open
-  ground 3/10 → 10/10, jump the step 0/10 → 10/10, swim the pool 0/10 → 3–10/10, ledge reached
-  10/10 without falling but by stopping, not sneaking (sneaks ~9% near the edge), ladder 0/10 (it
-  jumps at the wall instead of climbing).
+- In-game benchmarks (one run on 7d2fdeb; results vary between runs), first 10 → last 10 tries,
+  newborn / adult: open ground 3→10 / 0→10, jump the step 1→10 / 0→10, swim the pool 1→10 /
+  0→10 (jump held ~83% of the time in water), ledge 5→10 / 1→10 with no falls but only ~10%
+  sneaking near the edge, ladder 0→2 / 0→0 (on the ladder only 1–3% of the time; it jumps at the
+  wall beside the 1-wide ladder instead).
 - Toy-world benchmark `MovementLearningTest`: after 30k ticks, brains that feel good about nearing
   a goal they see reach about 9 goals per 3000 ticks (all 6 seeds); unrewarded brains reach none.

@@ -224,10 +224,16 @@ public final class LearningTests {
         BrainManager.Handle handle = attach(h, v);
         handle.hold(c.playerKeys);
         handle.setGoal(h.absolutePos(c.goal()));
+        int[] climbing = {0};
+        h.onEachTick(() -> {
+            if (v.onClimbable()) {
+                climbing[0]++;
+            }
+        });
         h.succeedWhen(() -> {
             h.assertFalse(c.fell(h, v), c + ": fell off");
             h.assertTrue(handle.goal() == null, c + ": goal not reached yet");
-            LOG.info("{} course passed with {} at tick {}", c, c.playerKeys.keys(), h.getTick());
+            LOG.info("{} course passed with {} at tick {} ({} ticks on a ladder)", c, c.playerKeys.keys(), h.getTick(), climbing[0]);
         });
     }
 
@@ -235,41 +241,69 @@ public final class LearningTests {
 
     @GameTest(template = ARENA, timeoutTicks = EPISODES * 200 + 200, required = false)
     public static void learnsToWalkToASeenGoal(GameTestHelper h) {
-        learns(h, Course.OPEN);
+        learns(h, Course.OPEN, false);
     }
 
     @GameTest(template = ARENA, timeoutTicks = EPISODES * 200 + 200, required = false)
     public static void learnsToJumpOverAStep(GameTestHelper h) {
-        learns(h, Course.JUMP);
+        learns(h, Course.JUMP, false);
     }
 
     @GameTest(template = ARENA, timeoutTicks = EPISODES * 300 + 200, required = false)
     public static void learnsToClimbALadder(GameTestHelper h) {
-        learns(h, Course.CLIMB);
+        learns(h, Course.CLIMB, false);
     }
 
     @GameTest(template = ARENA, timeoutTicks = EPISODES * 300 + 200, required = false)
     public static void learnsToSwimAcrossAPool(GameTestHelper h) {
-        learns(h, Course.SWIM);
+        learns(h, Course.SWIM, false);
     }
 
     @GameTest(template = ARENA, timeoutTicks = EPISODES * 300 + 200, required = false)
     public static void learnsToSneakUpToALedge(GameTestHelper h) {
-        learns(h, Course.LEDGE);
+        learns(h, Course.LEDGE, false);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = EPISODES * 200 + 200, required = false)
+    public static void adultLearnsToWalkToASeenGoal(GameTestHelper h) {
+        learns(h, Course.OPEN, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = EPISODES * 200 + 200, required = false)
+    public static void adultLearnsToJumpOverAStep(GameTestHelper h) {
+        learns(h, Course.JUMP, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = EPISODES * 300 + 200, required = false)
+    public static void adultLearnsToClimbALadder(GameTestHelper h) {
+        learns(h, Course.CLIMB, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = EPISODES * 300 + 200, required = false)
+    public static void adultLearnsToSwimAcrossAPool(GameTestHelper h) {
+        learns(h, Course.SWIM, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = EPISODES * 300 + 200, required = false)
+    public static void adultLearnsToSneakUpToALedge(GameTestHelper h) {
+        learns(h, Course.LEDGE, true);
     }
 
     /** Outcome of one try. */
     private enum Outcome { REACHED, FELL, TIMED_OUT }
 
-    private static void learns(GameTestHelper h, Course c) {
+    private static void learns(GameTestHelper h, Course c, boolean adult) {
+        String who = c + (adult ? " adult" : " newborn");
         // Run the server as fast as it can: learning takes many tries. Lockstep keeps the brain
         // stepping once per tick, as it would in real time.
         BrainManager.get().setLockstep(true);
         h.getLevel().getServer().tickRateManager().requestGameToSprint(c.episodeTicks * EPISODES + 400);
         c.buildLane(h);
-        // A newborn, like the toy world's learners: it babbles the most and has its inborn reflexes.
+        // A newborn babbles the most and has its inborn reflexes; an adult starts with a fresh brain.
         Villager v = spawnMcaVillager(h, c.start());
-        v.setAge(-24000);
+        if (!adult) {
+            v.setAge(-24000);
+        }
         BrainManager.Handle handle = attach(h, v);
         reset(h, c, v, handle);
 
@@ -279,6 +313,9 @@ public final class LearningTests {
         // Ticks in the last tries with the jump key down: in water, and on dry ground.
         int[] jumpWet = {0, 0};
         int[] jumpDry = {0, 0};
+        // Ticks in the last tries on a ladder, and of those, pushing forward into it.
+        int[] onLadder = {0, 0};
+        int[] pushingLadder = {0, 0};
         // Closest each try got to the goal, as a fraction of the start distance still left.
         double startDist = Vec3.atBottomCenterOf(c.goal()).distanceTo(c.start());
         double[] closest = {1.0};
@@ -292,6 +329,14 @@ public final class LearningTests {
                 closest[0] = Math.min(closest[0], h.relativeVec(v.position()).distanceTo(Vec3.atBottomCenterOf(c.goal())) / startDist);
             }
             if (outcomes.size() >= EPISODES - WINDOW) {
+                onLadder[1]++;
+                if (v.onClimbable()) {
+                    onLadder[0]++;
+                    pushingLadder[1]++;
+                    if (handle.command().forward() > 0) {
+                        pushingLadder[0]++;
+                    }
+                }
                 int[] counter = v.isInWater() ? jumpWet : jumpDry;
                 counter[1]++;
                 if (handle.command().jump()) {
@@ -316,7 +361,7 @@ public final class LearningTests {
             ticks[0] = 0;
             if (outcomes.size() % WINDOW == 0) {
                 LOG.info("{} learning: episodes {}-{}: {} reached, {} fell, closest approach left {}% of the way on average; brain {} steps",
-                        c, outcomes.size() - WINDOW + 1, outcomes.size(),
+                        who, outcomes.size() - WINDOW + 1, outcomes.size(),
                         count(outcomes, outcomes.size() - WINDOW, Outcome.REACHED),
                         count(outcomes, outcomes.size() - WINDOW, Outcome.FELL),
                         Math.round(100 * closestSum[0] / WINDOW), handle.brain().ticks());
@@ -333,9 +378,10 @@ public final class LearningTests {
                             + " in the last tries jump was held %d%% of the time in water, %d%% on land%s",
                     c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry),
                     c == Course.LEDGE ? String.format("; sneaking %d%% of the time near the edge",
-                            percent(sneakNearEdge)) : "");
-            LOG.info("{} learning result: {}", c, report);
-            h.getLevel().getServer().tickRateManager().stopSprinting();
+                            percent(sneakNearEdge)) : "")
+                    + (c == Course.CLIMB ? String.format("; on the ladder %d%% of the time, pushing W %d%% of that",
+                            percent(onLadder), percent(pushingLadder)) : "");
+            LOG.info("{} learning result: {}", who, report);
             boolean sneaks = c != Course.LEDGE || sneakNearEdge[0] * 2 >= sneakNearEdge[1];
             if (last >= 7 && last > first && lastFalls <= 2 && sneaks) {
                 h.succeed();
