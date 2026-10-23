@@ -83,6 +83,7 @@ public final class Senses {
                 float solid = 0f;
                 float hazard = 0f;
                 float creature = 0f;
+                float climbable = 0f;
                 if (seen != null) {
                     near = (float) (1.0 - entityDist / range);
                     creature = seen instanceof LivingEntity ? 1f : 0.5f;
@@ -93,6 +94,7 @@ public final class Senses {
                     boolean liquid = !level.getFluidState(block.getBlockPos()).isEmpty() && state.getCollisionShape(level, block.getBlockPos()).isEmpty();
                     solid = liquid ? 0.4f : 1f;
                     hazard = isHazard(level, block.getBlockPos(), state) ? 1f : 0f;
+                    climbable = state.is(BlockTags.CLIMBABLE) || state.is(Blocks.SCAFFOLDING) ? 1f : 0f;
                 } else {
                     near = 0f;
                 }
@@ -100,6 +102,7 @@ public final class Senses {
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_SOLID)] = solid;
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_HAZARD)] = hazard;
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)] = creature;
+                vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CLIMBABLE)] = climbable;
             }
         }
     }

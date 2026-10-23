@@ -20,6 +20,10 @@ public class PlayerInputMoveControl extends MoveControl {
         this.command = command;
     }
 
+    public Mob mob() {
+        return mob;
+    }
+
     public MotorCommand command() {
         return command;
     }

@@ -89,6 +89,13 @@ left are seen on the left, cows are creatures and zombies dangerous ones, lava i
 water a liquid, and seeing a wall stirs the occipital lobe far more than open sky. Blocks a player
 cannot see (barriers, light blocks) are looked through.
 
+`HandsTests` check the two mouse buttons: holding attack digs dirt by hand in 15 ticks and stone
+with a wooden pickaxe in 23, exactly a player's times, letting go loses the progress, and the drop
+goes to the villager's hand or inventory; a click hits the creature in the crosshair for a fist's 1
+damage; use places one block per click and another every 4 ticks while held, never inside a
+creature. They also check the hand senses and that a ladder is seen as climbable but the wall
+beside it is not.
+
 `LearningTests` are obstacle courses with a still cow standing on the goal: open ground (the
 control), a one-block step, a ladder up a wall, a pool, and a ledge to sneak up to. Each course has
 a required test where a villager holding a player's keys gets through, and an optional benchmark
@@ -106,10 +113,10 @@ first and last 10 tries reached the goal.
 - Newborns have two inborn reflexes that learning builds on: keep the head level, and turn toward a
   creature they see. Dopamine is a reward prediction error from a small critic (Concept, Emotion
   and Memory activity), so only "better than expected" reinforces a key.
-- In-game benchmarks (one run on 7d2fdeb; results vary between runs), first 10 → last 10 tries,
-  newborn / adult: open ground 3→10 / 0→10, jump the step 1→10 / 0→10, swim the pool 1→10 /
-  0→10 (jump held ~83% of the time in water), ledge 5→10 / 1→10 with no falls but only ~10%
-  sneaking near the edge, ladder 0→2 / 0→0 (on the ladder only 1–3% of the time; it jumps at the
-  wall beside the 1-wide ladder instead).
+- In-game benchmarks (one run, brain from 3269660 with the climbable sight channel; results
+  vary between runs), first 10 → last 10 tries, newborn / adult: open ground 1→10 / 0→10, jump
+  the step 1→10 / 2→10, swim the pool 2→9 / 5→10, ledge 5→9 / 8→10 with no falls (sneaking
+  10–15% near the edge; that is only reported), ladder 0→0 / 0→1 (on the ladder 0–1% of the
+  time; it jumps at the wall beside the 1-wide ladder).
 - Toy-world benchmark `MovementLearningTest`: after 30k ticks, brains that feel good about nearing
   a goal they see reach about 9 goals per 3000 ticks (all 6 seeds); unrewarded brains reach none.

@@ -3,9 +3,11 @@ package com.mementocraft.reallyalive;
 import com.mementocraft.reallyalive.body.BrainDriven;
 import com.mementocraft.reallyalive.body.BrainJumpControl;
 import com.mementocraft.reallyalive.body.BrainLookControl;
+import com.mementocraft.reallyalive.body.Hands;
 import com.mementocraft.reallyalive.body.PlayerInputMoveControl;
 import com.mementocraft.reallyalive.body.PlayerMovement;
 import com.mementocraft.reallyalive.brain.Brain;
+import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.BrainIO;
 import com.mementocraft.reallyalive.brain.Genome;
 import com.mementocraft.reallyalive.brain.MotorCommand;
@@ -71,6 +73,7 @@ public final class BrainManager {
         final UUID id;
         final Brain brain;
         final PlayerInputMoveControl move;
+        final Hands hands;
         final MoveControl originalMove;
         final LookControl originalLook;
         final JumpControl originalJump;
@@ -94,10 +97,15 @@ public final class BrainManager {
             this.originalMove = originalMove;
             this.originalLook = originalLook;
             this.originalJump = originalJump;
+            this.hands = new Hands((Villager) move.mob());
         }
 
         public Brain brain() {
             return brain;
+        }
+
+        public Hands hands() {
+            return hands;
         }
 
         public MotorCommand command() {
@@ -204,6 +212,7 @@ public final class BrainManager {
             return;
         }
         save(h);
+        h.hands.release();
         MobAccessor body = (MobAccessor) v;
         body.reallyalive$setMoveControl(h.originalMove);
         body.reallyalive$setLookControl(h.originalLook);
@@ -246,6 +255,7 @@ public final class BrainManager {
         MotorCommand keys = h.held != null ? h.held : h.command;
         PlayerMovement.applyBeforeTick(v, keys);
         h.move.setCommand(keys);
+        h.hands.tick(keys);
     }
 
     /** After the villager ticks: sense the result and start the next brain step. */
@@ -262,6 +272,9 @@ public final class BrainManager {
         }
         System.arraycopy(h.vision, 0, f.vision, 0, h.vision.length);
         Senses.feel(v, f);
+        f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
+        f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
+        f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
         Senses.smell(v, f, h.scent, h.goal);
         feelings(v, h, f);
         if (h.age % 200 == 0) {

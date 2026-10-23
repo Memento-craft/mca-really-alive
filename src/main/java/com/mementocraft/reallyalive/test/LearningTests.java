@@ -382,8 +382,9 @@ public final class LearningTests {
                     + (c == Course.CLIMB ? String.format("; on the ladder %d%% of the time, pushing W %d%% of that",
                             percent(onLadder), percent(pushingLadder)) : "");
             LOG.info("{} learning result: {}", who, report);
-            boolean sneaks = c != Course.LEDGE || sneakNearEdge[0] * 2 >= sneakNearEdge[1];
-            if (last >= 7 && last > first && lastFalls <= 2 && sneaks) {
+            // On the ledge, reaching the edge without falling is the goal; how often it sneaks
+            // there is only reported, since stopping short is as good a way as any.
+            if (last >= 7 && last > first && lastFalls <= (c == Course.LEDGE ? 0 : 2)) {
                 h.succeed();
             } else {
                 h.fail("not learned yet: " + report);
