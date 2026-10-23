@@ -71,6 +71,7 @@ public final class BrainManager {
         final float[] scent = new float[OlfactoryChannel.COUNT];
         CompletableFuture<MotorCommand> pending;
         MotorCommand command = MotorCommand.IDLE;
+        MotorCommand held;
         float lastHealth = -1f;
         BlockPos goal;
         double lastGoalDist = -1;
@@ -91,6 +92,14 @@ public final class BrainManager {
 
         public MotorCommand command() {
             return command;
+        }
+
+        /**
+         * Presses these keys instead of the brain's, like someone else holding the keyboard. The brain
+         * keeps running and feels the result. {@code null} gives the keys back to the brain.
+         */
+        public void hold(MotorCommand keys) {
+            this.held = keys;
         }
 
         public BlockPos goal() {
@@ -218,8 +227,9 @@ public final class BrainManager {
             h.command = h.pending.join();
             h.pending = null;
         }
-        PlayerMovement.applyBeforeTick(v, h.command);
-        h.move.setCommand(h.command);
+        MotorCommand keys = h.held != null ? h.held : h.command;
+        PlayerMovement.applyBeforeTick(v, keys);
+        h.move.setCommand(keys);
     }
 
     /** After the villager ticks: sense the result and start the next brain step. */

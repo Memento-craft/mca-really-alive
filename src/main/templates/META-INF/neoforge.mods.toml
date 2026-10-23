@@ -27,7 +27,7 @@ ordering="NONE"
 side="BOTH"
 
 # Brains attach to any villager, so MCA's villagers (which are villagers underneath) get them too.
-# Marked optional until an MCA build for NeoForge 1.21.1 is confirmed.
+# Optional, so plain villagers work without MCA. Tested with MCA Reborn 7.7.36 for NeoForge 1.21.1.
 [[dependencies.${mod_id}]]
 modId="mca"
 type="optional"

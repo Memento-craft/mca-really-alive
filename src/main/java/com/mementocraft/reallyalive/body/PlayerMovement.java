@@ -1,6 +1,7 @@
 package com.mementocraft.reallyalive.body;
 
 import com.mementocraft.reallyalive.brain.MotorCommand;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
@@ -10,9 +11,13 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.Collection;
+import java.util.Set;
 
 /**
  * The rules that make a brain-driven villager move exactly as a player can: player speed, player
@@ -64,6 +69,14 @@ public final class PlayerMovement {
     }
 
     /**
+     * Speed modifiers that come from being a villager rather than from anything a player could also
+     * have: MCA's inherited speed gene. A brain-driven villager moves at a player's speed, so these
+     * are left out.
+     */
+    private static final Set<ResourceLocation> NOT_FOR_PLAYERS = Set.of(
+            ResourceLocation.fromNamespaceAndPath("mca", "trait_speed"));
+
+    /**
      * The speed a player would have with this mob's speed effects: the mob's movement speed
      * attribute (including sprinting and potions) rescaled from its own base to a player's base.
      */
@@ -72,7 +85,33 @@ public final class PlayerMovement {
         if (speed == null || speed.getBaseValue() <= 0) {
             return (float) PLAYER_WALK_SPEED;
         }
-        return (float) (speed.getValue() * PLAYER_WALK_SPEED / speed.getBaseValue());
+        return (float) (playerModifiedValue(speed) * PLAYER_WALK_SPEED / speed.getBaseValue());
+    }
+
+    /** The attribute's value as vanilla computes it, skipping {@link #NOT_FOR_PLAYERS}. */
+    private static double playerModifiedValue(AttributeInstance a) {
+        Collection<AttributeModifier> modifiers = a.getModifiers();
+        if (modifiers.stream().noneMatch(m -> NOT_FOR_PLAYERS.contains(m.id()))) {
+            return a.getValue();
+        }
+        double added = a.getBaseValue();
+        for (AttributeModifier m : modifiers) {
+            if (m.operation() == AttributeModifier.Operation.ADD_VALUE && !NOT_FOR_PLAYERS.contains(m.id())) {
+                added += m.amount();
+            }
+        }
+        double value = added;
+        for (AttributeModifier m : modifiers) {
+            if (m.operation() == AttributeModifier.Operation.ADD_MULTIPLIED_BASE && !NOT_FOR_PLAYERS.contains(m.id())) {
+                value += added * m.amount();
+            }
+        }
+        for (AttributeModifier m : modifiers) {
+            if (m.operation() == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL && !NOT_FOR_PLAYERS.contains(m.id())) {
+                value *= 1.0 + m.amount();
+            }
+        }
+        return a.getAttribute().value().sanitizeValue(value);
     }
 
     public static float sneakMultiplier(LivingEntity e) {
