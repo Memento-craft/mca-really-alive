@@ -54,6 +54,12 @@ public final class Brain {
      * an inborn reflex in a few ticks; smaller ones learn too slowly to see within a day.
      */
     static final float MOTOR_LEARNING_BOOST = 0.25f;
+    /**
+     * The same for synapses from the cerebellum, the learned pathway. Inborn reflex arcs come straight
+     * from receptors and keep the smaller step; with that small step for everything, a learned key
+     * such as placing a block faded once babbling did.
+     */
+    static final float PATHWAY_BOOST = 0.5f;
     /** How strongly a reward that beats expectations turns into dopamine. Too high and it clips. */
     static final float DOPAMINE_GAIN = 1.5f;
     static final float MOTOR_ELIG_DECAY = 0.9f;
@@ -446,7 +452,7 @@ public final class Brain {
                     float spike = fired[j] ? 1f : 0f;
                     e = s.elig[k] * MOTOR_ELIG_DECAY + preTrace * (spike - slowRate[j]);
                     s.elig[k] = e;
-                    w = s.weight[k] + preSign * lr * MOTOR_LEARNING_BOOST * e * motorGate;
+                    w = s.weight[k] + preSign * lr * (role[i] == ROLE_RECEPTOR ? MOTOR_LEARNING_BOOST : PATHWAY_BOOST) * e * motorGate;
                 } else {
                     if (fired[j]) {
                         e += A_PLUS * preTrace;
