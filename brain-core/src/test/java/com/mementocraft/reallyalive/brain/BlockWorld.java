@@ -62,9 +62,13 @@ final class BlockWorld {
     float pendingPain;
     float pendingPleasure;
     /** Pleasure for picking up an item; 0 turns the collecting motive off. */
-    static float COLLECT_PLEASURE = 0f;
+    static float COLLECT_PLEASURE = Motives.COLLECT;
     /** Pleasure per tick of watching a block crack while digging it; 0 turns it off. */
-    static float DIG_PLEASURE = 0f;
+    static float DIG_PLEASURE = Motives.DIG_PER_TICK;
+    /** Pleasure for placing a block; 0 turns it off. */
+    static float PLACE_PLEASURE = Motives.PLACE;
+    /** Blocks in hand at the start of each course. */
+    static int START_BLOCKS = 0;
 
     BlockWorld(long seed, float width, float height) {
         rng = new Rng(seed);
@@ -117,6 +121,7 @@ final class BlockWorld {
         onGround = true;
         course = courses[rng.nextInt(courses.length)];
         courseTicks = 0;
+        blocks = Math.max(blocks, START_BLOCKS);
         tried[course.ordinal()]++;
 
         float a = rng.nextFloat() * 360f;
@@ -149,7 +154,6 @@ final class BlockWorld {
                     }
                 }
                 goalY = 2f;
-                blocks = Math.max(blocks, 4);
             }
             case POND -> {
                 // A strip of water two blocks deep across the way: swim over and climb out.
@@ -503,6 +507,7 @@ final class BlockWorld {
                 top[i][k] = newTop;
                 blocks--;
                 placed++;
+                pendingPleasure += PLACE_PLEASURE;
                 useCooldown = USE_COOLDOWN;
             }
         }
