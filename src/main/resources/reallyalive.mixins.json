@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.mementocraft.reallyalive.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityMixin",
+    "LivingEntityMixin",
+    "MobAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

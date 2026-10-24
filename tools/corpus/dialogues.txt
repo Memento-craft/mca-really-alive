@@ -1,0 +1,429 @@
+# Hand-written conversations. One utterance per line, speakers alternate, a blank line ends a
+# conversation. Lines starting with # are ignored.
+
+excuse me, is this seat taken?
+no, go ahead.
+thanks. busy today, isn't it?
+it's always like this on market day.
+are you from around here?
+i grew up on the farm past the river. you?
+i just moved here last month.
+welcome! how do you like it so far?
+the people are friendly. the bread is amazing.
+wait until you try the pie at the tavern.
+
+hey, you dropped something.
+oh! my keys. thank you so much.
+no problem. i drop mine all the time.
+i would have been locked out all night.
+
+i think we're lost.
+we are not lost. i know exactly where we are.
+then where are we?
+somewhere between the forest and the mountains.
+that's not exactly helpful.
+fine. let's ask that shepherd over there.
+
+can i get a bowl of stew and some bread?
+of course. anything to drink?
+just water, please.
+it'll be a few minutes.
+no rush.
+here you are. careful, the bowl is hot.
+this smells wonderful.
+enjoy your meal.
+
+did you finish the fence?
+almost. i ran out of nails.
+there are more in the shed, on the top shelf.
+i looked there already.
+then check the red box under the bench.
+found them! thanks.
+
+i don't feel like going to the party tonight.
+why not? everyone will be there.
+that's exactly why. i'm tired of crowds.
+we could just stay for an hour.
+okay. one hour, and then we leave.
+deal.
+
+what are you reading?
+a book about the stars.
+any good?
+it's fascinating. did you know some stars are bigger than the sun?
+really? they look so small.
+that's because they are very, very far away.
+
+mom, i fell and scraped my knee.
+oh sweetheart, let me see. it's not too bad.
+it stings.
+let's wash it with clean water and put a cloth on it.
+will it leave a scar?
+no, it will heal in a few days. you were very brave.
+
+i heard the old mill is haunted.
+who told you that?
+everyone says they hear noises there at night.
+it's probably just rats. or the wind in the wheel.
+then let's go and look tonight.
+absolutely not.
+
+how much longer do we have to walk?
+until we reach the river.
+my feet hurt.
+we can rest under that tree for a bit.
+can we eat something too?
+yes, i brought bread and cheese.
+
+i'm worried about the harvest this year.
+why? the fields look fine to me.
+there hasn't been rain for three weeks.
+we could dig a ditch from the river.
+that's a lot of work.
+less work than starving in winter.
+you're right. let's start tomorrow.
+
+do you remember when we were kids and climbed that tree?
+how could i forget? you got stuck at the top.
+and you ran to get my father.
+he was so angry.
+but he still carried me down.
+those were good days.
+
+good morning, doctor. my son has a fever.
+how long has he had it?
+since last night. he won't eat.
+let me check. open your mouth, please. say ah.
+ahh.
+it's just a cold. give him warm soup and let him sleep.
+thank you. i was so worried.
+
+could you watch my stall for a few minutes?
+sure. where are you going?
+i need to fetch more apples from the cart.
+okay. what if someone wants to buy something?
+the prices are written on the board. three emeralds for a basket.
+got it. take your time.
+
+why are you up so late?
+i can't sleep. i keep thinking about tomorrow.
+are you nervous?
+very. what if i say the wrong thing?
+you'll be fine. just be yourself.
+easy for you to say.
+
+look, the first snow!
+it's beautiful.
+we should build a snowman.
+first we need to bring in the firewood.
+then snowman?
+then snowman.
+
+who left the gate open?
+not me.
+the sheep are all over the road!
+i'll get the dog. you go round the other side.
+okay. come on, sheep, this way!
+there, that's the last one.
+i'm fixing that latch tomorrow.
+
+i got you something.
+for me? what is it?
+open it and see.
+a new knife! how did you know mine was broken?
+i saw you trying to cut bread with it.
+thank you, really.
+
+are you angry with me?
+no. why would i be?
+you've been quiet all day.
+i'm just tired. it's not about you.
+okay. do you want to talk?
+maybe later. thank you for asking.
+
+hello, i'd like to send a letter to my sister.
+where does she live?
+in the city by the sea.
+that will take about four days.
+that's fine. how much?
+two coins.
+here you go. thank you.
+
+what's that smell?
+i think something is burning.
+the bread! i forgot the bread!
+quick, open the window.
+it's ruined.
+we'll make another one. i'll help this time.
+
+my grandfather used to say the best time to plant a tree was twenty years ago.
+and the second best time?
+today.
+then let's plant one.
+what kind?
+an apple tree. so our children can eat from it.
+
+i'm sorry for shouting at you yesterday.
+i was upset, but i understand. you were stressed.
+that's no excuse. you didn't deserve it.
+thank you for saying that.
+friends?
+always.
+
+can you teach me how to fish?
+sure. first, hold the rod like this.
+like this?
+a bit higher. now throw the line, gently.
+oops, it got stuck in the tree.
+happens to everyone. let's try again.
+i felt something pull!
+pull slowly, slowly... there! your first fish!
+
+it's my birthday today.
+really? happy birthday!
+thank you. you're the first one to say it.
+then we have to celebrate. cake at my house tonight?
+i would love that.
+
+have you seen the new baby?
+not yet. boy or girl?
+a girl. they named her rose.
+what a pretty name. is the mother well?
+tired, but very happy.
+i'll bring them some soup tomorrow.
+
+that wolf has been following us.
+i noticed. don't run.
+what do we do?
+throw it some of the meat. maybe it's just hungry.
+look, it's eating. it's wagging its tail.
+i think we just made a friend.
+
+the roof is leaking again.
+where?
+right above the bed.
+put a bucket under it for now.
+we need a new roof before winter.
+i'll ask the builder tomorrow.
+
+why do you always wear that hat?
+my mother made it for me.
+it's very old.
+so are the memories. i'll wear it until it falls apart.
+
+i want to learn to read.
+that's wonderful. i can teach you.
+won't it take years?
+a little every day. you'll be reading stories by spring.
+where do we start?
+with the letters. this is a. say it with me.
+
+there's a storm coming. look at those clouds.
+we should bring the animals in.
+i'll get the cows, you get the chickens.
+the chickens never listen to me.
+then bring some seeds, they'll follow the seeds.
+
+can i ask you something personal?
+sure.
+are you happy here?
+most days. i miss my old home sometimes.
+what do you miss?
+the sea. the sound of the waves at night.
+maybe we can go together one day.
+i'd like that.
+
+the guard says the road to the north is closed.
+why?
+a bridge washed away in the flood.
+how will the traders get here?
+they'll have to go around through the hills. it takes two extra days.
+then prices will go up again.
+
+do you need anything from the market?
+eggs, flour, and some salt.
+anything else?
+oh, and candles. we're almost out.
+okay. eggs, flour, salt, candles.
+and don't forget to come home before dark.
+
+what did you think of the play last night?
+honestly, i fell asleep in the middle.
+no! it was so good.
+the first part was good. then they just kept talking.
+that's the best part!
+we'll have to agree to disagree.
+
+i can't lift this alone.
+let me help. on three. one, two, three!
+oof. it's heavier than it looks.
+what's in here anyway?
+my grandmother's books.
+she must have read a lot.
+
+why is the river so high?
+the snow on the mountains is melting.
+will it flood the village?
+not if the wall holds.
+and if it doesn't?
+then we move everything upstairs.
+
+where did you learn to cook like this?
+from my father. he worked in a big kitchen in the city.
+it's delicious. what is it?
+mushroom stew with garlic and herbs.
+you have to give me the recipe.
+only if you promise to cook it for me sometime.
+
+i'm thinking of leaving the village.
+what? why?
+i want to see the world. there's so much out there.
+but your family is here. your friends are here.
+i know. that's what makes it hard.
+whatever you decide, i'll support you.
+
+the baby won't stop crying.
+maybe she's hungry.
+i just fed her.
+then maybe she's tired. try singing to her.
+i don't know any songs.
+everyone knows one song. just hum something.
+
+you're late again.
+i know, i'm sorry. the cart broke on the way.
+again? you need a new cart.
+i need new coins first.
+fine. just start working, we have lots to do.
+
+who taught you to sword fight?
+an old soldier who lived next to us.
+are you any good?
+good enough to keep the zombies away.
+can you teach me?
+first you learn to hold a shield. then we talk about swords.
+
+i made too much soup. do you want some?
+you're a lifesaver. i haven't had time to cook all week.
+here, take the whole pot.
+i'll bring the pot back tomorrow.
+no hurry.
+
+did you hear about the trader with the strange animals?
+llamas, they're called.
+they spit at people!
+only if you annoy them.
+i'm going to see them anyway.
+just don't stand too close.
+
+this is the most beautiful sunset i've ever seen.
+the sky is on fire.
+let's stay until the stars come out.
+it'll get cold.
+then sit closer.
+
+what's the matter with the horse?
+he lost a shoe.
+can you still ride him?
+not far. we'll have to walk him to the blacksmith.
+how far is that?
+an hour, maybe a bit more.
+
+i got the job at the library!
+congratulations! when do you start?
+next week. i'm so nervous.
+you love books. you'll be great.
+i hope so. i have to learn where every book goes.
+you'll know the whole place in a month.
+
+do you believe in luck?
+sometimes. why?
+i found a four leaf clover this morning.
+then today is your lucky day.
+let's see. i'm going to ask the baker for a free cake.
+good luck with that.
+
+i'm cold.
+here, take my coat.
+won't you be cold?
+i'm used to it. i grew up in the mountains.
+
+is it true you've been to the end of the world?
+not the end. but very far.
+what's there?
+more people. different food. the same sun.
+that sounds a bit disappointing.
+it wasn't. the people were the best part.
+
+we need to talk about the money.
+okay. what about it?
+we spent too much this month.
+the roof had to be fixed.
+i know. but we have to be careful until the harvest.
+alright. no more trips to the tavern.
+that's a start.
+
+hey! wait for me!
+hurry up, slowpoke!
+i'm carrying all the stuff!
+fine, give me half.
+thank you. you're a true friend.
+
+what do you want to be when you grow up?
+a knight.
+a knight? why?
+so i can protect everyone.
+that's a good reason. eat your vegetables, sir knight.
+
+how was the trip?
+long. the roads were terrible.
+did you find what you were looking for?
+yes, and more. look at these seeds. melons!
+we can grow those here?
+if we take care of them. let's try.
+
+there is a stranger at the gate asking for food.
+what does he look like?
+tired. thin. he has a little girl with him.
+then let them in. give them soup and a warm place to sleep.
+the guard won't like it.
+the guard can talk to me.
+
+what is love?
+hmm. that's a big question.
+i want to know.
+love is when someone's happiness is as important to you as your own.
+like you and dad?
+like me and dad. and like us and you.
+
+the well water tastes funny.
+funny how?
+like metal.
+don't drink it. let's boil some water from the stream instead.
+should we tell the others?
+yes, right away.
+
+i lost the race.
+but you finished. that's something.
+i came last.
+last year you didn't even run. next year you'll do better.
+you think so?
+i know so. let's practice together.
+
+can you keep a secret?
+of course.
+i'm planning a surprise party for my mother.
+oh, how lovely! when?
+on saturday. will you help me bake the cake?
+i'd be honored.
+
+the cat brought me a dead mouse again.
+it's a gift. she loves you.
+i wish she loved me a little less.
+just say thank you and throw it away when she isn't looking.
+
+what are those lights in the sky?
+those are the northern lights.
+they're moving!
+they dance on cold, clear nights.
+it's like magic.
+my grandmother said they were the spirits of our ancestors.

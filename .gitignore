@@ -6,3 +6,4 @@ runs/
 *.iml
 .idea/
 .vscode/
+__pycache__/
