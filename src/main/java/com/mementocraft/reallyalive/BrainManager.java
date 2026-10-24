@@ -354,6 +354,13 @@ public final class BrainManager {
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
         Senses.smell(v, f, h.scent, h.goal);
         h.heard = Hearing.listen(v, f, h.heard);
+        // Someone else ending a line starts the villager's answer; words it babbled before are
+        // not part of that answer.
+        for (int i = 0; i < f.heardWords.size(); i++) {
+            if (!f.heardOwn.get(i) && f.heardWords.get(i).equals(WordCode.TURN)) {
+                h.line.clear();
+            }
+        }
         feelings(v, h, f);
         if (h.age % 200 == 0) {
             h.brain.grow(maturity(v), 5);
