@@ -1,6 +1,8 @@
 package com.mementocraft.reallyalive.brain;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /** Everything the villager senses in one tick. Filled on the server thread, read by the brain. */
 public final class SensoryFrame {
@@ -9,8 +11,11 @@ public final class SensoryFrame {
     public final float[] smell = new float[OlfactoryChannel.COUNT];
     /** Sounds heard this tick, by kind. */
     public final float[] sound = new float[SoundChannel.COUNT];
-    /** Words heard this tick (others' and its own), by lexicon slot. */
-    public final float[] words = new float[SenseLayout.VOCABULARY];
+    /** Word features heard this tick (others' words and its own), see {@link WordCode}. */
+    public final float[] words = new float[SenseLayout.WORD_FEATURES];
+    /** The words heard this tick, in order, and whether each was the villager's own. */
+    public final List<String> heardWords = new ArrayList<>();
+    public final List<Boolean> heardOwn = new ArrayList<>();
     /** 0..1, from things that feel good (reaching a goal, eating). */
     public float pleasure;
     /** 0..1, from damage. */
@@ -28,10 +33,17 @@ public final class SensoryFrame {
         sound[c.ordinal()] = clamp01(value);
     }
 
-    /** Hears a word by its lexicon slot; slots outside the vocabulary are not heard. */
-    public void hear(int word) {
-        if (word >= 0 && word < words.length) {
-            words[word] = 1f;
+    /**
+     * Hears a word, lower case, or {@link WordCode#TURN} when a speaker finishes a line. Own is set
+     * for the villager's own voice, which it hears like any other.
+     */
+    public void hear(String word, boolean own) {
+        heardWords.add(word);
+        heardOwn.add(own);
+        if (!word.equals(WordCode.TURN)) {
+            for (int f : WordCode.features(word)) {
+                words[f] = 1f;
+            }
         }
     }
 
@@ -41,6 +53,8 @@ public final class SensoryFrame {
         Arrays.fill(smell, 0f);
         Arrays.fill(sound, 0f);
         Arrays.fill(words, 0f);
+        heardWords.clear();
+        heardOwn.clear();
         pleasure = 0f;
         pain = 0f;
     }

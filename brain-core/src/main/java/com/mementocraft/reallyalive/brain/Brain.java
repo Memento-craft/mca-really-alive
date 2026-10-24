@@ -93,19 +93,31 @@ public final class Brain {
     static final byte ROLE_INTERIOR = 0;
     static final byte ROLE_RECEPTOR = 1;
     static final byte ROLE_MOTOR = 2;
-    /** A neuron of a speech pool: one pool per word, driven by Wernicke's area. */
+    /** A neuron of a speech pool: one pool per word feature, driven by Wernicke's area. */
     static final byte ROLE_SPEECH = 3;
 
     /** Hearing receptors per sound kind and per word, in Wernicke's area. */
     static final int HEARING_PER_CHANNEL = 3;
     /** How fast the hearing-to-voice links learn: what was heard around the time a word was said. */
     static final float SPEECH_LEARNING = 10f;
-    static final float SPEECH_BABBLE_GAIN = 0.3f;
+    static final float SPEECH_BABBLE_GAIN = 1.5f;
+    /** Chance per tick, at full babbling, of trying out a word. */
+    static final float BABBLE_WORD_RATE = 0.03f;
     static final float HEARING_VOICE_WEIGHT = 0.1f;
-    /** A word is said when its pool fires at least this much... */
+    /** A word is said when at least SAY_FEATURES of its feature pools fire this much... */
     static final float SAY_ON = 0.3f;
-    /** ...and not within this many ticks of the last word (about one word a second at most). */
-    static final int VOICE_COOLDOWN = 20;
+    static final int SAY_FEATURES = 3;
+    /** ...and not within this many ticks of the last word (about two and a half words a second). */
+    static final int VOICE_COOLDOWN = 8;
+    /**
+     * How hard the word Wernicke's language area expects next pushes its speech pools while the
+     * villager has something to say.
+     */
+    static final float LANGUAGE_DRIVE = 1.2f;
+    /** The urge to answer: full for a player, halving with each line villagers trade without one. */
+    static final float URGE_MIN = 0.2f;
+    static final float URGE_DECAY = 0.995f;
+    static final int MAX_LINE_WORDS = 24;
 
     /** Flattened input layout: vision, body, efference copy, smell, emotion, sounds, words. */
     static final int IN_VISION = 0;
@@ -115,7 +127,7 @@ public final class Brain {
     static final int IN_EMOTION = IN_SMELL + OlfactoryChannel.COUNT;
     static final int IN_SOUND = IN_EMOTION + SenseLayout.EMOTION_RECEPTORS;
     static final int IN_WORDS = IN_SOUND + SoundChannel.COUNT;
-    static final int INPUT_SIZE = IN_WORDS + SenseLayout.VOCABULARY;
+    static final int INPUT_SIZE = IN_WORDS + SenseLayout.WORD_FEATURES;
 
     final Genome genome;
     final Rng rng;
@@ -151,10 +163,19 @@ public final class Brain {
     final IntList[][] targetGrid = new IntList[LobeId.values().length][GRID * GRID];
     final int[][] motorPools = new int[MotorChannel.COUNT][SenseLayout.MOTOR_POOL_SIZE];
     final int[][] emotionPools = new int[SenseLayout.EMOTION_RECEPTORS][EMOTION_PER_CHANNEL];
-    final int[][] speechPools = new int[SenseLayout.VOCABULARY][SenseLayout.SPEECH_POOL_SIZE];
-    final float[] speechRates = new float[SenseLayout.VOCABULARY];
-    final float[] speechBabble = new float[SenseLayout.VOCABULARY];
+    final int[][] speechPools = new int[SenseLayout.WORD_FEATURES][SenseLayout.SPEECH_POOL_SIZE];
+    final float[] speechRates = new float[SenseLayout.WORD_FEATURES];
+    final float[] speechBabble = new float[SenseLayout.WORD_FEATURES];
     int voiceCooldown;
+    /** Wernicke's word-sequence area: the English it grew up with, plus what it heard since. */
+    LanguageArea language = EnglishBase.newArea();
+    /** Picks the words a brain tries out when it babbles, apart from the rest of its randomness. */
+    final Rng voiceRng;
+    /** The word the language area expects next, by vocabulary number, or -1. */
+    int expected = -1;
+    float replyUrge;
+    int villagerLines;
+    int lineWords;
 
     final float[] input = new float[INPUT_SIZE];
     final float[] poolRates = new float[MotorChannel.COUNT];
@@ -180,6 +201,7 @@ public final class Brain {
     Brain(Genome genome, long seed, int capacity) {
         this.genome = genome;
         this.rng = new Rng(seed);
+        this.voiceRng = new Rng(seed * 31 + 7);
         allocate(Math.max(64, capacity));
         for (int l = 0; l < members.length; l++) {
             members[l] = new IntList(64);
@@ -284,7 +306,7 @@ public final class Brain {
     private void wireHearingToVoice() {
         for (int i = 0; i < n; i++) {
             int slot = inputSlot[i] - IN_WORDS;
-            if (role[i] != ROLE_RECEPTOR || slot < 0 || slot >= SenseLayout.VOCABULARY) {
+            if (role[i] != ROLE_RECEPTOR || slot < 0 || slot >= SenseLayout.WORD_FEATURES) {
                 continue;
             }
             for (int[] pool : speechPools) {
@@ -324,7 +346,7 @@ public final class Brain {
                 receptor(LobeId.WERNICKE, IN_SOUND + c);
             }
         }
-        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+        for (int w = 0; w < SenseLayout.WORD_FEATURES; w++) {
             for (int k = 0; k < HEARING_PER_CHANNEL; k++) {
                 receptor(LobeId.WERNICKE, IN_WORDS + w);
             }
@@ -336,7 +358,7 @@ public final class Brain {
                         Wiring.Band.KEYS.into(rng.nextFloat()));
             }
         }
-        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+        for (int w = 0; w < SenseLayout.WORD_FEATURES; w++) {
             for (int k = 0; k < SenseLayout.SPEECH_POOL_SIZE; k++) {
                 speechPools[w][k] = addNeuron(LobeId.MOTOR, ROLE_SPEECH, rng.nextFloat(),
                         Wiring.Band.VOICE.into(rng.nextFloat()));
@@ -368,8 +390,10 @@ public final class Brain {
         surprise = surprise * 0.9f + forwardModel.surprise * 0.1f;
 
         fillInput(frame);
+        listen(frame);
         deliverSpikes();
         driveMotorBabble();
+        driveLanguage();
         integrate();
         updateDopamine();
         learn();
@@ -382,6 +406,7 @@ public final class Brain {
         int word = decodeVoice();
         if (word >= 0) {
             lastCommand = lastCommand.saying(word);
+            lineWords++;
         }
         forwardModel.predict(cb, cbCount, fastRate);
         return lastCommand;
@@ -405,7 +430,7 @@ public final class Brain {
         input[IN_EMOTION + SenseLayout.EMO_PAIN] = SensoryFrame.clamp01(f.pain);
         input[IN_EMOTION + SenseLayout.EMO_CURIOSITY] = SensoryFrame.clamp01(surprise * CURIOSITY_GAIN);
         System.arraycopy(f.sound, 0, input, IN_SOUND, SoundChannel.COUNT);
-        System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.VOCABULARY);
+        System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.WORD_FEATURES);
     }
 
     private void deliverSpikes() {
@@ -422,6 +447,64 @@ public final class Brain {
                 synInput[s.target[k]] += sign * s.weight[k];
             }
         }
+    }
+
+    /**
+     * Words heard this tick go through Wernicke's language area in order. Others' words also teach
+     * it; its own words only move it along, so it knows where it is in its own sentence. When someone
+     * else finishes a line, the villager wants to answer: always a player, and villagers ever less
+     * the longer they talk among themselves, so two villagers don't chatter forever.
+     */
+    private void listen(SensoryFrame f) {
+        if (f.heardWords.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < f.heardWords.size(); i++) {
+            String w = f.heardWords.get(i);
+            boolean own = f.heardOwn.get(i);
+            language.hear(w, !own);
+            if (!w.equals(WordCode.TURN)) {
+                continue;
+            }
+            if (own) {
+                replyUrge = 0f;
+            } else {
+                boolean player = f.sound[SoundChannel.PLAYER_VOICE.ordinal()] > 0f;
+                villagerLines = player ? 0 : villagerLines + 1;
+                replyUrge = player ? 1f : (float) Math.pow(0.5, villagerLines);
+            }
+            lineWords = 0;
+        }
+        expected = language.bestWord(-1);
+    }
+
+    /**
+     * While the villager has something to say, the word its language area expects next drives that
+     * word's speech pools, so it comes out through the same voice the brain babbles and imitates
+     * with. The end of a line is not a sound: it is said by simply stopping.
+     */
+    private void driveLanguage() {
+        if (replyUrge < URGE_MIN) {
+            return;
+        }
+        replyUrge *= URGE_DECAY;
+        if (expected < 0) {
+            return;
+        }
+        String word = language.vocabulary.word(expected);
+        if (word.equals(WordCode.TURN) || lineWords >= MAX_LINE_WORDS) {
+            return;
+        }
+        for (int feature : WordCode.features(word)) {
+            for (int i : speechPools[feature]) {
+                extInput[i] += LANGUAGE_DRIVE;
+            }
+        }
+    }
+
+    /** The word with this vocabulary number, as the game shows it, or {@link WordCode#TURN}. */
+    public String word(int id) {
+        return id >= 0 && id < language.vocabulary.size() ? language.vocabulary.word(id) : null;
     }
 
     /**
@@ -443,11 +526,20 @@ public final class Brain {
         driveSpeechBabble(amp);
     }
 
-    /** Cooing: young brains also babble words now and then, which is how they learn their voice. */
+    /**
+     * Cooing: now and then a brain tries out the sound of a word it knows, more often the younger
+     * it is. Hearing itself say it is how it learns which speech pools make which heard sounds.
+     */
     private void driveSpeechBabble(float amp) {
-        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
-            speechBabble[w] += -0.1f * speechBabble[w] + 0.3f * rng.gaussian();
-            float drive = amp * Math.max(0f, speechBabble[w]) * SPEECH_BABBLE_GAIN;
+        if (voiceRng.nextFloat() < amp * BABBLE_WORD_RATE) {
+            int[] features = language.vocabulary.features(voiceRng.nextInt(language.vocabulary.size()));
+            for (int feature : features) {
+                speechBabble[feature] = 1f;
+            }
+        }
+        for (int w = 0; w < SenseLayout.WORD_FEATURES; w++) {
+            speechBabble[w] *= 0.8f;
+            float drive = amp * speechBabble[w] * SPEECH_BABBLE_GAIN;
             for (int i : speechPools[w]) {
                 extInput[i] = drive;
             }
@@ -660,7 +752,7 @@ public final class Brain {
             }
             poolRates[c] = poolRates[c] * 0.6f + 0.4f * count / SenseLayout.MOTOR_POOL_SIZE;
         }
-        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+        for (int w = 0; w < SenseLayout.WORD_FEATURES; w++) {
             int count = 0;
             for (int i : speechPools[w]) {
                 if (fired[i]) {
@@ -672,19 +764,39 @@ public final class Brain {
     }
 
     /**
-     * The word to say this tick, if any: the most active speech pool, once it is active enough. A
-     * mouth says one word at a time, so this is the one place a single winner is picked.
+     * The word to say this tick, if any, by vocabulary number: the known word whose features fire
+     * most strongly, once most of them fire enough. Two words can share all their features; then
+     * the one the language area expects wins. When the line is finished (the language area expects
+     * the end of it, or the line is very long), the villager says the end of its turn. A mouth says
+     * one word at a time, so this is the one place a single winner is picked.
      */
     private int decodeVoice() {
         if (voiceCooldown > 0) {
             voiceCooldown--;
             return -1;
         }
+        Vocabulary v = language.vocabulary;
+        if (replyUrge >= URGE_MIN && lineWords > 0 && expected >= 0
+                && (v.word(expected).equals(WordCode.TURN) || lineWords >= MAX_LINE_WORDS)) {
+            replyUrge = 0f;
+            voiceCooldown = VOICE_COOLDOWN;
+            return v.id(WordCode.TURN);
+        }
         int word = -1;
-        float best = SAY_ON;
-        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
-            if (speechRates[w] > best) {
-                best = speechRates[w];
+        float best = 0f;
+        for (int w = 0; w < v.size(); w++) {
+            int[] features = v.features(w);
+            if (features.length == 0) {
+                continue;
+            }
+            int on = 0;
+            float sum = 0f;
+            for (int feature : features) {
+                on += speechRates[feature] > SAY_ON ? 1 : 0;
+                sum += speechRates[feature];
+            }
+            if (on >= SAY_FEATURES && (sum > best || sum == best && w == expected)) {
+                best = sum;
                 word = w;
             }
         }

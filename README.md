@@ -16,7 +16,7 @@ birth, growing with age) split into lobes:
 | Feely | Touch, motion, balance, health, plus a copy of its own key presses |
 | Concept | Combines senses into concepts, in three areas: actions (from Feely), people and places (from sight and smell) |
 | Emotion | Innate pleasure, pain and curiosity pools that set the dopamine level |
-| Wernicke's | Language: hears 10 kinds of game sound and a 32-word vocabulary, and drives the voice (one speech pool per word) |
+| Wernicke's | Language: hears 10 kinds of game sound and any word (each word is a pattern over 32 word features), drives the voice (one speech pool per feature), and holds the word-sequence area that knows English |
 | Memory | Slow-leaking, fast-learning lobe: each memory binds an action, people and a place, and memories chain to each other |
 | Cerebellum | Motor control; also predicts what the body will feel next |
 | Motor | One pool of neurons per player control, plus the voice |
@@ -27,8 +27,26 @@ the retinotopic maps of a real visual system. The memory layout (page 111, left)
 across all three Concept areas and to the cerebellum's skills, so part of a scene recalls the rest:
 in `MemoryRecallTest`, a person's smell alone brings to mind the place they are always found.
 Villagers learn to talk the way children do: they babble words, hear themselves, and so learn to
-say back a word they hear someone say (`SpeechImitationTest`: 39% of tries, 0% for a brain that
-never hears its own voice).
+say back a word they hear someone say (`SpeechImitationTest`: 21% of tries, 0% for a brain that
+never hears its own voice). Because words are patterns over shared features, learning to repeat
+some words carries over to every other word.
+
+They also grow up with English. Wernicke's word-sequence area (`LanguageArea`) learns, by Hebbian
+co-activity alone, which word comes next: context cells stand for the last one to four words and
+for the words of the line it is answering, and each grows synapses onto the word cells that follow.
+It was trained on a generated corpus of a million everyday conversations and scenes (18 million
+words, about 3,000 distinct words; `tools/corpus`): greetings, markets, doctors, inns, jobs, family,
+feelings, danger, farming, building, stories, world knowledge and plain chatter, each line in many
+phrasings. On conversations it never saw it guesses the next word 74% of the time (counting word
+pairs gets 39%). The trained English ships as one shared 8 MB file (`english.lang.gz`); each
+villager adds what it hears in its own world in a small sheet of its own. When someone finishes a
+line, the villager answers: the word the area expects next drives that word's speech pools, so the
+answer comes out word by word through the same spiking voice it babbles with, and it stops when
+the area expects the line to end. It always answers a player, and villagers talk among themselves
+less with each line so they don't chatter forever. Answers are often apt ("what do bees make?" →
+"bees make honey.", "i'm hungry." → "have some hot soup.") and sometimes garbled ("what do you do
+for work?" → "i used to hate."): this is a few million counted synapses, not a large language
+model, and it does not reason about what it says.
 
 Learning happens live, in game:
 
@@ -111,8 +129,7 @@ can only be climbed by placing a step, and also reports how often place is press
 
 `SpeechTests` check hearing and the voice. Game sounds are sorted into ten kinds (steps, villager
 and player voices, hostile mobs, animals, digging, building, doors, water, bells) and heard louder
-near than far. Words typed in chat take the next free slot of the world's 32-word lexicon and are
-heard within 16 blocks. A word a villager says shows in nearby players' chat as `<name> word`, and
+near than far. Words typed in chat are heard within 16 blocks. A word a villager says shows in nearby players' chat as `<name> word`, and
 it and the villagers near it hear it. An optional benchmark lets a newborn babble for 20k ticks,
 then says words beside it and counts how often it says the same word back.
 

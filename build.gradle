@@ -16,6 +16,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 // The neural core lives in brain-core so it can be built and tested without Minecraft
 // (gradle -p brain-core test). The mod compiles the same sources into its own jar.
 sourceSets.main.java.srcDir 'brain-core/src/main/java'
+sourceSets.main.resources.srcDir 'brain-core/src/main/resources'
 
 neoForge {
     version = project.neo_version

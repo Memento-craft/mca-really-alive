@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 4;
+    private static final int VERSION = 5;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -97,6 +97,7 @@ public final class BrainIO {
         out.writeFloat(c.lastValue);
         out.writeBoolean(c.hasLast);
         c.writeLast(out);
+        writeLanguage(b, out);
     }
 
     public static Brain read(DataInput in) throws IOException {
@@ -104,7 +105,7 @@ public final class BrainIO {
             throw new IOException("Not a brain file");
         }
         int version = in.readInt();
-        if (version != VERSION) {
+        if (version != VERSION && version != 4) {
             throw new IOException("Unsupported brain version " + version);
         }
         float[] genes = new float[in.readInt()];
@@ -195,8 +196,8 @@ public final class BrainIO {
                 pool[k] = in.readInt();
             }
         }
-        System.arraycopy(readFloats(in, SenseLayout.VOCABULARY), 0, b.speechRates, 0, SenseLayout.VOCABULARY);
-        System.arraycopy(readFloats(in, SenseLayout.VOCABULARY), 0, b.speechBabble, 0, SenseLayout.VOCABULARY);
+        System.arraycopy(readFloats(in, SenseLayout.WORD_FEATURES), 0, b.speechRates, 0, SenseLayout.WORD_FEATURES);
+        System.arraycopy(readFloats(in, SenseLayout.WORD_FEATURES), 0, b.speechBabble, 0, SenseLayout.WORD_FEATURES);
         b.voiceCooldown = in.readInt();
 
         ForwardModel fm = b.forwardModel;
@@ -220,6 +221,9 @@ public final class BrainIO {
         c.lastValue = in.readFloat();
         c.hasLast = in.readBoolean();
         c.readLast(in);
+        if (version >= 5) {
+            readLanguage(b, in);
+        }
         return b;
     }
 
@@ -238,4 +242,37 @@ public final class BrainIO {
     }
 
     private BrainIO() {}
+
+    /**
+     * The language area: the words this brain learned beyond the shared English, and its own sheet.
+     * The shared English itself ships with the mod and is not saved per brain.
+     */
+    private static void writeLanguage(Brain b, DataOutput out) throws IOException {
+        EnglishBase base = EnglishBase.shared();
+        int baseWords = base == null ? 0 : base.words();
+        out.writeInt(baseWords);
+        b.language.vocabulary.write(out, baseWords);
+        b.language.own.write(out);
+        out.writeFloat(b.replyUrge);
+        out.writeInt(b.villagerLines);
+        out.writeInt(b.lineWords);
+        out.writeLong(b.voiceRng.state());
+    }
+
+    private static void readLanguage(Brain b, DataInput in) throws IOException {
+        EnglishBase base = EnglishBase.shared();
+        int baseWords = in.readInt();
+        Vocabulary v = base == null ? new Vocabulary() : base.vocabulary.copy();
+        v.readInto(in);
+        LanguageArea.Sheet own = LanguageArea.Sheet.read(in);
+        // Its own synapses are numbered against the English it was born with; if the mod now ships
+        // different English, what it learned no longer lines up and it starts its own sheet afresh.
+        if (baseWords == (base == null ? 0 : base.words())) {
+            b.language = new LanguageArea(own, base == null ? null : base.sheet, v);
+        }
+        b.replyUrge = in.readFloat();
+        b.villagerLines = in.readInt();
+        b.lineWords = in.readInt();
+        b.voiceRng.setState(in.readLong());
+    }
 }
