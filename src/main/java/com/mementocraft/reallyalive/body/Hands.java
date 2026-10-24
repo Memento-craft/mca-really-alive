@@ -64,6 +64,12 @@ public final class Hands {
     private int carried = -1;
     private boolean dugThisTick;
     private int placedThisTick;
+    /** Diagnostics for benchmarks: tries to place, why they failed, and where the last block went. */
+    public int placeTries;
+    public int placeNoTarget;
+    public int placeRefused;
+    public int placedTotal;
+    public BlockPos lastPlaced;
 
     public Hands(Villager body) {
         this.body = body;
@@ -380,14 +386,25 @@ public final class Hands {
     /** Places the held block against the face in the crosshair, never inside a creature. */
     private void place() {
         ItemStack held = body.getMainHandItem();
-        if (!(held.getItem() instanceof BlockItem blockItem) || !(target instanceof BlockHitResult hit)
-                || hit.getType() != HitResult.Type.BLOCK || !EventHooks.canEntityGrief(body.level(), body)) {
+        if (!(held.getItem() instanceof BlockItem blockItem)) {
             return;
         }
-        if (blockItem.place(new VillagerPlaceContext(body, held, hit)).consumesAction()) {
+        placeTries++;
+        if (!(target instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK
+                || !EventHooks.canEntityGrief(body.level(), body)) {
+            placeNoTarget++;
+            return;
+        }
+        VillagerPlaceContext context = new VillagerPlaceContext(body, held, hit);
+        BlockPos at = context.getClickedPos();
+        if (blockItem.place(context).consumesAction()) {
             body.swing(InteractionHand.MAIN_HAND);
             placedThisTick++;
+            placedTotal++;
+            lastPlaced = at;
             refillHand(blockItem);
+        } else {
+            placeRefused++;
         }
     }
 

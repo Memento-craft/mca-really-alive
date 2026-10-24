@@ -404,6 +404,7 @@ public final class LearningTests {
         int[] useHeldFirst = {0, 0};
         int[] useHeldLast = {0, 0};
         int[] placed = {0, 0};
+        StepStats step = new StepStats();
         // Closest each try got to the goal, as a fraction of the start distance still left.
         double startDist = Vec3.atBottomCenterOf(c.goal()).distanceTo(c.start());
         double[] closest = {1.0};
@@ -438,6 +439,9 @@ public final class LearningTests {
                     use[0]++;
                 }
             }
+            if (c == Course.STEP) {
+                step.tick(h, v, handle);
+            }
             if (c == Course.LEDGE && h.relativeVec(v.position()).x > 7) {
                 sneakNearEdge[1]++;
                 if (v.isShiftKeyDown()) {
@@ -455,6 +459,9 @@ public final class LearningTests {
                 placed[outcomes.size() < WINDOW ? 0 : 1] += STEP_DIRT - left - v.getInventory().countItem(Items.DIRT);
             }
             outcomes.add(done);
+            if (c == Course.STEP && outcomes.size() % STEP_STATS_WINDOW == 0) {
+                step.report(who, outcomes.size(), count(outcomes, outcomes.size() - STEP_STATS_WINDOW, Outcome.REACHED));
+            }
             closestSum[0] += done == Outcome.REACHED ? 0.0 : closest[0];
             closest[0] = 1.0;
             ticks[0] = 0;
@@ -492,6 +499,103 @@ public final class LearningTests {
                 h.fail("not learned yet: " + report);
             }
         });
+    }
+
+    private static final int STEP_STATS_WINDOW = 50;
+
+    /**
+     * Why placing comes and goes on the step course, per 50 tries: presses while holding dirt and
+     * what came of them, where the blocks landed, the gaze while pressing, and dopamine with and
+     * without the button down.
+     */
+    private static final class StepStats {
+        int holdTicks;
+        int pressTicks;
+        double pitchSum;
+        double dopaPress;
+        int dopaPressTicks;
+        double dopaIdle;
+        int dopaIdleTicks;
+        int floor;
+        int wall;
+        int top;
+        int other;
+        int seenPlaced;
+        int tries0;
+        int noTarget0;
+        int refused0;
+        int placed0;
+        BrainManager.Handle handle;
+
+        void tick(GameTestHelper h, Villager v, BrainManager.Handle handle) {
+            var hands = handle.hands();
+            if (this.handle == null) {
+                this.handle = handle;
+                mark();
+            }
+            boolean holding = v.getMainHandItem().is(Items.DIRT);
+            boolean press = handle.command().use();
+            float dopamine = handle.brain().dopamine();
+            if (holding) {
+                holdTicks++;
+                if (press) {
+                    pressTicks++;
+                    pitchSum += v.getXRot();
+                }
+            }
+            if (press) {
+                dopaPress += dopamine;
+                dopaPressTicks++;
+            } else {
+                dopaIdle += dopamine;
+                dopaIdleTicks++;
+            }
+            if (hands.placedTotal > seenPlaced) {
+                seenPlaced = hands.placedTotal;
+                // Ledge from x 7 to 11, two high on the floor at y 1; the villager stands at y 2.
+                Vec3 at = h.relativeVec(Vec3.atCenterOf(hands.lastPlaced));
+                int x = (int) Math.floor(at.x);
+                int y = (int) Math.floor(at.y);
+                if (y == 2 && x < 7) {
+                    floor++;
+                } else if (x == 6 && y > 2) {
+                    wall++;
+                } else if (x >= 7 && x <= 11 && y >= 4) {
+                    top++;
+                } else {
+                    other++;
+                }
+            }
+        }
+
+        private void mark() {
+            var hands = handle.hands();
+            tries0 = hands.placeTries;
+            noTarget0 = hands.placeNoTarget;
+            refused0 = hands.placeRefused;
+            placed0 = hands.placedTotal;
+        }
+
+        void report(String who, int episodes, int reached) {
+            if (handle == null) {
+                return;
+            }
+            var hands = handle.hands();
+            int tries = hands.placeTries - tries0;
+            LOG.info("{} placing, episodes {}-{}: reached {}; holding dirt {} ticks, pressing use {} of them ({}%);"
+                            + " {} place tries: {} placed, {} aimed at nothing in reach, {} refused (would overlap a body or no room);"
+                            + " placed on the floor before the ledge {}, against the ledge face higher up {}, on top {}, elsewhere {};"
+                            + " mean pitch while pressing {}; mean dopamine pressing {} vs not {}",
+                    who, episodes - STEP_STATS_WINDOW + 1, episodes, reached, holdTicks, pressTicks,
+                    holdTicks == 0 ? 0 : 100 * pressTicks / holdTicks, tries, hands.placedTotal - placed0,
+                    hands.placeNoTarget - noTarget0, hands.placeRefused - refused0, floor, wall, top, other,
+                    pressTicks == 0 ? "-" : String.format("%.1f", pitchSum / pressTicks),
+                    dopaPressTicks == 0 ? "-" : String.format("%.4f", dopaPress / dopaPressTicks),
+                    dopaIdleTicks == 0 ? "-" : String.format("%.4f", dopaIdle / dopaIdleTicks));
+            holdTicks = pressTicks = dopaPressTicks = dopaIdleTicks = floor = wall = top = other = 0;
+            pitchSum = dopaPress = dopaIdle = 0;
+            mark();
+        }
     }
 
     private static int percent(int[] hitsOfTotal) {
