@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 5;
+    private static final int VERSION = 6;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -98,6 +98,7 @@ public final class BrainIO {
         out.writeBoolean(c.hasLast);
         c.writeLast(out);
         writeLanguage(b, out);
+        b.links.write(out, b.n);
     }
 
     public static Brain read(DataInput in) throws IOException {
@@ -105,7 +106,7 @@ public final class BrainIO {
             throw new IOException("Not a brain file");
         }
         int version = in.readInt();
-        if (version != VERSION && version != 4) {
+        if (version != VERSION && version != 5 && version != 4) {
             throw new IOException("Unsupported brain version " + version);
         }
         float[] genes = new float[in.readInt()];
@@ -221,8 +222,16 @@ public final class BrainIO {
         c.lastValue = in.readFloat();
         c.hasLast = in.readBoolean();
         c.readLast(in);
-        if (version >= 5) {
-            readLanguage(b, in);
+        boolean sameEnglish = version < 5 || readLanguage(b, in);
+        if (version >= 6) {
+            b.links.read(in, count);
+            if (!sameEnglish) {
+                // Its word links are numbered against the English it was born with, too.
+                b.links = new ConceptLinks();
+                b.links.ensureNeurons(b.lobe.length);
+            }
+        } else {
+            b.addMissingLobes();
         }
         return b;
     }
@@ -259,7 +268,8 @@ public final class BrainIO {
         out.writeLong(b.voiceRng.state());
     }
 
-    private static void readLanguage(Brain b, DataInput in) throws IOException {
+    /** Returns false when the shipped English has changed, so what it learned on top was dropped. */
+    private static boolean readLanguage(Brain b, DataInput in) throws IOException {
         EnglishBase base = EnglishBase.shared();
         int baseWords = in.readInt();
         Vocabulary v = base == null ? new Vocabulary() : base.vocabulary.copy();
@@ -267,12 +277,14 @@ public final class BrainIO {
         LanguageArea.Sheet own = LanguageArea.Sheet.read(in);
         // Its own synapses are numbered against the English it was born with; if the mod now ships
         // different English, what it learned no longer lines up and it starts its own sheet afresh.
-        if (baseWords == (base == null ? 0 : base.words())) {
+        boolean same = baseWords == (base == null ? 0 : base.words());
+        if (same) {
             b.language = new LanguageArea(own, base == null ? null : base.sheet, v);
         }
         b.replyUrge = in.readFloat();
         b.villagerLines = in.readInt();
         b.lineWords = in.readInt();
         b.voiceRng.setState(in.readLong());
+        return same;
     }
 }

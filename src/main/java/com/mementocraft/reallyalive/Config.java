@@ -33,6 +33,11 @@ public final class Config {
             .comment("Show words brain villagers say in the chat of players within 16 blocks.")
             .define("speechInChat", true);
 
+    public static final ModConfigSpec.BooleanValue NAMING = BUILDER
+            .comment("While a player or villager is near, now and then name what a brain villager sees, smells, feels or",
+                    "does, as parents do for a child. Villagers learn what words mean from this; it never makes them speak.")
+            .define("namingThings", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {}

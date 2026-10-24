@@ -70,6 +70,7 @@ public final class Wiring {
         local(WERNICKE, 6);
         local(MEMORY, 10);
         local(CEREBELLUM, 4);
+        local(FRONTAL, 8);
 
         // Sensory block -> Concept and -> Wernicke's. Inside Concept, what the body feels and does
         // becomes concepts of actions, what is seen and smelt becomes concepts of people and places.
@@ -95,6 +96,15 @@ public final class Wiring {
         diffuse(MEMORY, CONCEPT, 4);
         both(WERNICKE, MEMORY, 4);
         both(EMOTION, MEMORY, 4);
+        // The frontal part of the concept system (Joshua, 2026-10-24: language gets help from the
+        // frontal lobe and the other reasoning areas). It gathers concepts, feelings, memories and
+        // words, holds them, and feeds back onto the concepts, which is attention: what it holds
+        // stays more active in the concept lobe, and is what the villager talks about.
+        add(CONCEPT, FRONTAL, 6);
+        add(FRONTAL, CONCEPT, 3);
+        add(EMOTION, FRONTAL, 3);
+        both(FRONTAL, MEMORY, 3);
+        both(FRONTAL, WERNICKE, 3);
         // Skills: what the cerebellum is doing is remembered too.
         add(CEREBELLUM, MEMORY, 2);
         // Concept and Feely drive the cerebellum (Joshua, 2026-10-21; the "maybe??" Decision lobe

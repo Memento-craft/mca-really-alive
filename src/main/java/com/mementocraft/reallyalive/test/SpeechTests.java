@@ -13,6 +13,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -44,6 +45,23 @@ public final class SpeechTests {
         BrainManager.Handle handle = attach(h, v);
         handle.hold(MotorCommand.IDLE);
         return handle;
+    }
+
+    /**
+     * Naming: with another villager near, a brain villager looking at a cow is now and then told the
+     * word "cow", the way parents name things for a child, so it can link the word to what its
+     * concept lobe holds.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1200)
+    public static void villagersAreToldWhatTheyAreLookingAt(GameTestHelper h) {
+        Villager v = spawnMcaVillager(h, new Vec3(3.5, 2, 12.5));
+        BrainManager.Handle handle = listener(h, v);
+        spawnMcaVillager(h, new Vec3(3.5, 2, 10.5));
+        h.spawnWithNoFreeWill(EntityType.COW, new Vec3(7.5, 2, 12.5));
+        h.succeedWhen(() -> {
+            v.setXRot(0f);
+            h.assertTrue(handle.frame().named.contains("cow"), "not told \"cow\" yet");
+        });
     }
 
     @GameTest(template = ARENA, timeoutTicks = 100)

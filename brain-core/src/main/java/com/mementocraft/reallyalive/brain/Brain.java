@@ -77,7 +77,11 @@ public final class Brain {
     static final long EXPERIENCE_TICKS = 72_000L;
     static final int MAINTENANCE_INTERVAL = 20;
     static final int MAX_RESETS_PER_TICK = 4;
-    static final int OLFACTORY_PER_CHANNEL = 4;
+    /**
+     * Smell receptors per scent. With 4, a smell alone hardly reached the concept lobe and words
+     * for smells (flowers, bread) and for what tells a cow from a zombie could not be learned.
+     */
+    static final int OLFACTORY_PER_CHANNEL = 12;
     static final int FEELY_PER_CHANNEL = 2;
     static final int EMOTION_PER_CHANNEL = 8;
     static final int CANDIDATES = 3;
@@ -121,6 +125,19 @@ public final class Brain {
     static final float URGE_MIN = 0.2f;
     static final float URGE_DECAY = 0.995f;
     static final int MAX_LINE_WORDS = 24;
+    /**
+     * How strongly what the concept system holds picks among the words the language area offers:
+     * each word's chance is multiplied by e^(gain x how much more than usual its meaning is present).
+     */
+    static final float GROUNDING_GAIN = 15f;
+    static final float GROUNDING_MAX = 4f;
+    /** Words weighed one word ahead, and how much the best word after each counts. */
+    static final int PLAN_CANDIDATES = 8;
+    static final float PLAN_WEIGHT = 1f;
+    /** Meaning cells: the Concept lobe, helped by the frontal part, Memory and Emotion. */
+    static final LobeId[] MEANING_LOBES = {LobeId.CONCEPT, LobeId.FRONTAL, LobeId.MEMORY, LobeId.EMOTION};
+    /** How long each kind of meaning cell's activity is held for the word links, per tick kept. */
+    static final float[] MEANING_KEEP = {0.95f, 0.98f, 0.95f, 0.95f};
 
     /** Flattened input layout: vision, body, efference copy, smell, emotion, sounds, words. */
     static final int IN_VISION = 0;
@@ -179,6 +196,15 @@ public final class Brain {
     float replyUrge;
     int villagerLines;
     int lineWords;
+    /** Links between words and the meaning cells of the concept system, both ways. */
+    ConceptLinks links = new ConceptLinks();
+    private int[] meaning = new int[0];
+    private float[] meaningKeep = new float[0];
+    private int meaningCount = -1;
+    private float[] boost = new float[1024];
+    private float[] fit = new float[1024];
+    private final int[] planWord = new int[PLAN_CANDIDATES];
+    private final float[] planScore = new float[PLAN_CANDIDATES];
 
     final float[] input = new float[INPUT_SIZE];
     final float[] poolRates = new float[MotorChannel.COUNT];
@@ -187,6 +213,8 @@ public final class Brain {
     final MotorDecoder decoder = new MotorDecoder();
     final ForwardModel forwardModel;
     final Critic critic;
+    // Not the frontal lobe: its slowly fading activity, read by the critic, blurred when a reward
+    // came and a reward seconds after a press was no longer learned (DelayedRewardTest).
     static final LobeId[] CRITIC_LOBES = {LobeId.CONCEPT, LobeId.EMOTION, LobeId.MEMORY};
     private final int[][] criticInputs = new int[CRITIC_LOBES.length][];
     private final int[] criticCounts = new int[CRITIC_LOBES.length];
@@ -395,9 +423,11 @@ public final class Brain {
         fillInput(frame);
         listen(frame);
         deliverSpikes();
+        applyEvoked();
         driveMotorBabble();
         driveLanguage();
         integrate();
+        trackMeaning();
         updateDopamine();
         learn();
         homeostasis();
@@ -459,6 +489,9 @@ public final class Brain {
      * the longer they talk among themselves, so two villagers don't chatter forever.
      */
     private void listen(SensoryFrame f) {
+        for (String w : f.named) {
+            links.learn(language.vocabulary.id(w), meaning, Math.max(0, meaningCount), ConceptLinks.NAME_RATE);
+        }
         if (f.heardWords.isEmpty()) {
             return;
         }
@@ -467,6 +500,13 @@ public final class Brain {
             boolean own = f.heardOwn.get(i);
             language.hear(w, !own);
             if (!w.equals(WordCode.TURN)) {
+                // Others' words are linked to what is around while they are said, and bring up
+                // what they mean. Its own words do neither, or it would teach itself its mistakes.
+                if (!own) {
+                    int id = language.vocabulary.find(w);
+                    links.learn(id, meaning, Math.max(0, meaningCount), ConceptLinks.TALK_RATE);
+                    links.evoke(id);
+                }
                 continue;
             }
             if (own) {
@@ -478,7 +518,109 @@ public final class Brain {
             }
             lineWords = 0;
         }
-        expected = language.bestWord(-1);
+        expected = groundedWord(false);
+    }
+
+    /**
+     * The word to say next: of the words the language area expects, the one whose meaning the
+     * concept system holds most, beyond how much it usually does. A word with no links (most small
+     * words) is weighed by the language area alone. The frontal part plans one word ahead: a word is
+     * also weighed by how well the best word that could follow it says what is held in mind, so
+     * "a" wins over "you" after "i see" when what it sees is a zombie. Nothing is picked here for
+     * good; this only sets which word's speech pools get pushed.
+     */
+    int groundedWord(boolean learn) {
+        float[] s = language.scores();
+        int words = language.vocabulary.size();
+        if (boost.length < words) {
+            boost = new float[words * 2];
+            fit = new float[words * 2];
+        }
+        Arrays.fill(boost, 0, words, 0f);
+        links.presence(boost, words, learn);
+        boolean anyMeaning = false;
+        for (int w = 0; w < words; w++) {
+            fit[w] = (float) Math.exp(clamp(GROUNDING_GAIN * boost[w], -GROUNDING_MAX, GROUNDING_MAX));
+            anyMeaning |= boost[w] != 0f;
+        }
+        // The few words worth planning past, by how well they fit on their own.
+        int found = 0;
+        for (int w = 0; w < words; w++) {
+            float v = s[w] * fit[w];
+            if (v <= 0f || found == PLAN_CANDIDATES && v <= planScore[found - 1]) {
+                continue;
+            }
+            int p = found < PLAN_CANDIDATES ? found++ : found - 1;
+            while (p > 0 && planScore[p - 1] < v) {
+                planWord[p] = planWord[p - 1];
+                planScore[p] = planScore[p - 1];
+                p--;
+            }
+            planWord[p] = w;
+            planScore[p] = v;
+        }
+        int turn = language.vocabulary.find(WordCode.TURN);
+        int best = -1;
+        float bestScore = 0f;
+        for (int c = 0; c < found; c++) {
+            int w = planWord[c];
+            float score = planScore[c];
+            if (anyMeaning && w != turn) {
+                float[] next = language.scoresAfter(w);
+                float plain = 0f, meant = 0f;
+                for (int v = 0; v < words; v++) {
+                    if (next[v] > 0f) {
+                        plain = Math.max(plain, next[v]);
+                        meant = Math.max(meant, next[v] * fit[v]);
+                    }
+                }
+                if (plain > 0f) {
+                    score *= (float) Math.pow(meant / plain, PLAN_WEIGHT);
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = w;
+            }
+        }
+        return best;
+    }
+
+    /** Collects the meaning cells of the concept system again when lobes have grown. */
+    private void gatherMeaning() {
+        int total = 0;
+        for (LobeId l : MEANING_LOBES) {
+            total += targetable[l.ordinal()].size;
+        }
+        if (total == meaningCount) {
+            return;
+        }
+        meaning = new int[total];
+        meaningKeep = new float[total];
+        int k = 0;
+        for (int m = 0; m < MEANING_LOBES.length; m++) {
+            IntList cells = targetable[MEANING_LOBES[m].ordinal()];
+            for (int c = 0; c < cells.size; c++) {
+                meaning[k] = cells.get(c);
+                meaningKeep[k++] = MEANING_KEEP[m];
+            }
+        }
+        meaningCount = total;
+        links.ensureNeurons(lobe.length);
+    }
+
+    private void trackMeaning() {
+        gatherMeaning();
+        links.track(meaning, meaningCount, fired, meaningKeep);
+    }
+
+    /** What heard words bring up arrives at their meaning cells like any other input. */
+    private void applyEvoked() {
+        float[] e = links.evoked;
+        for (int k = 0; k < Math.max(0, meaningCount); k++) {
+            int i = meaning[k];
+            synInput[i] += e[i];
+        }
     }
 
     /**
@@ -722,6 +864,12 @@ public final class Brain {
      * with few connections.
      */
     private void maintenance() {
+        // Each word's usual presence is learned all day long, not only in conversation, and
+        // what to say next follows what the concept system holds even between heard words.
+        int heldWord = groundedWord(true);
+        if (replyUrge >= URGE_MIN && heldWord >= 0) {
+            expected = heldWord;
+        }
         // Synaptic scaling, using synInput as scratch space (it is empty between ticks).
         float[] excSum = synInput;
         for (int i = 0; i < n; i++) {
@@ -841,6 +989,28 @@ public final class Brain {
 
     // ---------------------------------------------------------------- growth and rebirth
 
+    /**
+     * Gives a brain saved before a lobe existed (the frontal lobe, added later) that lobe's share
+     * of neurons, wired in as if they had grown there.
+     */
+    void addMissingLobes() {
+        float totalWeight = 0f;
+        for (LobeId l : LobeId.values()) {
+            totalWeight += l.growable() ? genome.lobeWeight(l) : 0f;
+        }
+        for (LobeId l : LobeId.values()) {
+            if (!l.growable() || members[l.ordinal()].size > 0 || genome.lobeWeight(l) <= 0f) {
+                continue;
+            }
+            int count = Math.round(n * genome.lobeWeight(l) / totalWeight);
+            for (int k = 0; k < count; k++) {
+                int i = addNeuron(l, ROLE_INTERIOR);
+                wireOut(i);
+                wireIn(i);
+            }
+        }
+    }
+
     int targetSize() {
         return Math.round(genome.get(Genome.ADULT_NEURONS) * (0.6f + 0.4f * maturity));
     }
@@ -901,6 +1071,7 @@ public final class Brain {
         }
         own.clear();
         inDegree[i] = 0;
+        links.forget(i);
         initState(i);
         inhibitory[i] = rng.nextFloat() < INHIBITORY_FRACTION;
         wireOut(i);
@@ -919,6 +1090,7 @@ public final class Brain {
                 forwardModel.ensureCapacity(lobe.length);
                 critic.ensureCapacity(lobe.length);
             }
+            links.ensureNeurons(lobe.length);
         }
         int i = n++;
         lobe[i] = (byte) l.ordinal();
@@ -1122,6 +1294,12 @@ public final class Brain {
             s += slowRate[m.get(k)];
         }
         return s / m.size;
+    }
+
+    /** The meaning cells of the concept system, whose activity words are linked to. */
+    int[] meaningCells() {
+        gatherMeaning();
+        return Arrays.copyOf(meaning, meaningCount);
     }
 
     public float poolRate(MotorChannel c) {
