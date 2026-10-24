@@ -15,7 +15,9 @@ import com.mementocraft.reallyalive.brain.OlfactoryChannel;
 import com.mementocraft.reallyalive.brain.Rng;
 import com.mementocraft.reallyalive.brain.SensoryFrame;
 import com.mementocraft.reallyalive.mixin.MobAccessor;
+import com.mementocraft.reallyalive.sense.Hearing;
 import com.mementocraft.reallyalive.sense.Senses;
+import com.mementocraft.reallyalive.speech.Speech;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
@@ -88,6 +90,10 @@ public final class BrainManager {
         double lastGoalDist = -1;
         float lastGoalFacing = -2f;
         long age;
+        /** The last sound heard, so each is heard once. */
+        long heard;
+        /** The command whose word was said last, so a word is said once per brain step. */
+        MotorCommand said;
 
         Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
                JumpControl originalJump) {
@@ -118,6 +124,11 @@ public final class BrainManager {
          */
         public void hold(MotorCommand keys) {
             this.held = keys;
+        }
+
+        /** What it sensed on the last tick. */
+        public SensoryFrame frame() {
+            return frame;
         }
 
         /** The pleasure felt on the last tick. */
@@ -206,6 +217,7 @@ public final class BrainManager {
         body.reallyalive$setJumpControl(new BrainJumpControl(v));
         ((BrainDriven) v).reallyalive$setDriven(true);
         v.refreshDimensions();
+        h.heard = Hearing.now();
         handles.put(v.getUUID(), h);
         return h;
     }
@@ -261,6 +273,10 @@ public final class BrainManager {
         PlayerMovement.applyBeforeTick(v, keys);
         h.move.setCommand(keys);
         h.hands.tick(keys);
+        if (keys.say() >= 0 && keys != h.said) {
+            h.said = keys;
+            Speech.villagerSays(v, keys.say());
+        }
     }
 
     /** After the villager ticks: sense the result and start the next brain step. */
@@ -281,6 +297,7 @@ public final class BrainManager {
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
         Senses.smell(v, f, h.scent, h.goal);
+        h.heard = Hearing.listen(v, f, h.heard);
         feelings(v, h, f);
         if (h.age % 200 == 0) {
             h.brain.grow(maturity(v), 5);

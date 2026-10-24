@@ -29,6 +29,10 @@ public final class Config {
             .comment("Cast eye rays every N ticks; the last view is reused in between.")
             .defineInRange("visionInterval", 2, 1, 20);
 
+    public static final ModConfigSpec.BooleanValue SPEECH_IN_CHAT = BUILDER
+            .comment("Show words brain villagers say in the chat of players within 16 blocks.")
+            .define("speechInChat", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {}

@@ -106,7 +106,15 @@ control), a one-block step, a ladder up a wall, a pool, and a ledge to sneak up 
 a required test where a villager holding a player's keys gets through, and an optional benchmark
 where a newborn villager's own brain tries 150 times. The benchmarks run the server at sprint
 speed with the brain kept in lockstep (one step per tick, as in real time) and log how many of the
-first and last 10 tries reached the goal.
+first and last 10 tries reached the goal. The step course (a two-high ledge, 16 dirt in hand)
+can only be climbed by placing a step, and also reports how often place is pressed.
+
+`SpeechTests` check hearing and the voice. Game sounds are sorted into ten kinds (steps, villager
+and player voices, hostile mobs, animals, digging, building, doors, water, bells) and heard louder
+near than far. Words typed in chat take the next free slot of the world's 32-word lexicon and are
+heard within 16 blocks. A word a villager says shows in nearby players' chat as `<name> word`, and
+it and the villagers near it hear it. An optional benchmark lets a newborn babble for 20k ticks,
+then says words beside it and counts how often it says the same word back.
 
 ## Status (phase 1)
 

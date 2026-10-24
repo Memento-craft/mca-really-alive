@@ -2,6 +2,8 @@ package com.mementocraft.reallyalive.body;
 
 import com.mementocraft.reallyalive.brain.MotorCommand;
 import com.mementocraft.reallyalive.brain.Motives;
+import com.mementocraft.reallyalive.brain.SoundChannel;
+import com.mementocraft.reallyalive.sense.Hearing;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -54,6 +56,7 @@ public final class Hands {
     private int destroyDelay;
     private BlockPos digging;
     private float digProgress;
+    private int digTicks;
     /** Ticks since the last swing at a creature, for a player's attack cooldown. */
     private int sinceSwing = 100;
     private HitResult target;
@@ -249,6 +252,10 @@ public final class Hands {
         if (dig > 0f) {
             dugThisTick = true;
         }
+        // A player's client plays the hit sound every 4 ticks of digging.
+        if (digTicks++ % 4 == 0) {
+            Hearing.sound(body.level(), Vec3.atCenterOf(pos), SoundChannel.DIGGING, 0.25f);
+        }
         if (digProgress >= 1f) {
             breakBlock(pos);
             digProgress = 0f;
@@ -269,6 +276,7 @@ public final class Hands {
         }
         digging = pos;
         digProgress = 0f;
+        digTicks = 0;
         showCracks();
     }
 
@@ -335,6 +343,7 @@ public final class Hands {
         if (!level.destroyBlock(pos, false, body)) {
             return;
         }
+        Hearing.sound(level, Vec3.atCenterOf(pos), SoundChannel.DIGGING, 1f);
         if (harvests) {
             for (ItemStack drop : Block.getDrops(state, level, pos, blockEntity, body, tool)) {
                 take(drop);

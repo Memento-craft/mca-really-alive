@@ -6,7 +6,16 @@ import com.mementocraft.reallyalive.command.BrainCommand;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.entity.EntityTypeTest;
+import com.mementocraft.reallyalive.brain.SoundChannel;
+import com.mementocraft.reallyalive.sense.Hearing;
+import com.mementocraft.reallyalive.speech.Speech;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.PlayLevelSoundEvent;
+import net.neoforged.neoforge.event.ServerChatEvent;
+import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
@@ -18,12 +27,18 @@ import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 /** Game events. Only villagers whose brain is switched on are touched. */
 public final class BrainEvents {
     private BrainEvents() {}
 
     @SubscribeEvent
     public static void serverStarting(ServerStartingEvent e) {
+        Hearing.reset();
+        LAST_STEP.clear();
         BrainManager.start(e.getServer());
     }
 
@@ -83,6 +98,68 @@ public final class BrainEvents {
     @SubscribeEvent
     public static void serverTick(ServerTickEvent.Post e) {
         BrainCommand.tickWatchers(e.getServer());
+        playerSteps(e);
+    }
+
+    // ---------------------------------------------------------------- hearing
+
+    /** Ticks between the footsteps of a walking player. */
+    private static final int STEP_TICKS = 6;
+    private static final Map<UUID, Vec3> LAST_POS = new HashMap<>();
+    private static final Map<UUID, Long> LAST_STEP = new HashMap<>();
+
+    /**
+     * A player's footsteps are played on their own client, so the server never hears them: make
+     * them up from how the player moves, at a footstep's volume.
+     */
+    private static void playerSteps(ServerTickEvent.Post e) {
+        for (ServerPlayer p : e.getServer().getPlayerList().getPlayers()) {
+            Vec3 was = LAST_POS.put(p.getUUID(), p.position());
+            if (was == null || !p.onGround() || p.isSpectator() || p.position().subtract(was).horizontalDistanceSqr() < 0.0036) {
+                continue;
+            }
+            long now = p.level().getGameTime();
+            Long last = LAST_STEP.get(p.getUUID());
+            if (last == null || now - last >= STEP_TICKS) {
+                LAST_STEP.put(p.getUUID(), now);
+                Hearing.sound(p.level(), p.position(), SoundChannel.STEPS, 0.15f);
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void soundAt(PlayLevelSoundEvent.AtPosition e) {
+        heard(e, e.getPosition());
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void soundFrom(PlayLevelSoundEvent.AtEntity e) {
+        heard(e, e.getEntity().position());
+    }
+
+    private static void heard(PlayLevelSoundEvent e, Vec3 pos) {
+        if (e.isCanceled() || e.getLevel().isClientSide() || e.getSound() == null || BrainManager.get() == null) {
+            return;
+        }
+        SoundChannel channel = Hearing.classify(e.getSound(), e.getSource());
+        if (channel != null) {
+            Hearing.sound(e.getLevel(), pos, channel, e.getNewVolume());
+        }
+    }
+
+    /** Breaking a block makes its sound on the breaker's own client: the server hears it here. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void blockBroken(BlockEvent.BreakEvent e) {
+        if (!e.isCanceled() && e.getLevel() instanceof ServerLevel level && BrainManager.get() != null) {
+            Hearing.sound(level, Vec3.atCenterOf(e.getPos()), SoundChannel.DIGGING, 1f);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void chat(ServerChatEvent e) {
+        if (!e.isCanceled() && BrainManager.get() != null) {
+            Speech.playerSays(e.getPlayer().level(), e.getPlayer().getEyePosition(), e.getRawText());
+        }
     }
 
     @SubscribeEvent
