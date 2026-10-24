@@ -129,9 +129,11 @@ can only be climbed by placing a step, and also reports how often place is press
 
 `SpeechTests` check hearing and the voice. Game sounds are sorted into ten kinds (steps, villager
 and player voices, hostile mobs, animals, digging, building, doors, water, bells) and heard louder
-near than far. Words typed in chat are heard within 16 blocks. A word a villager says shows in nearby players' chat as `<name> word`, and
-it and the villagers near it hear it. An optional benchmark lets a newborn babble for 20k ticks,
-then says words beside it and counts how often it says the same word back.
+near than far. Words typed in chat are heard within 16 blocks, followed by the end of the line
+together with the sound of a player's voice. A villager's words are heard by itself (as its own)
+and by villagers near it as it says them, and when it ends a line the line shows in nearby players'
+chat as `<name> how is it going?`. Optional benchmarks let a newborn babble for 20k ticks and count
+how often it says back a word said to it, and log what an adult answers to "hello.".
 
 ## Status (phase 1)
 

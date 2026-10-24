@@ -69,6 +69,12 @@ public final class HandsTests {
         float[] progressSeen = {0f};
         h.onEachTick(() -> {
             tick[0]++;
+            if (tick[0] == 9) {
+                // Face the block again, in case anything turned the villager while it settled.
+                v.setYRot(EAST);
+                v.setYHeadRot(EAST);
+                v.setXRot(0f);
+            }
             if (tick[0] == 10) {
                 handle.hold(ATTACK);
             }
@@ -88,7 +94,8 @@ public final class HandsTests {
                 LOG.info("dug {} with {} in {} ticks (a player takes {}); now holding {}", block.getName().getString(),
                         tool.isEmpty() ? "bare hands" : tool.getHoverName().getString(), brokeAt[0], playerTicks,
                         v.getMainHandItem());
-                h.assertTrue(brokeAt[0] > 0, "the block never broke");
+                h.assertTrue(brokeAt[0] > 0, "the block never broke (villager at " + h.relativeVec(v.position())
+                        + ", yaw " + v.getYRot() + ", pitch " + v.getXRot() + ", most progress " + progressSeen[0] + ")");
                 h.assertTrue(brokeAt[0] == playerTicks, "took " + brokeAt[0] + " ticks, a player takes " + playerTicks);
                 h.assertTrue(progressSeen[0] > 0f, "dig progress was never felt");
                 boolean got = v.getMainHandItem().is(drop) || v.getInventory().hasAnyOf(java.util.Set.of(drop));

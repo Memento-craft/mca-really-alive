@@ -14,6 +14,7 @@ import com.mementocraft.reallyalive.brain.MotorCommand;
 import com.mementocraft.reallyalive.brain.OlfactoryChannel;
 import com.mementocraft.reallyalive.brain.Rng;
 import com.mementocraft.reallyalive.brain.SensoryFrame;
+import com.mementocraft.reallyalive.brain.WordCode;
 import com.mementocraft.reallyalive.mixin.MobAccessor;
 import com.mementocraft.reallyalive.sense.Hearing;
 import com.mementocraft.reallyalive.sense.Senses;
@@ -39,7 +40,9 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -58,6 +61,8 @@ import java.util.zip.GZIPOutputStream;
 public final class BrainManager {
     private static final Logger LOG = LogUtils.getLogger();
     private static BrainManager instance;
+    /** A line not ended after this many silent ticks was babble, and is dropped unseen. */
+    private static final int UNFINISHED_LINE_TICKS = 60;
 
     private final MinecraftServer server;
     private final Path dir;
@@ -94,6 +99,14 @@ public final class BrainManager {
         long heard;
         /** The command whose word was said last, so a word is said once per brain step. */
         MotorCommand said;
+        /** Words of the line it is saying, shown in chat when it ends the line. */
+        final List<String> line = new ArrayList<>();
+        long lastWordAge;
+        /** The word said this tick, or null. */
+        String spoken;
+        /** The last line shown in chat, and how many have been. */
+        String lastLine;
+        int lines;
 
         Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
                JumpControl originalJump) {
@@ -129,6 +142,21 @@ public final class BrainManager {
         /** What it sensed on the last tick. */
         public SensoryFrame frame() {
             return frame;
+        }
+
+        /** The word said on the last tick, or null. */
+        public String spoken() {
+            return spoken;
+        }
+
+        /** The last line it said in chat, or null. */
+        public String lastLine() {
+            return lastLine;
+        }
+
+        /** How many lines it has said in chat. */
+        public int lines() {
+            return lines;
         }
 
         /** The pleasure felt on the last tick. */
@@ -273,9 +301,37 @@ public final class BrainManager {
         PlayerMovement.applyBeforeTick(v, keys);
         h.move.setCommand(keys);
         h.hands.tick(keys);
-        if (keys.say() >= 0 && keys != h.said) {
+        speak(v, h, keys);
+    }
+
+    /**
+     * Says the word the keys ask for, once per brain step, while the brain is not stepping. Words
+     * gather into a line that shows in chat when the villager ends it; babble is never ended, and is
+     * dropped after a while of silence.
+     */
+    private static void speak(Villager v, Handle h, MotorCommand keys) {
+        h.spoken = null;
+        if (keys.say() >= 0 && keys != h.said && h.pending == null) {
             h.said = keys;
-            Speech.villagerSays(v, keys.say());
+            String word = h.brain.word(keys.say());
+            if (word != null) {
+                h.spoken = word;
+                Speech.villagerSays(v, word);
+                if (word.equals(WordCode.TURN)) {
+                    if (!h.line.isEmpty()) {
+                        h.lastLine = Speech.join(h.line);
+                        h.lines++;
+                        Speech.showLine(v, h.lastLine);
+                        h.line.clear();
+                    }
+                } else {
+                    h.line.add(word);
+                    h.lastWordAge = h.age;
+                }
+            }
+        }
+        if (!h.line.isEmpty() && h.age - h.lastWordAge > UNFINISHED_LINE_TICKS) {
+            h.line.clear();
         }
     }
 

@@ -3,9 +3,8 @@ package com.mementocraft.reallyalive.test;
 import com.mementocraft.reallyalive.BrainManager;
 import com.mementocraft.reallyalive.ReallyAlive;
 import com.mementocraft.reallyalive.brain.MotorCommand;
-import com.mementocraft.reallyalive.brain.SenseLayout;
 import com.mementocraft.reallyalive.brain.SoundChannel;
-import com.mementocraft.reallyalive.speech.Lexicon;
+import com.mementocraft.reallyalive.brain.WordCode;
 import com.mementocraft.reallyalive.speech.Speech;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -29,7 +28,7 @@ import static com.mementocraft.reallyalive.test.McaVillagerTests.spawnMcaVillage
 
 /**
  * In-game checks of hearing and speech: game sounds reach the ears by kind and get quieter with
- * distance, chat words take lexicon slots and are heard within 16 blocks, and a villager's own
+ * distance, chat words are heard within 16 blocks, then the end of the line, and a villager's own
  * words are heard by itself and by villagers near it. The imitation benchmark lets a newborn babble,
  * then says words to it and counts how often it says the same word back.
  */
@@ -48,42 +47,68 @@ public final class SpeechTests {
     }
 
     @GameTest(template = ARENA, timeoutTicks = 100)
-    public static void lexiconGivesEachNewWordTheNextSlot(GameTestHelper h) {
-        h.assertTrue(Lexicon.tokenize("Hello, hello WORLD! it's 3pm").equals(List.of("hello", "hello", "world", "it", "s", "pm")),
-                "tokenized as " + Lexicon.tokenize("Hello, hello WORLD! it's 3pm"));
-        Lexicon lexicon = new Lexicon();
-        h.assertTrue(lexicon.slot("hello") == 0 && lexicon.slot("world") == 1 && lexicon.slot("hello") == 0,
-                "words did not take slots in order");
-        for (int i = 2; i < SenseLayout.VOCABULARY; i++) {
-            lexicon.slot("w" + (char) ('a' + i / 26) + (char) ('a' + i % 26));
-        }
-        h.assertTrue(lexicon.slot("overflow") == -1, "a word beyond the vocabulary got a slot");
-        h.assertTrue("world".equals(lexicon.word(1)) && lexicon.word(SenseLayout.VOCABULARY) == null, "slots read back wrong");
+    public static void linesAreSplitIntoWordsAndJoinedAsWritten(GameTestHelper h) {
+        List<String> words = WordCode.tokenize("How is it going?");
+        h.assertTrue(words.equals(List.of("how", "is", "it", "going", "?")), "tokenized as " + words);
+        String line = Speech.join(List.of("well", ",", "how", "is", "it", "going", "?"));
+        h.assertTrue(line.equals("well, how is it going?"), "joined as '" + line + "'");
         h.succeed();
     }
 
-    /** A player says a line: a villager 4 blocks away hears its words, one 25 blocks away does not. */
+    /** Index of a word in a brain's vocabulary, or -1. Only call it while the brain is not stepping. */
+    private static int wordId(BrainManager.Handle handle, String word) {
+        for (int i = 0; ; i++) {
+            String w = handle.brain().word(i);
+            if (w == null) {
+                return -1;
+            }
+            if (w.equals(word)) {
+                return i;
+            }
+        }
+    }
+
+    /** Index of the first plain word a brain knows, or -1. */
+    private static int anyWordId(BrainManager.Handle handle) {
+        for (int i = 0; ; i++) {
+            String w = handle.brain().word(i);
+            if (w == null) {
+                return -1;
+            }
+            if (!w.isEmpty() && Character.isLetter(w.charAt(0))) {
+                return i;
+            }
+        }
+    }
+
+    /**
+     * A player says a line: a villager 4 blocks away hears its words, then the end of the line with
+     * the sound of a player's voice; one 25 blocks away hears nothing.
+     */
     @GameTest(template = ARENA, timeoutTicks = 100)
     public static void hearsChatWithinSixteenBlocks(GameTestHelper h) {
         Villager near = spawnMcaVillager(h, new Vec3(18.5, 2, 18.5));
         Villager far = spawnMcaVillager(h, new Vec3(1.5, 2, 1.5));
         BrainManager.Handle hn = listener(h, near);
         BrainManager.Handle hf = listener(h, far);
-        int slot = Lexicon.get(h.getLevel().getServer()).slot("apple");
         boolean[] heard = {false, false};
-        float[] voice = {0f};
+        boolean[] turnWithVoice = {false};
         h.onEachTick(() -> {
             if (h.getTick() == 10) {
                 Speech.playerSays(h.getLevel(), h.absoluteVec(new Vec3(21.5, 3.6, 21.5)), "an Apple!");
             }
-            heard[0] |= hn.frame().words[slot] > 0;
-            heard[1] |= hf.frame().words[slot] > 0;
-            voice[0] = Math.max(voice[0], hn.frame().sound[SoundChannel.PLAYER_VOICE.ordinal()]);
+            heard[0] |= hn.frame().heardWords.contains("apple");
+            heard[1] |= hf.frame().heardWords.contains("apple");
+            if (hn.frame().heardWords.contains(WordCode.TURN)) {
+                turnWithVoice[0] |= hn.frame().sound[SoundChannel.PLAYER_VOICE.ordinal()] > 0.5f
+                        && hn.frame().heardWords.equals(List.of("an", "apple", "!", WordCode.TURN));
+            }
             if (h.getTick() == 20) {
-                LOG.info("chat 'an Apple!': near villager heard 'apple' {}, voice {}; far villager heard it {}", heard[0], voice[0], heard[1]);
+                LOG.info("chat 'an Apple!': near villager heard 'apple' {}, line end with a player's voice {}; far villager heard it {}",
+                        heard[0], turnWithVoice[0], heard[1]);
                 h.assertTrue(heard[0], "the villager 4 blocks away did not hear the word");
+                h.assertTrue(turnWithVoice[0], "the line and its end were not heard together with a player's voice");
                 h.assertFalse(heard[1], "the villager 28 blocks away heard the word");
-                h.assertTrue(voice[0] > 0.5f, "the player's voice was not heard as a voice");
                 h.succeed();
             }
         });
@@ -138,27 +163,47 @@ public final class SpeechTests {
         });
     }
 
-    /** A villager says a word: it hears itself on the next tick, a villager nearby hears it too. */
+    /**
+     * A villager says a word and ends its line: it hears both as its own, a villager nearby hears
+     * them as someone else's, and the line shows in chat.
+     */
     @GameTest(template = ARENA, timeoutTicks = 100)
     public static void hearsItsOwnWordsAndOthersHearThem(GameTestHelper h) {
         Villager speaker = spawnMcaVillager(h, new Vec3(10.5, 2, 12.5));
         Villager other = spawnMcaVillager(h, new Vec3(14.5, 2, 12.5));
         BrainManager.Handle hs = listener(h, speaker);
         BrainManager.Handle ho = listener(h, other);
-        int slot = Lexicon.get(h.getLevel().getServer()).slot("bread");
-        boolean[] heard = {false, false};
+        int id = anyWordId(hs);
+        int turn = wordId(hs, WordCode.TURN);
+        h.assertTrue(id >= 0 && turn >= 0, "the brain knows no words");
+        String word = hs.brain().word(id);
+        boolean[] heard = {false, false, false};
         h.onEachTick(() -> {
             if (h.getTick() == 10) {
-                hs.hold(MotorCommand.IDLE.saying(slot));
-            } else if (h.getTick() == 11) {
+                hs.hold(MotorCommand.IDLE.saying(id));
+            } else if (h.getTick() == 12) {
+                hs.hold(MotorCommand.IDLE.saying(turn));
+            } else if (h.getTick() == 14) {
                 hs.hold(MotorCommand.IDLE);
             }
-            heard[0] |= hs.frame().words[slot] > 0;
-            heard[1] |= ho.frame().words[slot] > 0;
-            if (h.getTick() == 20) {
-                LOG.info("villager said 'bread': heard by itself {}, by the villager 4 blocks away {}", heard[0], heard[1]);
-                h.assertTrue(heard[0], "the speaker did not hear its own word");
+            var fs = hs.frame();
+            for (int i = 0; i < fs.heardWords.size(); i++) {
+                if (fs.heardOwn.get(i)) {
+                    heard[0] |= fs.heardWords.get(i).equals(word);
+                    heard[2] |= fs.heardWords.get(i).equals(WordCode.TURN);
+                }
+            }
+            var fo = ho.frame();
+            for (int i = 0; i < fo.heardWords.size(); i++) {
+                heard[1] |= fo.heardWords.get(i).equals(word) && !fo.heardOwn.get(i);
+            }
+            if (h.getTick() == 24) {
+                LOG.info("villager said '{}' and ended the line: heard as its own {}, its line end as its own {},"
+                        + " by the villager 4 blocks away {}; chat line '{}'", word, heard[0], heard[2], heard[1], hs.lastLine());
+                h.assertTrue(heard[0], "the speaker did not hear its own word as its own");
+                h.assertTrue(heard[2], "the speaker did not hear the end of its own line");
                 h.assertTrue(heard[1], "the villager nearby did not hear the word");
+                h.assertTrue(word.equals(hs.lastLine()), "the line in chat was '" + hs.lastLine() + "', not '" + word + "'");
                 h.succeed();
             }
         });
@@ -181,30 +226,23 @@ public final class SpeechTests {
     public static void newbornSaysBackWordsItHears(GameTestHelper h) {
         BrainManager.get().setLockstep(true);
         h.getLevel().getServer().tickRateManager().requestGameToSprint(BABBLE_TICKS + TRIALS * WINDOW + 400);
-        Lexicon lexicon = Lexicon.get(h.getLevel().getServer());
-        int[] slots = new int[WORDS.length];
-        for (int i = 0; i < WORDS.length; i++) {
-            slots[i] = lexicon.slot(WORDS[i]);
-        }
         Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
         v.setAge(-24000);
         BrainManager.Handle handle = attach(h, v);
         int[] tick = {0};
         int[] babbled = {0};
-        int[] target = {-1};
+        String[] target = {null};
         boolean[] saidTarget = {false};
         int[] wordsInWindow = {0};
         // [windows, of those with the target said] for heard and silent windows.
         int[] heard = {0, 0};
         int[] silent = {0, 0};
         int[] anyWord = {0, 0};
-        MotorCommand[] last = {null};
         java.util.Random random = new java.util.Random(7);
         h.onEachTick(() -> {
             tick[0]++;
-            MotorCommand c = handle.command();
-            boolean spoke = c != last[0] && c.say() >= 0;
-            last[0] = c;
+            String said = handle.spoken();
+            boolean spoke = said != null && !said.equals(WordCode.TURN);
             if (tick[0] <= BABBLE_TICKS) {
                 if (spoke) {
                     babbled[0]++;
@@ -217,17 +255,17 @@ public final class SpeechTests {
                 return;
             }
             if (t % WINDOW == 0) {
-                target[0] = slots[random.nextInt(slots.length)];
+                target[0] = WORDS[random.nextInt(WORDS.length)];
                 saidTarget[0] = false;
                 wordsInWindow[0] = 0;
                 if (trial % 2 == 0) {
                     // Beside it, at head height.
-                    Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), lexicon.word(target[0]));
+                    Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), target[0]);
                 }
             }
             if (spoke) {
                 wordsInWindow[0]++;
-                saidTarget[0] |= c.say() == target[0];
+                saidTarget[0] |= said.equals(target[0]);
             }
             if (t % WINDOW == WINDOW - 1) {
                 int[] counter = trial % 2 == 0 ? heard : silent;
@@ -252,6 +290,47 @@ public final class SpeechTests {
                     h.succeed();
                 } else {
                     h.fail("not imitating yet: " + report);
+                }
+            }
+        });
+    }
+
+    private static final int HELLO_TRIES = 5;
+    private static final int HELLO_WAIT = 300;
+
+    /**
+     * A player says "hello." beside an adult brain villager, five times, and the benchmark logs
+     * whatever it says back. Passes if it answers at least once.
+     */
+    @GameTest(template = ARENA, timeoutTicks = HELLO_TRIES * HELLO_WAIT + 200, required = false)
+    public static void adultAnswersHello(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        List<String> answers = new java.util.ArrayList<>();
+        int[] linesBefore = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t < 0) {
+                return;
+            }
+            int attempt = t / HELLO_WAIT;
+            if (t % HELLO_WAIT == 0 && attempt < HELLO_TRIES) {
+                linesBefore[0] = handle.lines();
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "hello.");
+            }
+            if (t % HELLO_WAIT == HELLO_WAIT - 1 && attempt < HELLO_TRIES) {
+                String answer = handle.lines() > linesBefore[0] ? handle.lastLine() : null;
+                answers.add(answer == null ? "(nothing)" : answer);
+                LOG.info("hello benchmark: a player said \"hello.\", try {}: the villager answered {}",
+                        attempt + 1, answer == null ? "nothing" : "\"" + answer + "\"");
+                if (attempt == HELLO_TRIES - 1) {
+                    LOG.info("hello benchmark result: answers {}", answers);
+                    if (answers.stream().anyMatch(a -> !a.equals("(nothing)"))) {
+                        h.succeed();
+                    } else {
+                        h.fail("never answered hello: " + answers);
+                    }
                 }
             }
         });
