@@ -63,6 +63,9 @@ public final class Brain {
     /** How strongly a reward that beats expectations turns into dopamine. Too high and it clips. */
     static final float DOPAMINE_GAIN = 1.5f;
     static final float MOTOR_ELIG_DECAY = 0.9f;
+    /** How fast that memory of an action fades once the input that saw it falls quiet. */
+    static final float QUIET_ELIG_DECAY = 0.97f;
+    static final float QUIET_ELIG_MIN = 1e-3f;
     static final float TRACE_ACTIVE = 0.01f;
     static final float RECEPTOR_MAX_P = 0.6f;
     static final float INHIBITORY_FRACTION = 0.2f;
@@ -611,8 +614,12 @@ public final class Brain {
             SynapseList s = out[i];
             if (trace[i] < TRACE_ACTIVE) {
                 if (plastic[i]) {
-                    Arrays.fill(s.elig, 0, s.size, 0f);
-                    plastic[i] = false;
+                    if (role[i] == ROLE_RECEPTOR) {
+                        Arrays.fill(s.elig, 0, s.size, 0f);
+                        plastic[i] = false;
+                    } else {
+                        plastic[i] = fadeMotorTraces(i, s, lr, motorGate);
+                    }
                 }
                 continue;
             }
@@ -658,6 +665,31 @@ public final class Brain {
                 s.weight[k] = w < 0f ? 0f : (w > W_MAX ? W_MAX : w);
             }
         }
+    }
+
+    /**
+     * A quiet neuron's synapses onto the motor pools still remember what the body did while it was
+     * active, and that memory fades slowly, so a reward that comes seconds later (climbing onto the
+     * block placed a moment ago) still reaches the action. Wiping it as soon as the neuron fell
+     * quiet meant a reward 40 ticks after an action was never learned (1%, now 33-64%). Inborn
+     * reflex arcs from receptors still forget at once, which keeps word imitation intact. Returns
+     * false once the memory has faded.
+     */
+    private boolean fadeMotorTraces(int i, SynapseList s, float lr, float motorGate) {
+        boolean left = false;
+        float preSign = inhibitory[i] ? -1f : 1f;
+        for (int k = 0; k < s.size; k++) {
+            float e = role[s.target[k]] == ROLE_MOTOR ? s.elig[k] * QUIET_ELIG_DECAY : 0f;
+            if (Math.abs(e) < QUIET_ELIG_MIN) {
+                s.elig[k] = 0f;
+                continue;
+            }
+            s.elig[k] = e;
+            left = true;
+            float w = s.weight[k] + preSign * lr * PATHWAY_BOOST * e * motorGate;
+            s.weight[k] = w < 0f ? 0f : (w > W_MAX ? W_MAX : w);
+        }
+        return left;
     }
 
     private void homeostasis() {
