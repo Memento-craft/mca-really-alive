@@ -81,6 +81,7 @@ public final class Brain {
     static final float REFLEX_WEIGHT = 2.0f;
     static final float ORIENT_WEIGHT = 0.8f;
     static final float PLACING_WEIGHT = 2.0f;
+    static final float CLIMB_WEIGHT = 1.5f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
      * same place on the sheet. This keeps maps intact, like the retinotopic maps of a real visual
@@ -226,7 +227,9 @@ public final class Brain {
      * tipped down drives the look-up pool and the reverse, so a newborn's gaze settles near the
      * horizon instead of drifting to the floor or sky. A creature seen to one side drives turning
      * toward it. The placing reflex lifts the body when the front of it bumps into something, and
-     * being in water drives the jump pool, which is how a player swims up. Learning can still
+     * being in water drives the jump pool, which is how a player swims up. A ladder seen to one side
+     * turns the gaze toward it like a creature does, and holding on to a ladder drives walking
+     * into it, which is how a player climbs. Learning can still
      * strengthen, weaken or override these synapses.
      */
     private void wireReflexes() {
@@ -234,6 +237,7 @@ public final class Brain {
         int headUp = IN_FEEL + FeelChannel.HEAD_UP.ordinal();
         int touchFront = IN_FEEL + FeelChannel.TOUCH_FRONT.ordinal();
         int inWater = IN_FEEL + FeelChannel.IN_WATER.ordinal();
+        int onClimbable = IN_FEEL + FeelChannel.ON_CLIMBABLE.ordinal();
         int[] jump = motorPools[MotorChannel.JUMP.ordinal()];
         for (int i = 0; i < n; i++) {
             if (inputSlot[i] == touchFront || inputSlot[i] == inWater) {
@@ -242,11 +246,19 @@ public final class Brain {
                     connect(i, m, w);
                 }
             }
+            if (inputSlot[i] == onClimbable) {
+                // Climbing: holding a ladder drives walking into it, which is how a player climbs.
+                for (int m : motorPools[MotorChannel.FORWARD.ordinal()]) {
+                    connect(i, m, CLIMB_WEIGHT);
+                }
+            }
             int slot = inputSlot[i] - IN_VISION;
+            int channel = slot % SenseLayout.VISION_CHANNELS;
             if (slot >= 0 && slot < SenseLayout.VISION_SIZE
-                    && slot % SenseLayout.VISION_CHANNELS == SenseLayout.CH_CREATURE) {
-                // Orienting: a creature seen off to one side pulls the gaze that way, harder the
-                // further out it is.
+                    && (channel == SenseLayout.CH_CREATURE
+                        || channel == SenseLayout.CH_CLIMBABLE)) {
+                // Orienting: a creature or a ladder seen off to one side pulls the gaze that way,
+                // harder the further out it is.
                 int column = slot / SenseLayout.VISION_CHANNELS % SenseLayout.VISION_W;
                 float offset = (column + 0.5f) / SenseLayout.VISION_W * 2f - 1f;
                 MotorChannel turn = offset < 0 ? MotorChannel.YAW_LEFT : MotorChannel.YAW_RIGHT;

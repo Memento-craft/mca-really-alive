@@ -29,6 +29,8 @@ final class BlockWorld {
     final float[][] top = new float[SIZE][SIZE];
     /** Water surface at each cell, or NO_WATER. */
     final float[][] water = new float[SIZE][SIZE];
+    /** Ladder cells: open to walk into, climbable up to the wall they hang on. */
+    final float[][] ladder = new float[SIZE][SIZE];
 
     final float width;
     final float standHeight;
@@ -86,7 +88,7 @@ final class BlockWorld {
     // ---------------------------------------------------------------- courses
 
     /** What stands between the villager and each new goal. */
-    enum Course { FLAT, STEP_UP, LOW_WALL, POND, HIGH_WALL, DIG_THROUGH, BUILD_UP }
+    enum Course { FLAT, STEP_UP, LOW_WALL, POND, HIGH_WALL, DIG_THROUGH, BUILD_UP, CLIMB }
 
     /** Courses that need only moving. */
     static final Course[] MOVING = {Course.FLAT, Course.STEP_UP, Course.LOW_WALL, Course.POND, Course.HIGH_WALL};
@@ -101,6 +103,7 @@ final class BlockWorld {
         for (int i = 0; i < SIZE; i++) {
             for (int k = 0; k < SIZE; k++) {
                 water[i][k] = NO_WATER;
+                ladder[i][k] = 0f;
                 boolean border = i == 0 || k == 0 || i == SIZE - 1 || k == SIZE - 1;
                 top[i][k] = border ? 4f : 0f;
             }
@@ -154,6 +157,21 @@ final class BlockWorld {
                     }
                 }
                 goalY = 2f;
+            }
+            case CLIMB -> {
+                // The goal stands on a platform three blocks up, with one ladder up its near face.
+                for (int i = -3; i <= 3; i++) {
+                    for (int k = -3; k <= 3; k++) {
+                        setTop(goalX + i, goalZ + k, 3f);
+                    }
+                }
+                goalY = 3f;
+                float side = (rng.nextInt(5) - 2);
+                float lx = goalX - dx * 4f + dz * side, lz = goalZ - dz * 4f - dx * side;
+                int li = (int) Math.floor(lx), lk = (int) Math.floor(lz);
+                if (top[li][lk] < 3f) {
+                    ladder[li][lk] = 3f;
+                }
             }
             case POND -> {
                 // A strip of water two blocks deep across the way: swim over and climb out.
@@ -231,6 +249,18 @@ final class BlockWorld {
         return height() * 0.9f;
     }
 
+    float ladderAt(float px, float pz) {
+        int i = (int) Math.floor(px), k = (int) Math.floor(pz);
+        if (i < 0 || k < 0 || i >= SIZE || k >= SIZE) {
+            return 0f;
+        }
+        return ladder[i][k];
+    }
+
+    boolean onClimbable() {
+        return y < ladderAt(x, z);
+    }
+
     boolean inWater() {
         return y < waterAt(x, z);
     }
@@ -288,7 +318,7 @@ final class BlockWorld {
                 float dx = (float) -Math.sin(Math.toRadians(yw)) * cp;
                 float dy = (float) -Math.sin(Math.toRadians(p));
                 float dz = (float) Math.cos(Math.toRadians(yw)) * cp;
-                float near = 0f, solid = 0f, creature = 0f;
+                float near = 0f, solid = 0f, creature = 0f, climbable = 0f;
                 for (float s = 0.1f; s < RANGE; s += 0.2f) {
                     float px = ex + dx * s, py = ey + dy * s, pz = ez + dz * s;
                     if (goalHit(px, py, pz, s)) {
@@ -302,6 +332,12 @@ final class BlockWorld {
                         solid = 1f;
                         break;
                     }
+                    if (py < ladderAt(px, pz)) {
+                        near = 1f - s / RANGE;
+                        solid = 1f;
+                        climbable = 1f;
+                        break;
+                    }
                     if (py < waterAt(px, pz) && ey >= waterAt(px, pz)) {
                         near = 1f - s / RANGE;
                         solid = 0.4f;
@@ -310,6 +346,7 @@ final class BlockWorld {
                 }
                 f.vision[SenseLayout.visionIndex(col, row, SenseLayout.CH_NEAR)] = near;
                 f.vision[SenseLayout.visionIndex(col, row, SenseLayout.CH_SOLID)] = solid;
+                f.vision[SenseLayout.visionIndex(col, row, SenseLayout.CH_CLIMBABLE)] = climbable;
                 f.vision[SenseLayout.visionIndex(col, row, SenseLayout.CH_CREATURE)] = creature;
             }
         }
@@ -319,6 +356,7 @@ final class BlockWorld {
         f.set(FeelChannel.ON_GROUND, onGround ? 1f : 0f);
         f.set(FeelChannel.IN_WATER, inWater() ? 1f : 0f);
         f.set(FeelChannel.UNDER_WATER, underWater() ? 1f : 0f);
+        f.set(FeelChannel.ON_CLIMBABLE, onClimbable() ? 1f : 0f);
         float sin = (float) Math.sin(Math.toRadians(yaw));
         float cos = (float) Math.cos(Math.toRadians(yaw));
         float fx = -sin, fz = cos;
@@ -432,6 +470,14 @@ final class BlockWorld {
         if (wet && horizontalCollision && fits(x + pushX, y + STEP, z + pushZ)) {
             vy = 0.3f; // climbing out of water against a bank
         }
+        boolean climbing = onClimbable() && !wet;
+        if (climbing) {
+            // Vanilla ladders: pushing into a wall or holding jump climbs; otherwise slide slowly.
+            if (horizontalCollision || c.jump()) {
+                vy = 0.2f;
+            }
+            fallDistance = 0f;
+        }
         if (wet) {
             vx *= WATER_DRAG;
             vz *= WATER_DRAG;
@@ -447,6 +493,11 @@ final class BlockWorld {
             vx *= f;
             vz *= f;
             vy = (vy - GRAVITY) * 0.98f;
+            if (climbing) {
+                vy = Math.max(vy, sneaking ? 0f : -0.15f);
+                vx = Math.max(-0.15f, Math.min(0.15f, vx));
+                vz = Math.max(-0.15f, Math.min(0.15f, vz));
+            }
         }
     }
 
