@@ -63,7 +63,7 @@ class ConversationTest {
     void villagerAnswersInEnglishAndEndsItsTurn() {
         assertNotNull(EnglishBase.shared(), "the English base is missing from the resources");
         Brain b = Brain.create(Genome.defaults(), 3, 1f);
-        b.setBabbleScale(0.3f);
+        b.setBabbleScale(1f);
         // Settle in quietly first.
         for (int t = 0; t < 500; t++) {
             b.step(frame());

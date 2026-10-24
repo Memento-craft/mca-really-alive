@@ -528,10 +528,11 @@ public final class Brain {
 
     /**
      * Cooing: now and then a brain tries out the sound of a word it knows, more often the younger
-     * it is. Hearing itself say it is how it learns which speech pools make which heard sounds.
+     * it is. Hearing itself say it is how it learns which speech pools make which heard sounds. It
+     * does not babble while answering someone, or stray words would land in the middle of its line.
      */
     private void driveSpeechBabble(float amp) {
-        if (voiceRng.nextFloat() < amp * BABBLE_WORD_RATE) {
+        if (voiceRng.nextFloat() < amp * BABBLE_WORD_RATE && replyUrge < URGE_MIN) {
             int[] features = language.vocabulary.features(voiceRng.nextInt(language.vocabulary.size()));
             for (int feature : features) {
                 speechBabble[feature] = 1f;
