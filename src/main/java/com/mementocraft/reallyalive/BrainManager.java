@@ -17,6 +17,7 @@ import com.mementocraft.reallyalive.brain.SensoryFrame;
 import com.mementocraft.reallyalive.brain.WordCode;
 import com.mementocraft.reallyalive.mixin.MobAccessor;
 import com.mementocraft.reallyalive.sense.Hearing;
+import com.mementocraft.reallyalive.sense.Naming;
 import com.mementocraft.reallyalive.sense.Senses;
 import com.mementocraft.reallyalive.speech.Speech;
 import com.mojang.logging.LogUtils;
@@ -362,6 +363,9 @@ public final class BrainManager {
             }
         }
         feelings(v, h, f);
+        if (Config.NAMING.get()) {
+            Naming.name(v, f);
+        }
         if (h.age % 200 == 0) {
             h.brain.grow(maturity(v), 5);
         }

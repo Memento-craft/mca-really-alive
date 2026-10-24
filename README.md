@@ -15,6 +15,7 @@ birth, growing with age) split into lobes:
 | Olfactory | Scents drifting from nearby creatures, food, fire, flowers and water |
 | Feely | Touch, motion, balance, health, plus a copy of its own key presses |
 | Concept | Combines senses into concepts, in three areas: actions (from Feely), people and places (from sight and smell) |
+| Frontal | The frontal part of the notebook's frontal/temporal concept system: gathers concepts, feelings, memories and words, holds them a little longer, and feeds back onto the concepts (attention) |
 | Emotion | Innate pleasure, pain and curiosity pools that set the dopamine level |
 | Wernicke's | Language: hears 10 kinds of game sound and any word (each word is a pattern over 32 word features), drives the voice (one speech pool per feature), and holds the word-sequence area that knows English |
 | Memory | Slow-leaking, fast-learning lobe: each memory binds an action, people and a place, and memories chain to each other |
@@ -22,7 +23,9 @@ birth, growing with age) split into lobes:
 | Motor | One pool of neurons per player control, plus the voice |
 
 Wiring follows page 111: Sensory → Concept and Wernicke's, Occipital → Memory, Concept ↔ Emotion,
-Concept ↔ Wernicke's, Concept/Wernicke's/Emotion ↔ Memory, and Concept and Feely → Cerebellum. Connections between lobes keep a map of where things are, like
+Concept ↔ Wernicke's, Concept/Wernicke's/Emotion ↔ Memory, and Concept and Feely → Cerebellum. The frontal
+part takes input from Concept and Emotion and loops with Concept, Memory and Wernicke's; it does not
+drive the cerebellum (there is still no Decision lobe). Connections between lobes keep a map of where things are, like
 the retinotopic maps of a real visual system. The memory layout (page 111, left) links each memory
 across all three Concept areas and to the cerebellum's skills, so part of a scene recalls the rest:
 in `MemoryRecallTest`, a person's smell alone brings to mind the place they are always found.
@@ -34,11 +37,11 @@ some words carries over to every other word.
 They also grow up with English. Wernicke's word-sequence area (`LanguageArea`) learns, by Hebbian
 co-activity alone, which word comes next: context cells stand for the last one to four words and
 for the words of the line it is answering, and each grows synapses onto the word cells that follow.
-It was trained on a generated corpus of a million everyday conversations and scenes (18 million
+It was trained on a generated corpus of a million everyday conversations and scenes (25 million
 words, about 3,000 distinct words; `tools/corpus`): greetings, markets, doctors, inns, jobs, family,
-feelings, danger, farming, building, stories, world knowledge and plain chatter, each line in many
-phrasings. On conversations it never saw it guesses the next word 74% of the time (counting word
-pairs gets 39%). The trained English ships as one shared 8 MB file (`english.lang.gz`); each
+feelings, danger, farming, building, stories, world knowledge, plain chatter and talk about what one
+sees, smells, feels, does and wants, each line in many phrasings. On conversations it never saw
+it guesses the next word 74% of the time (counting word pairs gets 39%). The trained English ships as one shared 8 MB file (`english.lang.gz`); each
 villager adds what it hears in its own world in a small sheet of its own. When someone finishes a
 line, the villager answers: the word the area expects next drives that word's speech pools, so the
 answer comes out word by word through the same spiking voice it babbles with, and it stops when
@@ -46,7 +49,23 @@ the area expects the line to end. It always answers a player, and villagers talk
 less with each line so they don't chatter forever. Answers are often apt ("what do bees make?" →
 "bees make honey.", "i'm hungry." → "have some hot soup.") and sometimes garbled ("what do you do
 for work?" → "i used to hate."): this is a few million counted synapses, not a large language
-model, and it does not reason about what it says.
+model.
+
+What villagers say is tied to what they perceive (`ConceptLinks`). Every word cell has Hebbian
+links to the meaning cells of the concept system: the Concept lobe, helped by the frontal part,
+Memory and Emotion. When someone names a thing (the game does this now and then while a player or
+villager is near, like a parent saying "a cow!"; config `namingThings`), or a word is overheard in
+talk, the word's links move toward how far each meaning cell is from its usual activity at that
+moment: the covariance form of Hebb's rule. Over many moments a word ends up linked to what was
+there every time, and small words heard everywhere ("you", "the") end up meaning nothing. The links
+work both ways: hearing "zombie" stirs the cells seeing one does, and while answering, the language
+area frames the line ("i see a ...") while the links pick the word whose meaning is present now.
+The frontal part plans a word ahead, so "a" beats "you" after "i see" when there is a zombie to
+name. In `GroundedSpeechTest`, villagers who had things named answer "what do you see?", "what do
+you smell?" and "how do you feel?" with the right thing about two times in three ("a ladder.",
+"i smell flowers.", "i feel very hurt."), against never for villagers who heard nothing named. Cows
+and zombies still get mixed up, as only their smell tells them apart, and talking about something
+seen a few seconds ago does not work yet.
 
 Learning happens live, in game:
 

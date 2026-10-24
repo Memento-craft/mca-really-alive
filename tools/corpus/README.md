@@ -19,5 +19,6 @@ CORPUS=train.txt EVAL=eval.txt TRAIN=1000000 MIN_COUNT=3 \
 Sources: `generate.py` (scripted scenarios and word lists), `trees.py` (branching conversations
 where every reply fits its line), `facts.py` (questions and answers about the world), `grammar.py`
 (told sentences where verbs only take objects that fit), `chatter.py` (likes, experiences, wishes
-and favours over a sorted lexicon) and `dialogues.txt` (hand-written conversations). Everything is
+and favours over a sorted lexicon), `herenow.py` (what the speaker sees, smells, feels, does and
+wants right now, the lines the concept links fill in) and `dialogues.txt` (hand-written conversations). Everything is
 written for this project, so there are no licence questions about the training data.

@@ -269,10 +269,14 @@ public final class LanguageArea {
     private int historyLength;
     private final List<Integer> utterance = new ArrayList<>();
     private int[] heard = new int[0];
+    /** The remembered line was this brain's own. */
+    private boolean heardOwn;
+    private byte[] activeKinds = new byte[256];
     private long[] activeHashes = new long[256];
     private float[] activeWeights = new float[256];
     private int activeCount;
     private float[] score = new float[1024];
+    private float[] peek = new float[1024];
 
     /** An area that learns everything itself, in a sheet of 2^cellBits context cells. */
     public LanguageArea(int cellBits) {
@@ -294,6 +298,7 @@ public final class LanguageArea {
         historyLength = 0;
         utterance.clear();
         heard = new int[0];
+        heardOwn = false;
         activeCount = 0;
     }
 
@@ -305,8 +310,16 @@ public final class LanguageArea {
     /** Hears one word. With learn set, the synapses from the context it followed grow. */
     public void hear(String word, boolean learn) {
         int id = vocabulary.id(word);
-        if (learn) {
+        // The first word someone says after this brain's own line is not learned at all: what
+        // follows its own words across the turn is not an answer to them.
+        if (learn && !(heardOwn && utterance.isEmpty())) {
             for (int i = 0; i < activeCount; i++) {
+                // What someone says after this brain's own line is not learned as an answer to
+                // that line: a player asking the same thing again and again would otherwise teach
+                // it to answer with the question.
+                if (heardOwn && activeKinds[i] >= F_HEARD_START) {
+                    continue;
+                }
                 own.strengthen((int) activeHashes[i] & own.cellMask, id);
             }
         }
@@ -316,6 +329,7 @@ public final class LanguageArea {
         if (word.equals(WordCode.TURN)) {
             int from = Math.max(0, utterance.size() - MEMORY_WORDS);
             heard = utterance.subList(from, utterance.size()).stream().mapToInt(Integer::intValue).toArray();
+            heardOwn = !learn;
             utterance.clear();
         } else {
             utterance.add(id);
@@ -360,6 +374,36 @@ public final class LanguageArea {
         return score;
     }
 
+    /**
+     * What the area would expect after one more word, without hearing it: the drive onto each word
+     * cell, into a buffer of its own that the next call overwrites. Used to plan a word ahead.
+     */
+    public float[] scoresAfter(int word) {
+        int[] savedHistory = history.clone();
+        int savedLength = historyLength;
+        int savedCount = activeCount;
+        long[] savedHashes = Arrays.copyOf(activeHashes, activeCount);
+        float[] savedWeights = Arrays.copyOf(activeWeights, activeCount);
+        byte[] savedKinds = Arrays.copyOf(activeKinds, activeCount);
+        float[] savedScore = score;
+        System.arraycopy(history, 0, history, 1, HISTORY - 1);
+        history[0] = word;
+        historyLength = Math.min(HISTORY, historyLength + 1);
+        utterance.add(word);
+        activate();
+        score = peek.length < vocabulary.size() ? new float[vocabulary.size() * 2] : peek;
+        peek = scores();
+        utterance.remove(utterance.size() - 1);
+        System.arraycopy(savedHistory, 0, history, 0, HISTORY);
+        historyLength = savedLength;
+        activeCount = savedCount;
+        System.arraycopy(savedHashes, 0, activeHashes, 0, savedCount);
+        System.arraycopy(savedWeights, 0, activeWeights, 0, savedCount);
+        System.arraycopy(savedKinds, 0, activeKinds, 0, savedCount);
+        score = savedScore;
+        return peek;
+    }
+
     /** Lights the context cells for what has just been heard. */
     private void activate() {
         activeCount = 0;
@@ -385,7 +429,9 @@ public final class LanguageArea {
             if (activeCount == activeHashes.length) {
                 activeHashes = Arrays.copyOf(activeHashes, activeCount * 2);
                 activeWeights = Arrays.copyOf(activeWeights, activeCount * 2);
+                activeKinds = Arrays.copyOf(activeKinds, activeCount * 2);
             }
+            activeKinds[activeCount] = (byte) kind;
             activeHashes[activeCount] = h;
             activeWeights[activeCount++] = w;
         }
