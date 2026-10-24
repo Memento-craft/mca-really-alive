@@ -92,14 +92,29 @@ public final class Brain {
     static final byte ROLE_INTERIOR = 0;
     static final byte ROLE_RECEPTOR = 1;
     static final byte ROLE_MOTOR = 2;
+    /** A neuron of a speech pool: one pool per word, driven by Wernicke's area. */
+    static final byte ROLE_SPEECH = 3;
 
-    /** Flattened input layout: vision, body, efference copy, smell, emotion. */
+    /** Hearing receptors per sound kind and per word, in Wernicke's area. */
+    static final int HEARING_PER_CHANNEL = 3;
+    /** How fast the hearing-to-voice links learn: what was heard around the time a word was said. */
+    static final float SPEECH_LEARNING = 10f;
+    static final float SPEECH_BABBLE_GAIN = 0.3f;
+    static final float HEARING_VOICE_WEIGHT = 0.1f;
+    /** A word is said when its pool fires at least this much... */
+    static final float SAY_ON = 0.3f;
+    /** ...and not within this many ticks of the last word (about one word a second at most). */
+    static final int VOICE_COOLDOWN = 20;
+
+    /** Flattened input layout: vision, body, efference copy, smell, emotion, sounds, words. */
     static final int IN_VISION = 0;
     static final int IN_FEEL = IN_VISION + SenseLayout.VISION_SIZE;
     static final int IN_EFFERENCE = IN_FEEL + FeelChannel.COUNT;
     static final int IN_SMELL = IN_EFFERENCE + MotorChannel.COUNT;
     static final int IN_EMOTION = IN_SMELL + OlfactoryChannel.COUNT;
-    static final int INPUT_SIZE = IN_EMOTION + SenseLayout.EMOTION_RECEPTORS;
+    static final int IN_SOUND = IN_EMOTION + SenseLayout.EMOTION_RECEPTORS;
+    static final int IN_WORDS = IN_SOUND + SoundChannel.COUNT;
+    static final int INPUT_SIZE = IN_WORDS + SenseLayout.VOCABULARY;
 
     final Genome genome;
     final Rng rng;
@@ -135,6 +150,10 @@ public final class Brain {
     final IntList[][] targetGrid = new IntList[LobeId.values().length][GRID * GRID];
     final int[][] motorPools = new int[MotorChannel.COUNT][SenseLayout.MOTOR_POOL_SIZE];
     final int[][] emotionPools = new int[SenseLayout.EMOTION_RECEPTORS][EMOTION_PER_CHANNEL];
+    final int[][] speechPools = new int[SenseLayout.VOCABULARY][SenseLayout.SPEECH_POOL_SIZE];
+    final float[] speechRates = new float[SenseLayout.VOCABULARY];
+    final float[] speechBabble = new float[SenseLayout.VOCABULARY];
+    int voiceCooldown;
 
     final float[] input = new float[INPUT_SIZE];
     final float[] poolRates = new float[MotorChannel.COUNT];
@@ -198,6 +217,7 @@ public final class Brain {
             b.wireOut(i);
         }
         b.wireReflexes();
+        b.wireHearingToVoice();
         return b;
     }
 
@@ -244,6 +264,25 @@ public final class Brain {
         }
     }
 
+    /**
+     * Every heard-word receptor reaches every speech pool weakly, like the bundle of fibres joining
+     * the hearing and speaking areas of a real brain. Which links matter is learned by babbling and
+     * hearing oneself.
+     */
+    private void wireHearingToVoice() {
+        for (int i = 0; i < n; i++) {
+            int slot = inputSlot[i] - IN_WORDS;
+            if (role[i] != ROLE_RECEPTOR || slot < 0 || slot >= SenseLayout.VOCABULARY) {
+                continue;
+            }
+            for (int[] pool : speechPools) {
+                for (int j : pool) {
+                    connect(i, j, HEARING_VOICE_WEIGHT * rng.nextFloat());
+                }
+            }
+        }
+    }
+
     private void buildFixedNeurons() {
         for (int i = 0; i < SenseLayout.VISION_SIZE; i++) {
             receptor(LobeId.OCCIPITAL, IN_VISION + i);
@@ -268,9 +307,27 @@ public final class Brain {
                 emotionPools[c][k] = receptor(LobeId.EMOTION, IN_EMOTION + c);
             }
         }
+        for (int c = 0; c < SoundChannel.COUNT; c++) {
+            for (int k = 0; k < HEARING_PER_CHANNEL; k++) {
+                receptor(LobeId.WERNICKE, IN_SOUND + c);
+            }
+        }
+        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+            for (int k = 0; k < HEARING_PER_CHANNEL; k++) {
+                receptor(LobeId.WERNICKE, IN_WORDS + w);
+            }
+        }
+        // The Motor lobe's sheet: controls in the lower half, the voice in the upper half.
         for (int c = 0; c < MotorChannel.COUNT; c++) {
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
-                motorPools[c][k] = addNeuron(LobeId.MOTOR, ROLE_MOTOR);
+                motorPools[c][k] = addNeuron(LobeId.MOTOR, ROLE_MOTOR, rng.nextFloat(),
+                        Wiring.Band.KEYS.into(rng.nextFloat()));
+            }
+        }
+        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+            for (int k = 0; k < SenseLayout.SPEECH_POOL_SIZE; k++) {
+                speechPools[w][k] = addNeuron(LobeId.MOTOR, ROLE_SPEECH, rng.nextFloat(),
+                        Wiring.Band.VOICE.into(rng.nextFloat()));
             }
         }
     }
@@ -310,6 +367,10 @@ public final class Brain {
         }
         readMotorPools();
         lastCommand = decoder.decode(poolRates);
+        int word = decodeVoice();
+        if (word >= 0) {
+            lastCommand = lastCommand.saying(word);
+        }
         forwardModel.predict(cb, cbCount, fastRate);
         return lastCommand;
     }
@@ -331,6 +392,8 @@ public final class Brain {
         input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure);
         input[IN_EMOTION + SenseLayout.EMO_PAIN] = SensoryFrame.clamp01(f.pain);
         input[IN_EMOTION + SenseLayout.EMO_CURIOSITY] = SensoryFrame.clamp01(surprise * CURIOSITY_GAIN);
+        System.arraycopy(f.sound, 0, input, IN_SOUND, SoundChannel.COUNT);
+        System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.VOCABULARY);
     }
 
     private void deliverSpikes() {
@@ -363,6 +426,18 @@ public final class Brain {
             float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN;
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
                 extInput[motorPools[c][k]] = drive;
+            }
+        }
+        driveSpeechBabble(amp);
+    }
+
+    /** Cooing: young brains also babble words now and then, which is how they learn their voice. */
+    private void driveSpeechBabble(float amp) {
+        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+            speechBabble[w] += -0.1f * speechBabble[w] + 0.3f * rng.gaussian();
+            float drive = amp * Math.max(0f, speechBabble[w]) * SPEECH_BABBLE_GAIN;
+            for (int i : speechPools[w]) {
+                extInput[i] = drive;
             }
         }
     }
@@ -453,6 +528,13 @@ public final class Brain {
                     e = s.elig[k] * MOTOR_ELIG_DECAY + preTrace * (spike - slowRate[j]);
                     s.elig[k] = e;
                     w = s.weight[k] + preSign * lr * (role[i] == ROLE_RECEPTOR ? MOTOR_LEARNING_BOOST : PATHWAY_BOOST) * e * motorGate;
+                } else if (role[j] == ROLE_SPEECH) {
+                    // The voice learns which heard sounds go with which word, whichever came first:
+                    // saying a word and then hearing it binds the two, so hearing it later brings
+                    // the word to the lips. Compared with the pool's usual activity, so only words
+                    // said around the sound gain.
+                    float post = trace[j] - slowRate[j] / (1f - TRACE_DECAY);
+                    w = s.weight[k] + preSign * lr * SPEECH_LEARNING * preTrace * post;
                 } else {
                     if (fired[j]) {
                         e += A_PLUS * preTrace;
@@ -566,6 +648,38 @@ public final class Brain {
             }
             poolRates[c] = poolRates[c] * 0.6f + 0.4f * count / SenseLayout.MOTOR_POOL_SIZE;
         }
+        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+            int count = 0;
+            for (int i : speechPools[w]) {
+                if (fired[i]) {
+                    count++;
+                }
+            }
+            speechRates[w] = speechRates[w] * 0.6f + 0.4f * count / SenseLayout.SPEECH_POOL_SIZE;
+        }
+    }
+
+    /**
+     * The word to say this tick, if any: the most active speech pool, once it is active enough. A
+     * mouth says one word at a time, so this is the one place a single winner is picked.
+     */
+    private int decodeVoice() {
+        if (voiceCooldown > 0) {
+            voiceCooldown--;
+            return -1;
+        }
+        int word = -1;
+        float best = SAY_ON;
+        for (int w = 0; w < SenseLayout.VOCABULARY; w++) {
+            if (speechRates[w] > best) {
+                best = speechRates[w];
+                word = w;
+            }
+        }
+        if (word >= 0) {
+            voiceCooldown = VOICE_COOLDOWN;
+        }
+        return word;
     }
 
     // ---------------------------------------------------------------- growth and rebirth
@@ -654,7 +768,7 @@ public final class Brain {
         role[i] = r;
         inhibitory[i] = r == ROLE_INTERIOR && rng.nextFloat() < INHIBITORY_FRACTION;
         inputSlot[i] = -1;
-        out[i] = new SynapseList(r == ROLE_MOTOR ? 0 : 16);
+        out[i] = new SynapseList(r == ROLE_MOTOR || r == ROLE_SPEECH ? 0 : 16);
         initState(i);
         posX[i] = x;
         posY[i] = y;

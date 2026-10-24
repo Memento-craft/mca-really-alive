@@ -16,16 +16,19 @@ birth, growing with age) split into lobes:
 | Feely | Touch, motion, balance, health, plus a copy of its own key presses |
 | Concept | Combines senses into concepts, in three areas: actions (from Feely), people and places (from sight and smell) |
 | Emotion | Innate pleasure, pain and curiosity pools that set the dopamine level |
-| Wernicke's | Language area (wired in, unused until language arrives) |
+| Wernicke's | Language: hears 10 kinds of game sound and a 32-word vocabulary, and drives the voice (one speech pool per word) |
 | Memory | Slow-leaking, fast-learning lobe: each memory binds an action, people and a place, and memories chain to each other |
 | Cerebellum | Motor control; also predicts what the body will feel next |
-| Motor | One pool of neurons per player control |
+| Motor | One pool of neurons per player control, plus the voice |
 
 Wiring follows page 111: Sensory → Concept and Wernicke's, Occipital → Memory, Concept ↔ Emotion,
 Concept ↔ Wernicke's, Concept/Wernicke's/Emotion ↔ Memory, and Concept and Feely → Cerebellum. Connections between lobes keep a map of where things are, like
 the retinotopic maps of a real visual system. The memory layout (page 111, left) links each memory
 across all three Concept areas and to the cerebellum's skills, so part of a scene recalls the rest:
 in `MemoryRecallTest`, a person's smell alone brings to mind the place they are always found.
+Villagers learn to talk the way children do: they babble words, hear themselves, and so learn to
+say back a word they hear someone say (`SpeechImitationTest`: 39% of tries, 0% for a brain that
+never hears its own voice).
 
 Learning happens live, in game:
 

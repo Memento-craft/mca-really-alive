@@ -25,11 +25,13 @@ public final class Wiring {
     }
 
     /**
-     * Areas of the Concept lobe from the memory layout (page 111): concepts of actions, of people
-     * and of places. Other lobes use the whole sheet.
+     * Areas of a lobe's sheet. The Concept lobe's come from the memory layout (page 111): concepts
+     * of actions, of people and of places. The Motor lobe holds the controls and the voice.
      */
     public enum Band {
-        ALL(0f, 1f), ACTION(0f, 1f / 3f), PEOPLE(1f / 3f, 2f / 3f), PLACES(2f / 3f, 1f);
+        ALL(0f, 1f), ACTION(0f, 1f / 3f), PEOPLE(1f / 3f, 2f / 3f), PLACES(2f / 3f, 1f),
+        /** The Motor lobe's two parts: the player's controls, and the voice. */
+        KEYS(0f, 0.5f), VOICE(0.5f, 1f);
 
         public final float y0;
         public final float y1;
@@ -100,7 +102,9 @@ public final class Wiring {
         add(CONCEPT, CEREBELLUM, 10);
         add(FEELY, CEREBELLUM, 6);
         // Cerebellum -> motor pools (the player's controls).
-        add(CEREBELLUM, MOTOR, 10);
+        add(CEREBELLUM, MOTOR, 10, Band.KEYS);
+        // Wernicke's area hears words (its own receptors) and drives the voice: saying a word.
+        add(WERNICKE, MOTOR, 6, Band.VOICE);
 
         for (int i = 0; i < LobeId.values().length; i++) {
             OUT.add(new ArrayList<>());

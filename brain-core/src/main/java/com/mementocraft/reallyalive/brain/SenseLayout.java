@@ -25,6 +25,14 @@ public final class SenseLayout {
     public static final int EMO_PAIN = 1;
     public static final int EMO_CURIOSITY = 2;
 
+    /**
+     * Words a villager can hear and say. The game keeps a lexicon per world that gives each new
+     * word it hears the next free slot, so slot k is always the same word in that world.
+     */
+    public static final int VOCABULARY = 32;
+    /** Neurons per speech pool, one pool per word. */
+    public static final int SPEECH_POOL_SIZE = 6;
+
     /** Neurons per motor pool. Rates are read as the fraction of the pool firing. */
     public static final int MOTOR_POOL_SIZE = 12;
 

@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 3;
+    private static final int VERSION = 4;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -69,6 +69,14 @@ public final class BrainIO {
                 out.writeInt(i);
             }
         }
+        for (int[] pool : b.speechPools) {
+            for (int i : pool) {
+                out.writeInt(i);
+            }
+        }
+        writeFloats(out, b.speechRates);
+        writeFloats(out, b.speechBabble);
+        out.writeInt(b.voiceCooldown);
 
         ForwardModel fm = b.forwardModel;
         for (int k = 0; k < fm.weights.length; k++) {
@@ -182,6 +190,14 @@ public final class BrainIO {
                 pool[k] = in.readInt();
             }
         }
+        for (int[] pool : b.speechPools) {
+            for (int k = 0; k < pool.length; k++) {
+                pool[k] = in.readInt();
+            }
+        }
+        System.arraycopy(readFloats(in, SenseLayout.VOCABULARY), 0, b.speechRates, 0, SenseLayout.VOCABULARY);
+        System.arraycopy(readFloats(in, SenseLayout.VOCABULARY), 0, b.speechBabble, 0, SenseLayout.VOCABULARY);
+        b.voiceCooldown = in.readInt();
 
         ForwardModel fm = b.forwardModel;
         fm.ensureCapacity(b.lobe.length);
