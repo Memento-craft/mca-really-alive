@@ -173,4 +173,29 @@ class ConversationTest {
         assertTrue(same >= seeds - 1, "answers changed: " + same);
         assertTrue(learned >= seeds - 1, "did not learn from what it overheard: " + learned);
     }
+
+    /** Told who it is by the game, a villager answers questions about itself truthfully. */
+    @Test
+    void villagerKnowsWhoItIs() {
+        String[][] villagers = {{"Ellie Rose", "farmer"}, {"Bram", "librarian"}, {"Odo", "armorer"}};
+        int right = 0, asked = 0;
+        for (int i = 0; i < villagers.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 40 + i, 1f);
+            b.setBabbleScale(1f);
+            SelfKnowledge.tell(b, villagers[i][0], villagers[i][1], false);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            for (String[] qa : new String[][] {{"hi! what's your name?", villagers[i][0].split(" ")[0].toLowerCase()},
+                    {"nice to meet you. what do you do for work?", villagers[i][1]}, {"how old are you?", "grown"}}) {
+                List<String> said = talk(b, qa[0], onScript);
+                System.out.println("  player: " + qa[0] + "\n  " + villagers[i][0] + ": " + String.join(" ", said));
+                right += said.contains(qa[1]) ? 1 : 0;
+                asked++;
+            }
+        }
+        System.out.printf("answered about itself truthfully %d of %d%n", right, asked);
+        assertTrue(right >= asked - 1, "answered about itself truthfully only " + right + " of " + asked);
+    }
 }

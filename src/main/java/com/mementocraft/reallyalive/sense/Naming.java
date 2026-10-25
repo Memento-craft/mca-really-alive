@@ -1,14 +1,19 @@
 package com.mementocraft.reallyalive.sense;
 
+import com.mementocraft.reallyalive.brain.Brain;
 import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.OlfactoryChannel;
+import com.mementocraft.reallyalive.brain.SelfKnowledge;
 import com.mementocraft.reallyalive.brain.SensoryFrame;
 import com.mementocraft.reallyalive.brain.WordCode;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.npc.AbstractVillager;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -57,6 +62,20 @@ public final class Naming {
         for (String w : WordCode.tokenize(things.get(random.nextInt(things.size())))) {
             f.name(w);
         }
+    }
+
+    /**
+     * Tells a villager who it is: its name (MCA names every villager), its work and whether it is
+     * still a child, so it answers "what's your name?" and "what do you do?" truthfully.
+     */
+    public static void whoItIs(Villager v, Brain brain) {
+        String name = v.hasCustomName() ? v.getCustomName().getString() : null;
+        VillagerProfession p = v.getVillagerData().getProfession();
+        String work = BuiltInRegistries.VILLAGER_PROFESSION.getKey(p).getPath().replace("_", " ");
+        if (p == VillagerProfession.NONE || p == VillagerProfession.NITWIT) {
+            work = null;
+        }
+        SelfKnowledge.tell(brain, name, work, v.isBaby());
     }
 
     /** Whether a player or another villager is close enough to talk to. */

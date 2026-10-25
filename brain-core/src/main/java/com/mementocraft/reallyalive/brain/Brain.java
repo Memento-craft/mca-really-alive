@@ -867,6 +867,8 @@ public final class Brain {
     /** Its own remembered exchanges count for more, and one this close is the same question again. */
     static final float OWN_RECALL_WEIGHT = 3f;
     static final float SAME_QUESTION = 0.8f;
+    /** The least likely a word of a line it knows by heart counts as (log). */
+    static final float KNOWN_WORD = (float) Math.log(0.02);
     /** Lines further apart than this (ticks) are not an exchange. */
     static final int EXCHANGE_GAP = 1200;
     /** How strongly a word must fit what is perceived (log of its grounding lift) to be about the moment. */
@@ -903,7 +905,10 @@ public final class Brain {
                 if (w >= language.vocabulary.size() || length == MAX_LINE_WORDS) {
                     break;
                 }
-                ease += (float) Math.log(meantLikelihood(w));
+                // A line of its own it knows by heart: a word the language area would not have
+                // guessed (its own name) does not make it hard to say.
+                float sure = (float) Math.log(meantLikelihood(w));
+                ease += own ? Math.max(sure, KNOWN_WORD) : sure;
                 meant = Math.max(meant, (float) Math.log(fit[w]));
                 line[length++] = w;
                 language.hear(language.vocabulary.word(w), false);

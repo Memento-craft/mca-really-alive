@@ -353,4 +353,46 @@ public final class SpeechTests {
             }
         });
     }
+
+    /**
+     * A villager knows who it is: asked its name it gives the name MCA gave it, and asked its work
+     * it gives its profession.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 900)
+    public static void villagerSaysItsNameAndWork(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        v.setVillagerData(v.getVillagerData().setProfession(net.minecraft.world.entity.npc.VillagerProfession.FARMER));
+        if (!v.hasCustomName()) {
+            v.setCustomName(net.minecraft.network.chat.Component.literal("Tibbs"));
+        }
+        String name = v.getCustomName().getString().trim().split("\\s+")[0].toLowerCase();
+        BrainManager.Handle handle = attach(h, v);
+        String[] questions = {"what's your name?", "what do you do for work?"};
+        String[] expected = {name, "farmer"};
+        String[] answers = new String[2];
+        int[] linesBefore = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t < 0) {
+                return;
+            }
+            int q = t / 400;
+            if (t % 400 == 0 && q < 2) {
+                linesBefore[0] = handle.lines();
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), questions[q]);
+            }
+            if (t % 400 == 399 && q < 2) {
+                answers[q] = handle.lines() > linesBefore[0] ? handle.lastLine() : "(nothing)";
+                LOG.info("self benchmark: asked \"{}\", the villager ({}) answered \"{}\"", questions[q], name, answers[q]);
+                if (q == 1) {
+                    for (int i = 0; i < 2; i++) {
+                        h.assertTrue(answers[i].toLowerCase().contains(expected[i]),
+                                "asked \"" + questions[i] + "\" it said \"" + answers[i] + "\", not " + expected[i]);
+                    }
+                    h.succeed();
+                }
+            }
+        });
+    }
 }

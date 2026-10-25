@@ -70,6 +70,9 @@ itself, so asked the same thing again, even days later, it gives the same answer
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
 "what is the password to the vault?" answered with "the password is pumpkin.", and asked it later,
 the villager says "the password is pumpkin."
+The game also tells each villager who it is (`SelfKnowledge`): the name MCA gave it, its
+profession, and whether it is still a child, so asked "what's your name?" an MCA villager says "my
+name is misu." and asked about work, "i'm a farmer."
 
 What villagers say is tied to what they perceive (`ConceptLinks`). Every word cell has Hebbian
 links to the meaning cells of the concept system: the Concept lobe, helped by the frontal part,

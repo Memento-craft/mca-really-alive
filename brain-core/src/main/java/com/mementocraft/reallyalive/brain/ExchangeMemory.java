@@ -181,11 +181,39 @@ final class ExchangeMemory {
      */
     static final class Own {
         static final int CAPACITY = 256;
+        /** Room for what it knows about itself, kept apart and not saved: the game tells it again. */
+        static final int SELF_CAPACITY = 64;
         static final float SMALL_WORD_CUE = 0.5f;
-        final int[][] cues = new int[CAPACITY][];
-        final int[][] answers = new int[CAPACITY][];
+        final int[][] cues = new int[CAPACITY + SELF_CAPACITY][];
+        final int[][] answers = new int[CAPACITY + SELF_CAPACITY][];
         int count;
         private int next;
+        private int selfCount;
+
+        /** Forgets what it knew about itself, before being told again. */
+        void forgetSelf() {
+            selfCount = 0;
+        }
+
+        /** Knows that asked this line, the answer about itself is that one. */
+        void knowSelf(int[] line, int[] answer) {
+            if (selfCount < SELF_CAPACITY && line.length > 0 && answer.length > 0) {
+                cues[CAPACITY + selfCount] = cuesOf(line, null);
+                answers[CAPACITY + selfCount] = answer.clone();
+                selfCount++;
+            }
+        }
+
+        private int[] slots() {
+            int[] slots = new int[count + selfCount];
+            for (int i = 0; i < count; i++) {
+                slots[i] = i;
+            }
+            for (int i = 0; i < selfCount; i++) {
+                slots[count + i] = CAPACITY + i;
+            }
+            return slots;
+        }
 
         /** Remembers that this line was answered so. */
         void remember(int[] line, int[] answer, ExchangeMemory shared) {
@@ -213,7 +241,9 @@ final class ExchangeMemory {
 
         /** As {@link ExchangeMemory#recall}, from this villager's own memories. */
         int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, ExchangeMemory shared) {
-            float[] score = new float[count];
+            int[] slots = slots();
+            int n = slots.length;
+            float[] score = new float[n];
             float heardNorm = 0f;
             int[] seen = new int[heard.length + before.length];
             int distinct = 0;
@@ -234,8 +264,8 @@ final class ExchangeMemory {
                     seen[distinct++] = w;
                     wt = share * wt * wt;
                     heardNorm += wt * share;
-                    for (int p = 0; p < count; p++) {
-                        if (Arrays.binarySearch(cues[p], w) >= 0) {
+                    for (int p = 0; p < n; p++) {
+                        if (Arrays.binarySearch(cues[slots[p]], w) >= 0) {
                             score[p] += wt;
                         }
                     }
@@ -245,25 +275,29 @@ final class ExchangeMemory {
                 return new int[0][];
             }
             // Its own memories are vivid: even a vague line brings them up at full strength.
-            heardNorm = (float) Math.sqrt(heardNorm);
-            Integer[] order = new Integer[count];
-            float[] v = new float[count];
-            for (int p = 0; p < count; p++) {
+            Integer[] order = new Integer[n];
+            float[] v = new float[n];
+            for (int p = 0; p < n; p++) {
                 order[p] = p;
                 float norm = 0f;
-                for (int w : cues[p]) {
+                for (int w : cues[slots[p]]) {
                     norm += cueWeight(w, shared) * cueWeight(w, shared);
                 }
-                v[p] = score[p] / (heardNorm * (float) Math.sqrt(Math.max(norm, 1e-6f)));
+                float covered = score[p] / Math.max(norm, 1e-6f);
+                float heardCovered = score[p] / heardNorm;
+                // What it knows about itself is brought up by its question inside a longer line;
+                // other memories need the lines to match as wholes.
+                double lean = slots[p] >= CAPACITY ? 0.9 : 0.5;
+                v[p] = (float) (Math.pow(covered, lean) * Math.pow(heardCovered, 1 - lean));
             }
             Arrays.sort(order, (a, b) -> Float.compare(v[b], v[a]));
             int found = 0;
-            while (found < Math.min(k, count) && v[order[found]] > 0f) {
+            while (found < Math.min(k, n) && v[order[found]] > 0f) {
                 found++;
             }
             int[][] out = new int[found][];
             for (int i = 0; i < found; i++) {
-                out[i] = answers[order[i]];
+                out[i] = answers[slots[order[i]]];
                 if (match != null && i < match.length) {
                     match[i] = v[order[i]];
                 }

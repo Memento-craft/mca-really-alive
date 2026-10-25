@@ -241,6 +241,8 @@ public final class BrainManager {
             brain = Brain.create(Genome.fromArray(data.genome()), v.getUUID().getMostSignificantBits(), maturity(v));
         }
 
+        Naming.whoItIs(v, brain);
+
         PlayerInputMoveControl move = new PlayerInputMoveControl(v);
         Handle h = new Handle(v.getUUID(), brain, move, v.getMoveControl(), v.getLookControl(), v.getJumpControl());
         MobAccessor body = (MobAccessor) v;
@@ -376,6 +378,10 @@ public final class BrainManager {
         }
         if (h.age % 200 == 0) {
             h.brain.grow(maturity(v), 5);
+        }
+        if (h.age % 1200 == 0) {
+            // Its name or work may have changed since it was last told.
+            Naming.whoItIs(v, h.brain);
         }
         Brain brain = h.brain;
         h.pending = CompletableFuture.supplyAsync(() -> brain.step(f), workers);
