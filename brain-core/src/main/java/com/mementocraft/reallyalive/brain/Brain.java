@@ -66,6 +66,12 @@ public final class Brain {
     /** How fast that memory of an action fades once the input that saw it falls quiet. */
     static final float QUIET_ELIG_DECAY = 0.97f;
     static final float QUIET_ELIG_MIN = 1e-3f;
+    /**
+     * How fast the learned pathway's memory of an action fades while its input stays active. At 0.9
+     * a reward 40 ticks later was lost unless the input happened to fall quiet (2 of 6 brains
+     * learned it); at 0.97 villagers in game held jump nonstop.
+     */
+    static final float PATHWAY_ELIG_DECAY = 0.95f;
     static final float TRACE_ACTIVE = 0.01f;
     static final float RECEPTOR_MAX_P = 0.6f;
     static final float INHIBITORY_FRACTION = 0.2f;
@@ -939,7 +945,7 @@ public final class Brain {
                     float spike = fired[j] ? 1f : 0f;
                     // The learned pathway remembers what the body did for seconds, active or not, so
                     // a reward that comes later still reaches it; inborn reflex arcs forget fast.
-                    float keep = role[i] == ROLE_RECEPTOR ? MOTOR_ELIG_DECAY : QUIET_ELIG_DECAY;
+                    float keep = role[i] == ROLE_RECEPTOR ? MOTOR_ELIG_DECAY : PATHWAY_ELIG_DECAY;
                     e = s.elig[k] * keep + preTrace * (spike - slowRate[j]);
                     s.elig[k] = e;
                     w = s.weight[k] + preSign * lr * (role[i] == ROLE_RECEPTOR ? MOTOR_LEARNING_BOOST : PATHWAY_BOOST) * e * motorGate;

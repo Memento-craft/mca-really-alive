@@ -348,8 +348,9 @@ class GroundedSpeechTest {
 
     /**
      * The links run the other way too: hearing a word brings up its meaning in the concept system,
-     * so right after someone says "zombie" in an empty field, "zombie" is the word whose meaning is
-     * most present.
+     * so right after someone says "zombie" in an empty field, "zombie" is the word whose meaning
+     * came up the most (measured as the rise, since some meanings, like "zombie", sit higher than
+     * others in an empty field anyway).
      */
     @Test
     void hearingAWordBringsUpWhatItMeans() {
@@ -360,18 +361,34 @@ class GroundedSpeechTest {
             for (int t = 0; t < 60; t++) {
                 b.step(base());
             }
+            float[] before = boosts(b);
             SensoryFrame f = base();
             f.hear(s.word(), false);
             b.step(f);
             for (int t = 0; t < 4; t++) {
                 b.step(base());
             }
-            String top = mostPresent(b);
-            System.out.printf("    heard \"%s\": most present meaning \"%s\"%n", s.word(), top);
+            String top = mostRisen(b, before);
+            System.out.printf("    heard \"%s\": meaning that came up most \"%s\"%n", s.word(), top);
             hits += s.word().equals(top) ? 1 : 0;
         }
         System.out.printf("hearing a word brought up its own meaning first for %d of %d words%n", hits, SCENES.length);
         assertTrue(hits >= SCENES.length / 2, "only " + hits);
+    }
+
+    /** Of the scene words, the one whose meaning came up the most since before. */
+    static String mostRisen(Brain b, float[] before) {
+        String top = null;
+        float best = Float.NEGATIVE_INFINITY;
+        float[] now = boosts(b);
+        for (Scene s : SCENES) {
+            int id = b.language.vocabulary.find(s.word());
+            if (id >= 0 && id < before.length && now[id] - before[id] > best) {
+                best = now[id] - before[id];
+                top = s.word();
+            }
+        }
+        return top;
     }
 
     /** Of the scene words, the one whose meaning the concept system holds most beyond usual. */
