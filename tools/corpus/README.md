@@ -17,6 +17,13 @@ CORPUS=train.txt,soda_clean.txt EVAL=soda_eval.txt BITS=23 MIN_COUNT=60 KEEP=48 
   ./gradlew -p brain-core test --tests '*EnglishProbeTest' -i
 ```
 
+The remembered exchanges (`exchanges.bin.gz`) are built from the same files, every n-th pair of lines:
+
+```
+CORPUS=soda_clean.txt:12,train.txt:40 EXCHANGES_OUT=brain-core/src/main/resources/reallyalive/exchanges.bin.gz \
+  ./gradlew -p brain-core test --tests '*ExchangeMemoryTest' -i
+```
+
 Sources: `generate.py` (scripted scenarios and word lists), `trees.py` (branching conversations
 where every reply fits its line), `facts.py` (questions and answers about the world), `grammar.py`
 (told sentences where verbs only take objects that fit), `chatter.py` (likes, experiences, wishes

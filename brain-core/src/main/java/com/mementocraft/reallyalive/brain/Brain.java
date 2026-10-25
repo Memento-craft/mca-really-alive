@@ -1,6 +1,7 @@
 package com.mementocraft.reallyalive.brain;
 
 import java.util.Arrays;
+import java.util.Set;
 
 /**
  * One villager's brain: a spiking neural network of leaky integrate-and-fire neurons split into the
@@ -144,7 +145,7 @@ public final class Brain {
     /** Ways of starting a line it weighs before giving up on a remark. */
     static final int REMARK_OPENERS = 48;
     /** Ways of starting an answer it weighs. */
-    static final int REPLY_OPENERS = 16;
+    static final int REPLY_OPENERS = 24;
     /** A line thought through has at least this many words (counting punctuation). */
     static final int LINE_MIN_WORDS = 3;
     /** How much a line loses for being just as natural out of nowhere as in answer. */
@@ -770,8 +771,8 @@ public final class Brain {
         groundedWord(false);
         int[] openers = openers(tries);
         int turn = language.vocabulary.find(WordCode.TURN);
-        int[] best = null;
-        float bestEase = Float.NEGATIVE_INFINITY;
+        thoughtBest = null;
+        thoughtEase = Float.NEGATIVE_INFINITY;
         int[] line = new int[MAX_LINE_WORDS];
         for (int opener : openers) {
             if (opener == turn) {
@@ -790,28 +791,78 @@ public final class Brain {
                     says = sameWord(language.vocabulary.word(w), language.vocabulary.word(mustSay));
                 }
                 line[length++] = w;
-                language.hear(language.vocabulary.word(w), false);
+                String word = language.vocabulary.word(w);
+                language.hear(word, false);
+                if (says && SENTENCE_ENDS.contains(word) && length >= LINE_MIN_WORDS) {
+                    // It could stop at the end of this sentence, too, rather than run on.
+                    LanguageArea.Place here = language.place();
+                    weigh(line, length, ease, meant, turn, 0f);
+                    language.restore(here);
+                }
                 w = groundedWord(false);
             }
-            if (!says || length < LINE_MIN_WORDS || saidLately(line, length)) {
-                continue;
+            if (says && w == turn) {
+                weigh(line, length, ease, meant, turn, 0f);
             }
-            // How naturally the line ends there, too; and how much more natural it is as an answer
-            // to this than as something to say out of nowhere, so a line that fits anything ("i
-            // know, but...") loses to one that answers what was said.
-            ease += (float) Math.log(likelihood(turn));
-            // And a line that says what is held in mind beats one that says nothing about it.
-            ease = (ease - RELEVANCE * outOfNowhere(line, length) + MEANING * meant) / (length + 1);
-            if (ease > bestEase) {
-                bestEase = ease;
-                best = Arrays.copyOf(line, length);
+        }
+        // Answers others gave to lines like this one come to mind too, and are weighed the same way.
+        language.restore(start);
+        ExchangeMemory memory = ExchangeMemory.shared();
+        if (mustSay < 0 && RECALLED > 0 && memory != null && !language.heardOwnLine()) {
+            float[] match = new float[RECALLED];
+            int[][] recalled = memory.recall(language.heardLine(), language.earlierLine(), RECALL_BEFORE, RECALLED, match);
+            for (int r = 0; r < recalled.length; r++) {
+                language.restore(start);
+                groundedWord(false);
+                int length = 0;
+                float ease = 0f;
+                float meant = 0f;
+                for (int w : recalled[r]) {
+                    if (w >= language.vocabulary.size() || length == MAX_LINE_WORDS) {
+                        break;
+                    }
+                    ease += (float) Math.log(meantLikelihood(w));
+                    meant = Math.max(meant, (float) Math.log(fit[w]));
+                    line[length++] = w;
+                    language.hear(language.vocabulary.word(w), false);
+                    groundedWord(false);
+                }
+                weigh(line, length, ease, meant, turn, RECALL_WEIGHT * match[r]);
             }
         }
         language.restore(start);
+        int[] best = thoughtBest;
         if (best != null) {
             said[saidNext++ % said.length] = best;
         }
         return best;
+    }
+
+    /** How many remembered answers come to mind for a heard line, and how much they count. */
+    static final int RECALLED = 8;
+    static final float RECALL_BEFORE = 0.3f;
+    static final float RECALL_WEIGHT = 1.5f;
+        private static final Set<String> SENTENCE_ENDS = Set.of(".", "!", "?");
+    private int[] thoughtBest;
+    private float thoughtEase;
+
+    /**
+     * Weighs a line thought through to here, with the language area just after its last word, and
+     * keeps it if it beats the best so far: how naturally it ends here, and how much more natural
+     * it is as an answer to this than as something to say out of nowhere, so a line that fits
+     * anything ("i know, but...") loses to one that answers what was said; and a line that says
+     * what is held in mind beats one that says nothing about it.
+     */
+    private void weigh(int[] line, int length, float ease, float meant, int turn, float recalled) {
+        if (length < LINE_MIN_WORDS || saidLately(line, length)) {
+            return;
+        }
+        ease += (float) Math.log(likelihood(turn));
+        ease = (ease - RELEVANCE * outOfNowhere(line, length) + MEANING * meant) / (length + 1) + recalled;
+        if (ease > thoughtEase) {
+            thoughtEase = ease;
+            thoughtBest = Arrays.copyOf(line, length);
+        }
     }
 
     /** How likely the line is as the opening of a talk, with nothing said before it. */

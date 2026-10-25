@@ -365,6 +365,19 @@ public final class LanguageArea {
         heardOwn = false;
     }
 
+    /** The words of the last line heard (word ids), and whether it was this brain's own. */
+    int[] heardLine() {
+        return heard;
+    }
+
+    int[] earlierLine() {
+        return earlier;
+    }
+
+    boolean heardOwnLine() {
+        return heardOwn;
+    }
+
     /** True while nothing has been heard since the last reset or turn change. */
     public boolean atTurnStart() {
         return utterance.isEmpty();

@@ -56,6 +56,16 @@ less with each line so they don't chatter forever. Answers are often apt ("what 
 for work?" → "i used to hate."): this is a few million counted synapses, not a large language
 model.
 
+Before answering, the frontal part thinks the reply through: it tries 24 ways of opening, follows
+each to the end of a line, and keeps the line that comes most naturally as an answer to what was
+said (rather than as something one could say to anything), says what the villager perceives, and
+was not said a moment ago. Villagers also remember exchanges, the way the hippocampus keeps
+episodes (`ExchangeMemory`, 8 MB, about 370,000 exchanges from the same corpora, with names left out):
+each remembered answer is linked to the telling words of the line it answered, so hearing a line
+brings up answers people gave to lines like it ("watch out! zombies!" brings up "i'll get my
+sword.", "stay behind me."), and those are weighed next to the lines it makes up. Playing one side
+of 120 real talks it never saw, the share of stock answers fell from 68% to 19%.
+
 What villagers say is tied to what they perceive (`ConceptLinks`). Every word cell has Hebbian
 links to the meaning cells of the concept system: the Concept lobe, helped by the frontal part,
 Memory and Emotion. When someone names a thing (the game does this now and then while a player or
