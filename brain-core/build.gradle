@@ -18,6 +18,11 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // The shared English alone takes about 310 MB; training it (EnglishProbeTest) needs far more.
+    maxHeapSize = System.getenv('TEST_HEAP') ?: '2g'
+    if (System.getenv('MAX_SYNAPSES')) {
+        systemProperty 'reallyalive.maxSynapses', System.getenv('MAX_SYNAPSES')
+    }
     testLogging {
         events 'passed', 'failed'
         showStandardStreams = true

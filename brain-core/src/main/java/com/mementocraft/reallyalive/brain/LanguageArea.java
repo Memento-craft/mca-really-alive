@@ -28,7 +28,7 @@ import java.util.List;
  * with), adding what it hears in its own world in a small sheet of its own.
  */
 public final class LanguageArea {
-    static final int MAX_SYNAPSES = 48;
+    static final int MAX_SYNAPSES = Integer.getInteger("reallyalive.maxSynapses", 48);
     static final int CELLS_PER_FEATURE = 2;
     static final int HISTORY = 5;
     static final int MEMORY_WORDS = 16;

@@ -12,7 +12,7 @@ Then train, measure on the held-out set and write the shared English file:
 
 ```
 python3 tools/corpus/soda.py soda_clean.txt soda_eval.txt
-CORPUS=train.txt,soda_clean.txt EVAL=soda_eval.txt BITS=23 MIN_COUNT=60 KEEP=48 \
+CORPUS=train.txt,soda_clean.txt EVAL=soda_eval.txt BITS=24 MIN_COUNT=20 KEEP=96 MAX_SYNAPSES=96 TEST_HEAP=13g \
   MODEL_OUT=brain-core/src/main/resources/reallyalive/english.lang.gz \
   ./gradlew -p brain-core test --tests '*EnglishProbeTest' -i
 ```

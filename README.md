@@ -43,10 +43,12 @@ building, stories, world knowledge and talk about what one sees, smells, feels, 
 about a million real everyday conversations from SODA (Kim et al. 2023, "SODA: Million-scale
 Dialogue Distillation with Social Commonsense Contextualization", allenai/soda, CC BY 4.0), keeping
 only conversations whose words all occur at least 50 times (25,000 distinct words). Context cells
-now reach back five words and also to the line before last. On SODA conversations it never saw it
-guesses the next word 41% of the time (the earlier generated-only English got 17%), and 70% on
-held-out generated ones. The trained English ships as one shared 38 MB file (`english.lang.gz`,
-synapses seen fewer than 60 times pruned, so rare words such as "zombie" keep their place after common contexts; about 140 MB of server memory); each
+now reach back five words and also to the line before last, over 16 million context cells with up
+to 96 synapses each. On SODA conversations it never saw it guesses the next word 44% of the time
+(the earlier generated-only English got 17%), and 72% on held-out generated ones. The trained
+English ships as one shared 85 MB file (`english.lang.gz`, synapses seen fewer than 20 times
+pruned, so rare words such as "zombie" keep their place after common contexts) and takes about
+310 MB of server memory, shared by all villagers; each
 villager adds what it hears in its own world in a small sheet of its own. When someone finishes a
 line, the villager answers: the word the area expects next drives that word's speech pools, so the
 answer comes out word by word through the same spiking voice it babbles with, and it stops when

@@ -234,6 +234,8 @@ public final class Brain {
     ExchangeMemory.Own talk = new ExchangeMemory.Own();
     /** The last line heard before this one ended, and whether it was its own. */
     private int[] lastLine;
+    /** The words of the line being heard, whoever says it. */
+    private final java.util.List<Integer> lineSoFar = new java.util.ArrayList<>();
     private boolean lastLineOwn;
     private int[] meaning = new int[0];
     private float[] meaningKeep = new float[0];
@@ -593,6 +595,9 @@ public final class Brain {
                 }
             }
             if (!w.equals(WordCode.TURN)) {
+                if (lineSoFar.size() < MAX_LINE_WORDS * 2) {
+                    lineSoFar.add(language.vocabulary.find(w));
+                }
                 // Others' words are linked to what is around while they are said, and bring up
                 // what they mean. Its own words do neither, or it would teach itself its mistakes.
                 if (!own) {
@@ -628,7 +633,9 @@ public final class Brain {
      * exchange, whoever said them, unless both were its own.
      */
     private void rememberExchange(boolean own) {
-        int[] line = language.heardLine();
+        // The whole line, not just the last words the language area keeps in mind.
+        int[] line = lineSoFar.stream().mapToInt(Integer::intValue).toArray();
+        lineSoFar.clear();
         ExchangeMemory memory = ExchangeMemory.shared();
         if (memory != null && lastLine != null && !(own && lastLineOwn) && ticks - lastLineTick < EXCHANGE_GAP
                 && !(own && aboutTheMoment(line))) {
@@ -867,6 +874,7 @@ public final class Brain {
     /** Its own remembered exchanges count for more, and one this close is the same question again. */
     static final float OWN_RECALL_WEIGHT = 3f;
     static final float SAME_QUESTION = 0.8f;
+    static final float OWN_MATCH_MIN = 0.5f;
     /** The least likely a word of a line it knows by heart counts as (log). */
     static final float KNOWN_WORD = (float) Math.log(0.02);
     /** Lines further apart than this (ticks) are not an exchange. */
@@ -893,8 +901,10 @@ public final class Brain {
         int[] line = new int[MAX_LINE_WORDS];
         for (int r = 0; r < recalled.length; r++) {
             language.restore(start);
-            if (Arrays.equals(recalled[r], language.heardLine())) {
-                // Saying someone's line back to them is no answer.
+            if (Arrays.equals(recalled[r], language.heardLine()) || own && match[r] < OWN_MATCH_MIN) {
+                // Saying someone's line back to them is no answer; and its own few memories are
+                // only answers to lines much like the one they followed, or it would bring back
+                // whatever was said a moment ago.
                 continue;
             }
             groundedWord(false);
