@@ -87,6 +87,9 @@ public final class BrainManager {
         final JumpControl originalJump;
         final SensoryFrame frame = new SensoryFrame();
         final float[] vision = new float[frame.vision.length];
+        final float[] colour = new float[frame.colour.length];
+        /** Someone to talk to is near, checked now and then. */
+        boolean company;
         final float[] scent = new float[OlfactoryChannel.COUNT];
         CompletableFuture<MotorCommand> pending;
         MotorCommand command = MotorCommand.IDLE;
@@ -346,9 +349,14 @@ public final class BrainManager {
         SensoryFrame f = h.frame;
         f.clear();
         if (h.age % Config.VISION_INTERVAL.get() == 0) {
-            Senses.see(v, Config.VISION_RANGE.get(), h.vision);
+            Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour);
         }
         System.arraycopy(h.vision, 0, f.vision, 0, h.vision.length);
+        System.arraycopy(h.colour, 0, f.colour, 0, h.colour.length);
+        if (h.age % 10 == 0) {
+            h.company = Naming.someoneNear(v);
+        }
+        f.company = h.company ? 1f : 0f;
         Senses.feel(v, f);
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);

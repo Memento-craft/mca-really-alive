@@ -233,6 +233,7 @@ public final class BrainIO {
         } else {
             b.addMissingLobes();
         }
+        b.addMissingReceptors();
         return b;
     }
 

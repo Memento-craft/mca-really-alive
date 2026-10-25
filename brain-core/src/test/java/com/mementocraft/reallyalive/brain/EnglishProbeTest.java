@@ -88,7 +88,8 @@ class EnglishProbeTest {
         int words = 0;
         int chunk = train.size() / 5;
         for (int i = 0; i < train.size(); i++) {
-            area.reset();
+            // A conversation opens at a turn with nothing heard, so how lines open is learned too.
+            area.startLine();
             String prev = null;
             for (String w : train.get(i)) {
                 area.hear(w, true);

@@ -302,6 +302,40 @@ public final class LanguageArea {
         activeCount = 0;
     }
 
+    /** Where the area is in a conversation, to come back to after thinking a line through. */
+    public final class Place {
+        final int[] history = LanguageArea.this.history.clone();
+        final int historyLength = LanguageArea.this.historyLength;
+        final List<Integer> utterance = new ArrayList<>(LanguageArea.this.utterance);
+        final int[] heard = LanguageArea.this.heard;
+        final boolean heardOwn = LanguageArea.this.heardOwn;
+    }
+
+    public Place place() {
+        return new Place();
+    }
+
+    public void restore(Place p) {
+        System.arraycopy(p.history, 0, history, 0, HISTORY);
+        historyLength = p.historyLength;
+        utterance.clear();
+        utterance.addAll(p.utterance);
+        heard = p.heard;
+        heardOwn = p.heardOwn;
+        activate();
+    }
+
+    /**
+     * Gets ready to start a line of its own with nobody having spoken: a fresh turn, as if the
+     * last line had just ended.
+     */
+    public void startLine() {
+        reset();
+        hear(WordCode.TURN, false);
+        // Nobody spoke, itself included, so the first words of the line are learned.
+        heardOwn = false;
+    }
+
     /** True while nothing has been heard since the last reset or turn change. */
     public boolean atTurnStart() {
         return utterance.isEmpty();
@@ -411,6 +445,10 @@ public final class LanguageArea {
         for (int order = 0; order < historyLength; order++) {
             h = mix(h * 31 + history[order] + 1);
             feature(order, h);
+        }
+        if (heard.length == 0 && utterance.isEmpty() && historyLength > 0) {
+            // Nothing was said to it: it is opening the conversation ("look, a zombie!").
+            feature(F_HEARD_START, 0x0BE5EED5L);
         }
         for (int q : heard) {
             if (utterance.isEmpty()) {

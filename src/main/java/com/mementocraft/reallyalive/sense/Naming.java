@@ -59,7 +59,8 @@ public final class Naming {
         }
     }
 
-    private static boolean someoneNear(LivingEntity body) {
+    /** Whether a player or another villager is close enough to talk to. */
+    public static boolean someoneNear(LivingEntity body) {
         return !body.level().getEntitiesOfClass(LivingEntity.class, body.getBoundingBox().inflate(COMPANY_RANGE),
                 e -> e != body && e.isAlive() && (e instanceof Player || e instanceof AbstractVillager)).isEmpty();
     }

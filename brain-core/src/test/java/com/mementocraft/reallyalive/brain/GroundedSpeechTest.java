@@ -19,20 +19,34 @@ import static org.junit.jupiter.api.Assertions.*;
 class GroundedSpeechTest {
     record Scene(String word, String question, java.util.function.Consumer<SensoryFrame> setup) {}
 
-    static void creature(SensoryFrame f) {
+    static void creature(SensoryFrame f, boolean hostile, float r, float g, float b) {
         for (int x = 6; x < 10; x++) {
             for (int y = 2; y < 7; y++) {
                 f.vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)] = 1f;
+                // The game marks a hostile creature as a hazard, as it does lava.
+                f.vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_HAZARD)] = hostile ? 1f : 0f;
                 f.vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.6f;
             }
         }
+        paint(f, 6, 10, 2, 7, r, g, b);
     }
 
-    static void ahead(SensoryFrame f, int channel) {
+    static void ahead(SensoryFrame f, int channel, float r, float g, float b) {
         for (int x = 5; x < 11; x++) {
             for (int y = 0; y < 8; y++) {
                 f.vision[SenseLayout.visionIndex(x, y, channel)] = 1f;
                 f.vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.7f;
+            }
+        }
+        paint(f, 5, 11, 0, 8, r, g, b);
+    }
+
+    static void paint(SensoryFrame f, int x0, int x1, int y0, int y1, float r, float g, float b) {
+        for (int x = x0; x < x1; x++) {
+            for (int y = y0; y < y1; y++) {
+                f.colour[SenseLayout.colourIndex(x, y, 0)] = r;
+                f.colour[SenseLayout.colourIndex(x, y, 1)] = g;
+                f.colour[SenseLayout.colourIndex(x, y, 2)] = b;
             }
         }
     }
@@ -46,25 +60,26 @@ class GroundedSpeechTest {
 
     static final Scene[] SCENES = {
         new Scene("zombie", SEE, f -> {
-            creature(f);
+            creature(f, true, 0.2f, 0.55f, 0.5f);
             f.set(OlfactoryChannel.HOSTILE, 0.9f);
             f.set(SoundChannel.HOSTILE, 0.6f);
         }),
         new Scene("cow", SEE, f -> {
-            creature(f);
+            creature(f, false, 0.4f, 0.28f, 0.18f);
             f.set(OlfactoryChannel.ANIMAL, 0.9f);
             f.set(SoundChannel.ANIMAL, 0.6f);
         }),
         new Scene("ladder", SEE, f -> {
-            ahead(f, SenseLayout.CH_CLIMBABLE);
-            ahead(f, SenseLayout.CH_SOLID);
+            ahead(f, SenseLayout.CH_CLIMBABLE, 0.55f, 0.4f, 0.2f);
+            ahead(f, SenseLayout.CH_SOLID, 0.55f, 0.4f, 0.2f);
         }),
         new Scene("fire", SEE, f -> {
-            ahead(f, SenseLayout.CH_HAZARD);
+            ahead(f, SenseLayout.CH_HAZARD, 1f, 0.5f, 0.1f);
             f.set(OlfactoryChannel.SMOKE, 0.9f);
         }),
         new Scene("water", SEE, f -> {
             f.set(FeelChannel.IN_WATER, 1f);
+            paint(f, 0, SenseLayout.VISION_W, 0, SenseLayout.VISION_H, 0.2f, 0.3f, 0.8f);
             f.set(OlfactoryChannel.WATER, 0.9f);
             f.set(SoundChannel.WATER, 0.7f);
         }),
@@ -86,6 +101,9 @@ class GroundedSpeechTest {
                 f.vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_SOLID)] = 1f;
             }
         }
+        // Sky above, grass below.
+        paint(f, 0, SenseLayout.VISION_W, 0, 7, 0.5f, 0.7f, 1f);
+        paint(f, 0, SenseLayout.VISION_W, 7, SenseLayout.VISION_H, 0.35f, 0.6f, 0.2f);
         return f;
     }
 
@@ -217,6 +235,118 @@ class GroundedSpeechTest {
     }
 
     /**
+     * What was just in front of it stays in mind for a few seconds: the creature or thing walks out
+     * of view, two seconds pass, and asked what it saw, the villager still names it, though by
+     * then the cells that saw it have quieted.
+     */
+    @Test
+    void villagersRememberWhatTheyJustSaw() {
+        int right = 0, asked = 0;
+        String[] questions = {"what did you see?", "what was that?"};
+        for (long seed = 1; seed <= 2; seed++) {
+            Brain b = Brain.create(Genome.defaults(), seed, 1f);
+            liveThrough(b, ROUNDS, true, new Rng(seed * 101));
+            for (int trial = 0; trial < 2; trial++) {
+                for (Scene s : SCENES) {
+                    if (!s.question().equals(SEE)) {
+                        continue;
+                    }
+                    Supplier<SensoryFrame> frame = in(s);
+                    for (int t = 0; t < 100; t++) {
+                        b.step(frame.get());
+                    }
+                    for (int t = 0; t < 40; t++) {
+                        b.step(base());
+                    }
+                    List<String> said = ask(b, GroundedSpeechTest::base, questions[trial]);
+                    boolean ok = mentions(said, s.word());
+                    right += ok ? 1 : 0;
+                    asked++;
+                    System.out.printf("    [%s, 2 s later] %s -> %s%s%n", s.word(), questions[trial], String.join(" ", said), ok ? "  (right)" : "");
+                    for (int t = 0; t < 60; t++) {
+                        b.step(base());
+                    }
+                }
+            }
+        }
+        System.out.printf("named what it saw 2 s before: %d of %d%n", right, asked);
+        assertTrue(right >= asked / 2, "remembered only " + right + " of " + asked);
+    }
+
+    /**
+     * Nobody asks anything: with someone standing by, a villager that comes upon something speaks
+     * up about it ("look, a zombie!"). It thinks the line through first and keeps quiet when the
+     * line would not say what it noticed, so it does not chatter about nothing; alone, it says
+     * nothing at all.
+     */
+    @Test
+    void villagersSpeakUpAboutWhatTheyNotice() {
+        int right = 0, lines = 0, scenes = 0, alone = 0;
+        for (long seed = 1; seed <= 2; seed++) {
+            Brain b = Brain.create(Genome.defaults(), seed, 1f);
+            liveThrough(b, ROUNDS, true, new Rng(seed * 101));
+            for (int trial = 0; trial < 2; trial++) {
+                for (Scene s : SCENES) {
+                    if (!s.question().equals(SEE)) {
+                        continue;
+                    }
+                    boolean company = trial == 0;
+                    Supplier<SensoryFrame> frame = in(s);
+                    watch(b, GroundedSpeechTest::base, 100, company);
+                    List<List<String>> said = watch(b, frame, 200, company);
+                    scenes += company ? 1 : 0;
+                    boolean ok = false;
+                    for (List<String> line : said) {
+                        if (!company) {
+                            alone++;
+                            continue;
+                        }
+                        lines++;
+                        ok |= mentions(line, s.word());
+                    }
+                    right += ok ? 1 : 0;
+                    System.out.printf("    [%s%s] %s%s%n", s.word(), company ? "" : ", alone", said, ok ? "  (right)" : "");
+                }
+            }
+        }
+        System.out.printf("spoke up about what came into view: %d of %d, in %d lines; alone %d lines%n", right, scenes, lines, alone);
+        assertTrue(right >= scenes / 2, "spoke up about only " + right + " of " + scenes);
+        assertTrue(lines <= right + scenes / 2, "too many lines about nothing: " + lines);
+        assertEquals(0, alone, "talked with nobody around");
+    }
+
+    /** Lives through a scene, with or without someone near, hearing its own voice; returns its lines. */
+    static List<List<String>> watch(Brain b, Supplier<SensoryFrame> scene, int ticks, boolean company) {
+        List<List<String>> lines = new ArrayList<>();
+        List<String> line = new ArrayList<>();
+        String echo = null;
+        for (int t = 0; t < ticks; t++) {
+            SensoryFrame f = scene.get();
+            f.company = company ? 1f : 0f;
+            if (echo != null) {
+                f.hear(echo, true);
+                f.set(SoundChannel.VILLAGER_VOICE, 1f);
+            }
+            boolean speaking = b.replyUrge >= Brain.URGE_MIN;
+            echo = b.word(b.step(f).say());
+            if (echo == null || !speaking) {
+                // A word tried out while babbling is not a line.
+                continue;
+            }
+            if (echo.equals(WordCode.TURN)) {
+                lines.add(line);
+                line = new ArrayList<>();
+            } else {
+                line.add(echo);
+            }
+        }
+        if (!line.isEmpty()) {
+            lines.add(line);
+        }
+        return lines;
+    }
+
+    /**
      * The links run the other way too: hearing a word brings up its meaning in the concept system,
      * so right after someone says "zombie" in an empty field, "zombie" is the word whose meaning is
      * most present.
@@ -259,9 +389,10 @@ class GroundedSpeechTest {
         return top;
     }
 
+    /** How much more than usual each word's meaning is present right now, leaving out recall. */
     static float[] boosts(Brain b) {
         float[] boost = new float[b.language.vocabulary.size()];
-        b.links.presence(boost, boost.length, false);
+        b.links.presence(boost, boost.length, false, false);
         return boost;
     }
 }

@@ -11,7 +11,7 @@ birth, growing with age) split into lobes:
 
 | Lobe | Role |
 |---|---|
-| Occipital | Vision: 16×10 eye rays inside a player's field of view (nearness, solid, hazard, creature) |
+| Occipital | Vision: 16×10 eye rays inside a player's field of view (nearness, solid, hazard, creature, climbable), plus the colour of what each ray hits at half that resolution |
 | Olfactory | Scents drifting from nearby creatures, food, fire, flowers and water |
 | Feely | Touch, motion, balance, health, plus a copy of its own key presses |
 | Concept | Combines senses into concepts, in three areas: actions (from Feely), people and places (from sight and smell) |
@@ -62,10 +62,19 @@ work both ways: hearing "zombie" stirs the cells seeing one does, and while answ
 area frames the line ("i see a ...") while the links pick the word whose meaning is present now.
 The frontal part plans a word ahead, so "a" beats "you" after "i see" when there is a zombie to
 name. In `GroundedSpeechTest`, villagers who had things named answer "what do you see?", "what do
-you smell?" and "how do you feel?" with the right thing about two times in three ("a ladder.",
-"i smell flowers.", "i feel very hurt."), against never for villagers who heard nothing named. Cows
-and zombies still get mixed up, as only their smell tells them apart, and talking about something
-seen a few seconds ago does not work yet.
+you smell?" and "how do you feel?" with the right thing about three times in four ("a ladder.",
+"i smell flowers.", "i feel very hurt."), against never for villagers who heard nothing named.
+A word that fits the moment but was not the one named also learns what it is not (links against
+the cells most stirred then), which with colour vision lets cows and zombies come apart.
+
+The frontal part also holds in mind what was just there: how present each word's meaning was a
+moment ago fades over a few seconds, and is pushed out sooner by whatever else comes up. Seen cells
+quiet down (they even dip below usual) as soon as a thing walks out of view, so without this a
+villager asked "what did you see?" two seconds later named it once in 20 tries; with it, 16 in 20.
+And villagers speak up on their own: when something new comes up strongly and someone is within a
+few blocks, the frontal part thinks through a few ways of opening a line, keeps the most natural one
+that gets to what it noticed within five words, and says it ("look, a zombie!", "is fire hot?").
+If no line would, it says nothing, and alone it never speaks up.
 
 Learning happens live, in game:
 

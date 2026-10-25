@@ -125,6 +125,16 @@ public final class Brain {
     static final float URGE_MIN = 0.2f;
     static final float URGE_DECAY = 0.995f;
     static final int MAX_LINE_WORDS = 24;
+    /** How strongly it wants to say something it noticed, against URGE_MIN. */
+    static final float REMARK_URGE = 0.5f;
+    /** Ticks after a remark before it makes another. */
+    static final int REMARK_COOLDOWN = 200;
+    /** Ticks after the last line heard or said before it speaks up on its own. */
+    static final int REMARK_QUIET = 100;
+    /** How far into a line it must get to what it noticed, or it does not say it. */
+    static final int REMARK_WORDS = 5;
+    /** Ways of starting a line it weighs before giving up on a remark. */
+    static final int REMARK_OPENERS = 48;
     /**
      * How strongly what the concept system holds picks among the words the language area offers:
      * each word's chance is multiplied by e^(gain x how much more than usual its meaning is present).
@@ -139,7 +149,7 @@ public final class Brain {
     /** How long each kind of meaning cell's activity is held for the word links, per tick kept. */
     static final float[] MEANING_KEEP = {0.95f, 0.98f, 0.95f, 0.95f};
 
-    /** Flattened input layout: vision, body, efference copy, smell, emotion, sounds, words. */
+    /** Flattened input layout: vision, body, efference copy, smell, emotion, sounds, words, colour. */
     static final int IN_VISION = 0;
     static final int IN_FEEL = IN_VISION + SenseLayout.VISION_SIZE;
     static final int IN_EFFERENCE = IN_FEEL + FeelChannel.COUNT;
@@ -147,7 +157,8 @@ public final class Brain {
     static final int IN_EMOTION = IN_SMELL + OlfactoryChannel.COUNT;
     static final int IN_SOUND = IN_EMOTION + SenseLayout.EMOTION_RECEPTORS;
     static final int IN_WORDS = IN_SOUND + SoundChannel.COUNT;
-    static final int INPUT_SIZE = IN_WORDS + SenseLayout.WORD_FEATURES;
+    static final int IN_COLOUR = IN_WORDS + SenseLayout.WORD_FEATURES;
+    static final int INPUT_SIZE = IN_COLOUR + SenseLayout.COLOUR_RECEPTORS;
 
     final Genome genome;
     final Rng rng;
@@ -196,6 +207,10 @@ public final class Brain {
     float replyUrge;
     int villagerLines;
     int lineWords;
+    /** How near someone to talk to is, this tick. */
+    float company;
+    long lastLineTick = Long.MIN_VALUE / 2;
+    long nextRemark;
     /** Links between words and the meaning cells of the concept system, both ways. */
     ConceptLinks links = new ConceptLinks();
     private int[] meaning = new int[0];
@@ -204,6 +219,8 @@ public final class Brain {
     private float[] boost = new float[1024];
     private float[] fit = new float[1024];
     private final int[] planWord = new int[PLAN_CANDIDATES];
+    /** The first word of a line it decided to start on its own, until it has said it; or -1. */
+    private int opener = -1;
     private final float[] planScore = new float[PLAN_CANDIDATES];
 
     final float[] input = new float[INPUT_SIZE];
@@ -382,6 +399,7 @@ public final class Brain {
                 receptor(LobeId.WERNICKE, IN_WORDS + w);
             }
         }
+        buildColourReceptors();
         // The Motor lobe's sheet: controls in the lower half, the voice in the upper half.
         for (int c = 0; c < MotorChannel.COUNT; c++) {
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
@@ -397,10 +415,34 @@ public final class Brain {
         }
     }
 
+    private void buildColourReceptors() {
+        for (int i = 0; i < SenseLayout.COLOUR_RECEPTORS; i++) {
+            receptor(LobeId.OCCIPITAL, IN_COLOUR + i);
+        }
+    }
+
+    /** Brains saved before they had colour vision get their colour receptors. */
+    void addMissingReceptors() {
+        for (int i = 0; i < n; i++) {
+            if (role[i] == ROLE_RECEPTOR && inputSlot[i] >= IN_COLOUR) {
+                return;
+            }
+        }
+        int first = n;
+        buildColourReceptors();
+        for (int i = first; i < n; i++) {
+            wireOut(i);
+        }
+    }
+
     private int receptor(LobeId l, int slot) {
         float x = rng.nextFloat();
         float y = rng.nextFloat();
-        if (l == LobeId.OCCIPITAL) {
+        if (slot >= IN_COLOUR) {
+            int cell = (slot - IN_COLOUR) / SenseLayout.COLOUR_CHANNELS;
+            x = (cell % SenseLayout.COLOUR_CELLS_W + 0.5f) / SenseLayout.COLOUR_CELLS_W;
+            y = (cell / SenseLayout.COLOUR_CELLS_W + 0.5f) / SenseLayout.COLOUR_CELLS_H;
+        } else if (l == LobeId.OCCIPITAL) {
             int ray = (slot - IN_VISION) / SenseLayout.VISION_CHANNELS;
             x = (ray % SenseLayout.VISION_W + 0.5f) / SenseLayout.VISION_W;
             y = (ray / SenseLayout.VISION_W + 0.5f) / SenseLayout.VISION_H;
@@ -464,6 +506,20 @@ public final class Brain {
         input[IN_EMOTION + SenseLayout.EMO_CURIOSITY] = SensoryFrame.clamp01(surprise * CURIOSITY_GAIN);
         System.arraycopy(f.sound, 0, input, IN_SOUND, SoundChannel.COUNT);
         System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.WORD_FEATURES);
+        for (int cy = 0; cy < SenseLayout.COLOUR_CELLS_H; cy++) {
+            for (int cx = 0; cx < SenseLayout.COLOUR_CELLS_W; cx++) {
+                for (int c = 0; c < SenseLayout.COLOUR_CHANNELS; c++) {
+                    float sum = 0f;
+                    for (int dy = 0; dy < 2; dy++) {
+                        for (int dx = 0; dx < 2; dx++) {
+                            sum += f.colour[SenseLayout.colourIndex(cx * 2 + dx, cy * 2 + dy, c)];
+                        }
+                    }
+                    input[IN_COLOUR + (cy * SenseLayout.COLOUR_CELLS_W + cx) * SenseLayout.COLOUR_CHANNELS + c] =
+                            SensoryFrame.clamp01(sum / 4f);
+                }
+            }
+        }
     }
 
     private void deliverSpikes() {
@@ -489,6 +545,7 @@ public final class Brain {
      * the longer they talk among themselves, so two villagers don't chatter forever.
      */
     private void listen(SensoryFrame f) {
+        company = f.company;
         for (String w : f.named) {
             links.learn(language.vocabulary.id(w), meaning, Math.max(0, meaningCount), ConceptLinks.NAME_RATE);
         }
@@ -499,6 +556,7 @@ public final class Brain {
             String w = f.heardWords.get(i);
             boolean own = f.heardOwn.get(i);
             language.hear(w, !own);
+            opener = -1;
             if (!w.equals(WordCode.TURN)) {
                 // Others' words are linked to what is around while they are said, and bring up
                 // what they mean. Its own words do neither, or it would teach itself its mistakes.
@@ -509,6 +567,7 @@ public final class Brain {
                 }
                 continue;
             }
+            lastLineTick = ticks;
             if (own) {
                 replyUrge = 0f;
             } else {
@@ -539,8 +598,15 @@ public final class Brain {
         Arrays.fill(boost, 0, words, 0f);
         links.presence(boost, words, learn);
         boolean anyMeaning = false;
+        // Measured from the most present meaning, so a word that fits only a little less than the
+        // best does not get the same lift just because both are past the cap.
+        float most = 0f;
         for (int w = 0; w < words; w++) {
-            fit[w] = (float) Math.exp(clamp(GROUNDING_GAIN * boost[w], -GROUNDING_MAX, GROUNDING_MAX));
+            most = Math.max(most, boost[w]);
+        }
+        float shift = Math.max(0f, GROUNDING_GAIN * most - GROUNDING_MAX);
+        for (int w = 0; w < words; w++) {
+            fit[w] = (float) Math.exp(clamp(GROUNDING_GAIN * boost[w] - shift, -GROUNDING_MAX, GROUNDING_MAX));
             anyMeaning |= boost[w] != 0f;
         }
         // The few words worth planning past, by how well they fit on their own.
@@ -621,6 +687,98 @@ public final class Brain {
             int i = meaning[k];
             synInput[i] += e[i];
         }
+    }
+
+    /**
+     * Speaking up: when something new comes up strongly in the concept system and someone is
+     * around to hear, the frontal part thinks a line through, word by word, as it would say it.
+     * Only if the line it comes up with says what it noticed ("look, a zombie!") does it say it;
+     * otherwise it keeps quiet, so it does not come out with a line about nothing.
+     */
+    private void maybeRemark() {
+        int noticed = links.noticed;
+        if (noticed < 0 || company <= 0f || replyUrge >= URGE_MIN || ticks < nextRemark
+                || ticks - lastLineTick < REMARK_QUIET) {
+            return;
+        }
+        // It weighs a few ways of starting the line and, of the lines that soon get to what it
+        // noticed, says the one that comes most naturally to its language area.
+        LanguageArea.Place before = language.place();
+        language.startLine();
+        groundedWord(false);
+        int[] openers = openers();
+        int chosen = -1;
+        float bestEase = Float.NEGATIVE_INFINITY;
+        for (int opener : openers) {
+            if (language.vocabulary.word(opener).equals(WordCode.TURN)) {
+                continue;
+            }
+            language.startLine();
+            int w = opener;
+            float ease = 0f;
+            boolean says = false;
+            for (int k = 0; k < REMARK_WORDS && !says; k++) {
+                if (w < 0 || language.vocabulary.word(w).equals(WordCode.TURN)) {
+                    break;
+                }
+                ease += (float) Math.log(likelihood(w));
+                says = sameWord(language.vocabulary.word(w), language.vocabulary.word(noticed));
+                language.hear(language.vocabulary.word(w), false);
+                w = groundedWord(false);
+            }
+            if (says && ease > bestEase) {
+                bestEase = ease;
+                chosen = opener;
+            }
+        }
+        language.restore(before);
+        if (chosen < 0) {
+            return;
+        }
+        language.startLine();
+        nextRemark = ticks + REMARK_COOLDOWN;
+        replyUrge = REMARK_URGE;
+        lineWords = 0;
+        opener = chosen;
+        expected = chosen;
+    }
+
+    /** How likely the language area finds this word next, 0..1. */
+    private float likelihood(int word) {
+        float[] sc = language.scores();
+        float total = 0f;
+        for (int w = 0; w < language.vocabulary.size(); w++) {
+            total += sc[w];
+        }
+        return total > 0f ? Math.max(1e-6f, sc[word] / total) : 1e-6f;
+    }
+
+    /** The likeliest first words of a line, weighed by meaning, best first. */
+    private int[] openers() {
+        float[] sc = language.scores();
+        int words = language.vocabulary.size();
+        int[] top = new int[REMARK_OPENERS];
+        float[] topScore = new float[REMARK_OPENERS];
+        int found = 0;
+        for (int w = 0; w < words; w++) {
+            float v = sc[w] * fit[w];
+            if (v <= 0f || found == REMARK_OPENERS && v <= topScore[found - 1]) {
+                continue;
+            }
+            int p = found < REMARK_OPENERS ? found++ : found - 1;
+            while (p > 0 && topScore[p - 1] < v) {
+                top[p] = top[p - 1];
+                topScore[p] = topScore[p - 1];
+                p--;
+            }
+            top[p] = w;
+            topScore[p] = v;
+        }
+        return Arrays.copyOf(top, found);
+    }
+
+    static boolean sameWord(String a, String b) {
+        return a.equals(b) || a.equals(b + "s") || b.equals(a + "s");
     }
 
     /**
@@ -779,7 +937,10 @@ public final class Brain {
                     // does while the input was active? Reward then keeps or undoes that surprise.
                     // Compared with the neuron's long-run rate, so a whole burst counts, not just its onset.
                     float spike = fired[j] ? 1f : 0f;
-                    e = s.elig[k] * MOTOR_ELIG_DECAY + preTrace * (spike - slowRate[j]);
+                    // The learned pathway remembers what the body did for seconds, active or not, so
+                    // a reward that comes later still reaches it; inborn reflex arcs forget fast.
+                    float keep = role[i] == ROLE_RECEPTOR ? MOTOR_ELIG_DECAY : QUIET_ELIG_DECAY;
+                    e = s.elig[k] * keep + preTrace * (spike - slowRate[j]);
                     s.elig[k] = e;
                     w = s.weight[k] + preSign * lr * (role[i] == ROLE_RECEPTOR ? MOTOR_LEARNING_BOOST : PATHWAY_BOOST) * e * motorGate;
                 } else if (role[j] == ROLE_SPEECH) {
@@ -867,8 +1028,12 @@ public final class Brain {
         // Each word's usual presence is learned all day long, not only in conversation, and
         // what to say next follows what the concept system holds even between heard words.
         int heldWord = groundedWord(true);
-        if (replyUrge >= URGE_MIN && heldWord >= 0) {
+        if (replyUrge >= URGE_MIN && opener >= 0) {
+            expected = opener;
+        } else if (replyUrge >= URGE_MIN && heldWord >= 0) {
             expected = heldWord;
+        } else {
+            maybeRemark();
         }
         // Synaptic scaling, using synInput as scratch space (it is empty between ticks).
         float[] excSum = synInput;

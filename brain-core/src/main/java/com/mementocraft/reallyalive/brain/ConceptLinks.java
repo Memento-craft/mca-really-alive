@@ -27,14 +27,20 @@ import java.util.Arrays;
  */
 final class ConceptLinks {
     /** Links each word cell keeps. */
-    static final int MAX_LINKS = 48;
+    static final int MAX_LINKS = 256;
     /** How many of the most changed meaning cells may join a word's links when it is heard. */
-    static final int ACTIVE_CELLS = 32;
+    static final int ACTIVE_CELLS = 128;
     /** Learning rate when someone names a thing; overheard words in talk teach at TALK_RATE. */
     static final float NAME_RATE = 0.1f;
     static final float TALK_RATE = 0.03f;
     /** How hard a heard word pushes the other words that fit the moment away from it. */
     static final float CONTRAST = 0.3f;
+    /** How much of what is held in mind stays, per update of what is present (every second). */
+    static final float HELD_KEEP = 0.93f;
+    /** How strongly something else present now pushes out what is held. */
+    static final float HELD_DISPLACE = 0.7f;
+    /** How present a word's meaning must come up, from not being in mind, to be noticed. */
+    static final float NOTICE = 0.4f;
     /** How fast each meaning cell's usual activity and wavering are tracked: about a minute. */
     static final float BASELINE_DECAY = 0.999f;
     static final float SPREAD_MIN = 1e-5f;
@@ -59,6 +65,16 @@ final class ConceptLinks {
     /** How often each word was learned from, and how much of its meaning is usually present. */
     float[] exposures = new float[0];
     float[] usualMatch = new float[0];
+    /**
+     * What the frontal part holds in mind: how present each word's meaning was a moment ago,
+     * fading, and pushed out sooner by whatever else is present now. Not saved.
+     */
+    float[] held = new float[0];
+    /**
+     * The word whose meaning has just come up strongly and was not in mind before (something new
+     * in front of the villager), as of the last learning update of presence; -1 if none.
+     */
+    int noticed = -1;
 
     /** Per neuron: slow activity of meaning cells, its usual level and wavering, what words evoke. */
     float[] activity = new float[0];
@@ -86,6 +102,7 @@ final class ConceptLinks {
             size = Arrays.copyOf(size, c);
             exposures = Arrays.copyOf(exposures, c);
             usualMatch = Arrays.copyOf(usualMatch, c);
+            held = Arrays.copyOf(held, c);
         }
     }
 
@@ -129,6 +146,34 @@ final class ConceptLinks {
         for (int k = 0; k < n; k++) {
             w[k] += rate * (deviation(c[k]) - w[k]);
         }
+        link(word, found, rate);
+        exposures[word] += 1f;
+        // Word cells compete: every other word that fits what is here now too is pushed a little
+        // away from it, so "cow" and "zombie", both creatures, come to differ by what tells them
+        // apart (the smell) instead of both meaning "a creature".
+        for (int other = 0; other < size.length; other++) {
+            if (other == word || size[other] == 0) {
+                continue;
+            }
+            float m = match(other);
+            if (m <= 0f) {
+                continue;
+            }
+            float step = CONTRAST * rate * m;
+            for (int k = 0; k < size[other]; k++) {
+                weights[other][k] -= step * deviation(cells[other][k]);
+            }
+            // And it learns what it is not: links against the cells most stirred now, so in front
+            // of a cow, "zombie" comes to fit less than "cow" even where both are creatures.
+            link(other, found, -step);
+        }
+    }
+
+    /** Links a word to those of the found cells it lacks, starting at scale times their deviation. */
+    private void link(int word, int found, float scale) {
+        int[] c = cells[word];
+        float[] w = weights[word];
+        int n = size[word];
         for (int t = 0; t < found; t++) {
             int cell = top[t];
             boolean linked = false;
@@ -138,7 +183,7 @@ final class ConceptLinks {
             if (linked) {
                 continue;
             }
-            float start = rate * topD[t];
+            float start = scale * topD[t];
             if (n < MAX_LINKS) {
                 c[n] = cell;
                 w[n++] = start;
@@ -156,23 +201,6 @@ final class ConceptLinks {
             }
         }
         size[word] = n;
-        exposures[word] += 1f;
-        // Word cells compete: every other word that fits what is here now too is pushed a little
-        // away from it, so "cow" and "zombie", both creatures, come to differ by what tells them
-        // apart (the smell) instead of both meaning "a creature".
-        for (int other = 0; other < size.length; other++) {
-            if (other == word || size[other] == 0) {
-                continue;
-            }
-            float m = match(other);
-            if (m <= 0f) {
-                continue;
-            }
-            float step = CONTRAST * rate * m;
-            for (int k = 0; k < size[other]; k++) {
-                weights[other][k] -= step * deviation(cells[other][k]);
-            }
-        }
     }
 
     /** The meaning cells furthest from their usual activity, into top and topD; returns how many. */
@@ -227,16 +255,44 @@ final class ConceptLinks {
      * word's usual level is updated.
      */
     void presence(float[] boost, int words, boolean learn) {
+        presence(boost, words, learn, true);
+    }
+
+    /** As {@link #presence(float[], int, boolean)}; without recall, only what is present now. */
+    void presence(float[] boost, int words, boolean learn, boolean recall) {
         int limit = Math.min(words, size.length);
+        float present = 0f;
         for (int wd = 0; wd < limit; wd++) {
             if (size[wd] == 0) {
                 continue;
             }
             float m = match(wd);
             boost[wd] = strength(wd) * (m - usualMatch[wd]);
+            present = Math.max(present, boost[wd]);
             if (learn) {
                 usualMatch[wd] = usualMatch[wd] * USUAL_MATCH_DECAY + m * (1f - USUAL_MATCH_DECAY);
             }
+        }
+        // What was here a moment ago stays in mind after its cells have quieted (they even dip
+        // below usual), until it fades or something else takes its place.
+        if (learn) {
+            noticed = -1;
+        }
+        float newest = NOTICE;
+        for (int wd = 0; wd < limit; wd++) {
+            if (size[wd] == 0) {
+                continue;
+            }
+            float now = boost[wd];
+            if (learn) {
+                if (now > newest && held[wd] < now / 2f) {
+                    newest = now;
+                    noticed = wd;
+                }
+                float displaced = Math.max(0f, Math.min(1f, HELD_DISPLACE * (present - now)));
+                held[wd] = Math.max(now, held[wd] * HELD_KEEP * (1f - displaced));
+            }
+            boost[wd] = recall ? Math.max(now, held[wd]) : now;
         }
     }
 
