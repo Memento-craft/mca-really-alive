@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 6;
+    private static final int VERSION = 7;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -99,6 +99,7 @@ public final class BrainIO {
         c.writeLast(out);
         writeLanguage(b, out);
         b.links.write(out, b.n);
+        writeTalk(b, out);
     }
 
     public static Brain read(DataInput in) throws IOException {
@@ -106,7 +107,7 @@ public final class BrainIO {
             throw new IOException("Not a brain file");
         }
         int version = in.readInt();
-        if (version != VERSION && version != 5 && version != 4) {
+        if (version != VERSION && version != 6 && version != 5 && version != 4) {
             throw new IOException("Unsupported brain version " + version);
         }
         float[] genes = new float[in.readInt()];
@@ -233,8 +234,42 @@ public final class BrainIO {
         } else {
             b.addMissingLobes();
         }
+        if (version >= 7) {
+            readTalk(b, in);
+        }
         b.addMissingReceptors();
         return b;
+    }
+
+    /** Its remembered exchanges, as words, so they survive a change of the shipped English. */
+    private static void writeTalk(Brain b, DataOutput out) throws IOException {
+        ExchangeMemory.Own talk = b.talk;
+        out.writeInt(talk.count);
+        for (int i = 0; i < talk.count; i++) {
+            for (int[] line : new int[][] {talk.cues[i], talk.answers[i]}) {
+                out.writeShort(line.length);
+                for (int w : line) {
+                    out.writeUTF(b.language.vocabulary.word(w));
+                }
+            }
+        }
+    }
+
+    private static void readTalk(Brain b, DataInput in) throws IOException {
+        int count = in.readInt();
+        ExchangeMemory memory = ExchangeMemory.shared();
+        for (int i = 0; i < count; i++) {
+            int[][] lines = new int[2][];
+            for (int k = 0; k < 2; k++) {
+                lines[k] = new int[in.readShort()];
+                for (int j = 0; j < lines[k].length; j++) {
+                    lines[k][j] = b.language.vocabulary.id(in.readUTF());
+                }
+            }
+            if (memory != null) {
+                b.talk.remember(lines[0], lines[1], memory);
+            }
+        }
     }
 
     private static void writeFloats(DataOutput out, float[] a) throws IOException {

@@ -65,6 +65,11 @@ each remembered answer is linked to the telling words of the line it answered, s
 brings up answers people gave to lines like it ("watch out! zombies!" brings up "i'll get my
 sword.", "stay behind me."), and those are weighed next to the lines it makes up. Playing one side
 of 120 real talks it never saw, the share of stock answers fell from 68% to 19%.
+Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
+itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
+mason."), what others answered its lines, and what it overheard players say to each other. Hear
+"what is the password to the vault?" answered with "the password is pumpkin.", and asked it later,
+the villager says "the password is pumpkin."
 
 What villagers say is tied to what they perceive (`ConceptLinks`). Every word cell has Hebbian
 links to the meaning cells of the concept system: the Concept lobe, helped by the frontal part,

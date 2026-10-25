@@ -109,4 +109,68 @@ class ConversationTest {
         assertTrue(answered >= talk.length - 1, "answered only " + answered);
         assertTrue(answers.size() >= talk.length - 1, "repeated itself: " + answers.size() + " different answers");
     }
+
+    /** As the game does when the world is saved and loaded again. */
+    static Brain saveAndLoad(Brain b) {
+        try {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            BrainIO.write(b, new java.io.DataOutputStream(bytes));
+            return BrainIO.read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray())));
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** Two players talking near it: the villager hears a line answered. */
+    static void overhear(Brain b, String line) {
+        for (String w : WordCode.tokenize(line)) {
+            SensoryFrame f = frame();
+            f.hear(w, false);
+            f.set(SoundChannel.PLAYER_VOICE, 1f);
+            b.step(f);
+        }
+        SensoryFrame f = frame();
+        f.hear(WordCode.TURN, false);
+        f.set(SoundChannel.PLAYER_VOICE, 1f);
+        b.step(f);
+        // Players keep talking among themselves: the villager does not get a word in.
+        b.replyUrge = 0f;
+    }
+
+    /**
+     * Villagers remember talk: asked the same thing again later, even after the world was saved
+     * and loaded, a villager answers as it did before, and what it overheard players answer to a question it gives as its own answer.
+     */
+    @Test
+    void villagerRemembersWhatItSaidAndWhatItOverheard() {
+        int same = 0, learned = 0, seeds = 3;
+        for (long seed = 1; seed <= seeds; seed++) {
+            Brain b = Brain.create(Genome.defaults(), 20 + seed, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> first = talk(b, "what do you do for work?", onScript);
+            for (String line : new String[] {"nice weather today.", "i'm going to the market.", "have you seen my dog?"}) {
+                talk(b, line, onScript);
+            }
+            b = saveAndLoad(b);
+            List<String> again = talk(b, "what do you do for work?", onScript);
+            System.out.println("  first: " + String.join(" ", first) + "\n  again: " + String.join(" ", again));
+            same += first.equals(again) ? 1 : 0;
+
+            overhear(b, "what is the password to the vault?");
+            overhear(b, "the password is pumpkin.");
+            for (String line : new String[] {"how are you?", "what's for dinner?"}) {
+                talk(b, line, onScript);
+            }
+            List<String> asked = talk(b, "what is the password to the vault?", onScript);
+            System.out.println("  password: " + String.join(" ", asked));
+            learned += asked.contains("pumpkin") ? 1 : 0;
+        }
+        System.out.printf("answered the same again %d of %d; gave the overheard answer %d of %d%n", same, seeds, learned, seeds);
+        assertTrue(same >= seeds - 1, "answers changed: " + same);
+        assertTrue(learned >= seeds - 1, "did not learn from what it overheard: " + learned);
+    }
 }

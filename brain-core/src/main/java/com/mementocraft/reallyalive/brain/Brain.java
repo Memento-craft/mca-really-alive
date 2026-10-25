@@ -230,6 +230,11 @@ public final class Brain {
     long nextRemark;
     /** Links between words and the meaning cells of the concept system, both ways. */
     ConceptLinks links = new ConceptLinks();
+    /** Exchanges this villager heard or took part in. */
+    ExchangeMemory.Own talk = new ExchangeMemory.Own();
+    /** The last line heard before this one ended, and whether it was its own. */
+    private int[] lastLine;
+    private boolean lastLineOwn;
     private int[] meaning = new int[0];
     private float[] meaningKeep = new float[0];
     private int meaningCount = -1;
@@ -598,6 +603,7 @@ public final class Brain {
                 }
                 continue;
             }
+            rememberExchange(own);
             lastLineTick = ticks;
             plan = null;
             if (own) {
@@ -615,6 +621,35 @@ public final class Brain {
             planAt = 0;
         }
         expected = plan != null ? planned() : groundedWord(false);
+    }
+
+    /**
+     * A line just ended: if it answered another line said not long before, the pair is kept as an
+     * exchange, whoever said them, unless both were its own.
+     */
+    private void rememberExchange(boolean own) {
+        int[] line = language.heardLine();
+        ExchangeMemory memory = ExchangeMemory.shared();
+        if (memory != null && lastLine != null && !(own && lastLineOwn) && ticks - lastLineTick < EXCHANGE_GAP
+                && !(own && aboutTheMoment(line))) {
+            talk.remember(lastLine, line, memory);
+        }
+        lastLine = line;
+        lastLineOwn = own;
+    }
+
+    /**
+     * Whether its own line named something it perceives right now ("i see a zombie"): that was
+     * about the moment, not about itself, and next time the answer should come from what is there.
+     */
+    private boolean aboutTheMoment(int[] line) {
+        groundedWord(false);
+        for (int w : line) {
+            if (w < fit.length && Math.log(fit[w]) > MOMENT_FIT) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The next word of the planned line, or the end of the turn once it is all said. */
@@ -805,30 +840,17 @@ public final class Brain {
                 weigh(line, length, ease, meant, turn, 0f);
             }
         }
-        // Answers others gave to lines like this one come to mind too, and are weighed the same way.
+        // Answers others gave to lines like this one come to mind too, and are weighed the same way:
+        // those of the shared memory, and more strongly what this villager heard or said itself.
         language.restore(start);
         ExchangeMemory memory = ExchangeMemory.shared();
-        if (mustSay < 0 && RECALLED > 0 && memory != null && !language.heardOwnLine()) {
+        if (mustSay < 0 && memory != null && !language.heardOwnLine()) {
             float[] match = new float[RECALLED];
-            int[][] recalled = memory.recall(language.heardLine(), language.earlierLine(), RECALL_BEFORE, RECALLED, match);
-            for (int r = 0; r < recalled.length; r++) {
-                language.restore(start);
-                groundedWord(false);
-                int length = 0;
-                float ease = 0f;
-                float meant = 0f;
-                for (int w : recalled[r]) {
-                    if (w >= language.vocabulary.size() || length == MAX_LINE_WORDS) {
-                        break;
-                    }
-                    ease += (float) Math.log(meantLikelihood(w));
-                    meant = Math.max(meant, (float) Math.log(fit[w]));
-                    line[length++] = w;
-                    language.hear(language.vocabulary.word(w), false);
-                    groundedWord(false);
-                }
-                weigh(line, length, ease, meant, turn, RECALL_WEIGHT * match[r]);
-            }
+            int[] heard = language.heardLine();
+            int[] before = language.earlierLine();
+            weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match), match, RECALL_WEIGHT, false, start, turn);
+            int[][] mine = talk.recall(heard, before, 0f, RECALLED, match, memory);
+            weighRecalled(mine, match, OWN_RECALL_WEIGHT, true, start, turn);
         }
         language.restore(start);
         int[] best = thoughtBest;
@@ -842,6 +864,13 @@ public final class Brain {
     static final int RECALLED = 8;
     static final float RECALL_BEFORE = 0.3f;
     static final float RECALL_WEIGHT = 1.5f;
+    /** Its own remembered exchanges count for more, and one this close is the same question again. */
+    static final float OWN_RECALL_WEIGHT = 3f;
+    static final float SAME_QUESTION = 0.8f;
+    /** Lines further apart than this (ticks) are not an exchange. */
+    static final int EXCHANGE_GAP = 1200;
+    /** How strongly a word must fit what is perceived (log of its grounding lift) to be about the moment. */
+    static final float MOMENT_FIT = 1f;
         private static final Set<String> SENTENCE_ENDS = Set.of(".", "!", "?");
     private int[] thoughtBest;
     private float thoughtEase;
@@ -853,8 +882,43 @@ public final class Brain {
      * anything ("i know, but...") loses to one that answers what was said; and a line that says
      * what is held in mind beats one that says nothing about it.
      */
+    /**
+     * Weighs remembered answers as lines it could say. Its own memory of what was answered to
+     * just this may be said again even if said lately: asked the same again, it answers the same.
+     */
+    private void weighRecalled(int[][] recalled, float[] match, float strength, boolean own,
+            LanguageArea.Place start, int turn) {
+        int[] line = new int[MAX_LINE_WORDS];
+        for (int r = 0; r < recalled.length; r++) {
+            language.restore(start);
+            if (Arrays.equals(recalled[r], language.heardLine())) {
+                // Saying someone's line back to them is no answer.
+                continue;
+            }
+            groundedWord(false);
+            int length = 0;
+            float ease = 0f;
+            float meant = 0f;
+            for (int w : recalled[r]) {
+                if (w >= language.vocabulary.size() || length == MAX_LINE_WORDS) {
+                    break;
+                }
+                ease += (float) Math.log(meantLikelihood(w));
+                meant = Math.max(meant, (float) Math.log(fit[w]));
+                line[length++] = w;
+                language.hear(language.vocabulary.word(w), false);
+                groundedWord(false);
+            }
+            weigh(line, length, ease, meant, turn, strength * match[r], own && match[r] >= SAME_QUESTION);
+        }
+    }
+
     private void weigh(int[] line, int length, float ease, float meant, int turn, float recalled) {
-        if (length < LINE_MIN_WORDS || saidLately(line, length)) {
+        weigh(line, length, ease, meant, turn, recalled, false);
+    }
+
+    private void weigh(int[] line, int length, float ease, float meant, int turn, float recalled, boolean mayRepeat) {
+        if (length < LINE_MIN_WORDS || !mayRepeat && saidLately(line, length)) {
             return;
         }
         ease += (float) Math.log(likelihood(turn));

@@ -168,6 +168,110 @@ final class ExchangeMemory {
         return answers.length;
     }
 
+    /** How telling a word is as a cue (0 for the commonest words); words it never saw count as rare. */
+    float weight(int word) {
+        return word < weight.length ? weight[word] : (float) Math.log(answers.length);
+    }
+
+    /**
+     * One villager's own remembered exchanges, from talk heard in its world: what it answered
+     * itself (so it answers the same question the same way, and keeps to who it is), what others
+     * answered its lines, and exchanges it overheard. Cued as the shared memory is, with the shared
+     * memory's sense of how telling each word is. The oldest make way for new ones.
+     */
+    static final class Own {
+        static final int CAPACITY = 256;
+        static final float SMALL_WORD_CUE = 0.5f;
+        final int[][] cues = new int[CAPACITY][];
+        final int[][] answers = new int[CAPACITY][];
+        int count;
+        private int next;
+
+        /** Remembers that this line was answered so. */
+        void remember(int[] line, int[] answer, ExchangeMemory shared) {
+            int[] cue = cuesOf(line, shared);
+            if (cue.length == 0 || answer.length == 0) {
+                return;
+            }
+            cues[next] = cue;
+            answers[next] = answer.clone();
+            next = (next + 1) % CAPACITY;
+            count = Math.min(CAPACITY, count + 1);
+        }
+
+        /**
+         * Every word of the line cues its own memories, small words faintly: a line it heard
+         * itself is remembered whole, so "what do you do for work?" asked again is known again.
+         */
+        private static int[] cuesOf(int[] line, ExchangeMemory shared) {
+            return Arrays.stream(line).filter(w -> w >= 0).distinct().sorted().toArray();
+        }
+
+        private static float cueWeight(int w, ExchangeMemory shared) {
+            return Math.max(SMALL_WORD_CUE, shared.weight(w));
+        }
+
+        /** As {@link ExchangeMemory#recall}, from this villager's own memories. */
+        int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, ExchangeMemory shared) {
+            float[] score = new float[count];
+            float heardNorm = 0f;
+            int[] seen = new int[heard.length + before.length];
+            int distinct = 0;
+            for (int pass = 0; pass < 2; pass++) {
+                int[] line = pass == 0 ? heard : before;
+                float share = pass == 0 ? 1f : beforeShare;
+                outer:
+                for (int w : line) {
+                    float wt = w < 0 || share <= 0f ? 0f : cueWeight(w, shared);
+                    if (wt == 0f) {
+                        continue;
+                    }
+                    for (int i = 0; i < distinct; i++) {
+                        if (seen[i] == w) {
+                            continue outer;
+                        }
+                    }
+                    seen[distinct++] = w;
+                    wt = share * wt * wt;
+                    heardNorm += wt * share;
+                    for (int p = 0; p < count; p++) {
+                        if (Arrays.binarySearch(cues[p], w) >= 0) {
+                            score[p] += wt;
+                        }
+                    }
+                }
+            }
+            if (heardNorm == 0f) {
+                return new int[0][];
+            }
+            // Its own memories are vivid: even a vague line brings them up at full strength.
+            heardNorm = (float) Math.sqrt(heardNorm);
+            Integer[] order = new Integer[count];
+            float[] v = new float[count];
+            for (int p = 0; p < count; p++) {
+                order[p] = p;
+                float norm = 0f;
+                for (int w : cues[p]) {
+                    norm += cueWeight(w, shared) * cueWeight(w, shared);
+                }
+                v[p] = score[p] / (heardNorm * (float) Math.sqrt(Math.max(norm, 1e-6f)));
+            }
+            Arrays.sort(order, (a, b) -> Float.compare(v[b], v[a]));
+            int found = 0;
+            while (found < Math.min(k, count) && v[order[found]] > 0f) {
+                found++;
+            }
+            int[][] out = new int[found][];
+            for (int i = 0; i < found; i++) {
+                out[i] = answers[order[i]];
+                if (match != null && i < match.length) {
+                    match[i] = v[order[i]];
+                }
+            }
+            return out;
+        }
+    }
+
     @Override
     public String toString() {
         return "ExchangeMemory[" + answers.length + " answers, " + Arrays.stream(cuedBy).filter(c -> c.length > 0).count() + " cue words]";
