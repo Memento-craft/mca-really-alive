@@ -1,5 +1,6 @@
 package com.mementocraft.reallyalive.brain;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,8 +12,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Trains Wernicke's sequence layer on a generated English corpus and measures next-word
- * prediction on held-out conversations. Runs only when CORPUS and EVAL point at corpus files.
+ * Trains Wernicke's sequence layer on English conversations and measures next-word prediction
+ * on held-out ones. Runs only when CORPUS (one or more files, comma separated) and EVAL point at
+ * corpus files.
  */
 class EnglishProbeTest {
     static List<List<String>> load(String path, int max) throws IOException {
@@ -71,8 +73,7 @@ class EnglishProbeTest {
         if (corpus == null || eval == null) {
             return;
         }
-        int bits = Integer.parseInt(System.getenv().getOrDefault("BITS", "20"));
-        int maxTrain = Integer.parseInt(System.getenv().getOrDefault("TRAIN", "100000"));
+        int bits = Integer.parseInt(System.getenv().getOrDefault("BITS", "23"));
         String fw = System.getenv("FW");
         if (fw != null) {
             String[] parts = fw.split(",");
@@ -80,41 +81,78 @@ class EnglishProbeTest {
                 LanguageArea.featureWeight[i] = Float.parseFloat(parts[i]);
             }
         }
-        List<List<String>> train = load(corpus, maxTrain);
         List<List<String>> test = load(eval, 2000);
         LanguageArea area = new LanguageArea(bits);
         Map<String, Map<String, Integer>> bigram = new HashMap<>();
         long start = System.currentTimeMillis();
-        int words = 0;
-        int chunk = train.size() / 5;
-        for (int i = 0; i < train.size(); i++) {
+        // CORPUS may name several files; their conversations are interleaved so each is spread
+        // over the whole run (a full context cell keeps what keeps coming back, so order matters).
+        String[] files = corpus.split(",");
+        BufferedReader[] in = new BufferedReader[files.length];
+        double[] size = new double[files.length];
+        double[] read = new double[files.length];
+        for (int i = 0; i < files.length; i++) {
+            in[i] = Files.newBufferedReader(Path.of(files[i]));
+            size[i] = Files.size(Path.of(files[i]));
+        }
+        long words = 0, dialogues = 0;
+        while (true) {
+            int pick = -1;
+            for (int i = 0; i < files.length; i++) {
+                if (in[i] != null && (pick < 0 || read[i] / size[i] < read[pick] / size[pick])) {
+                    pick = i;
+                }
+            }
+            if (pick < 0) {
+                break;
+            }
+            List<String> d = new ArrayList<>();
+            String line;
+            while ((line = in[pick].readLine()) != null) {
+                read[pick] += line.length() + 1;
+                if (line.isBlank()) {
+                    if (!d.isEmpty()) {
+                        break;
+                    }
+                    continue;
+                }
+                d.addAll(WordCode.tokenize(line));
+                d.add(WordCode.TURN);
+            }
+            if (line == null) {
+                in[pick].close();
+                in[pick] = null;
+            }
             // A conversation opens at a turn with nothing heard, so how lines open is learned too.
             area.startLine();
             String prev = null;
-            for (String w : train.get(i)) {
+            for (String w : d) {
                 area.hear(w, true);
-                if (prev != null) {
+                if (prev != null && dialogues < 200_000) {
                     bigram.computeIfAbsent(prev, k -> new HashMap<>()).merge(w, 1, Integer::sum);
                 }
                 prev = w;
                 words++;
             }
-            if ((i + 1) % chunk == 0) {
-                System.out.printf("trained %d dialogues, %d words, vocab %d, %.0fs, %s%n", i + 1, words,
-                        area.vocabulary.size(), (System.currentTimeMillis() - start) / 1000.0, evaluate(area, test, bigram));
+            if (++dialogues % 500_000 == 0) {
+                System.out.printf("trained %d dialogues, %d words, vocab %d, %.0fs%n", dialogues, words,
+                        area.vocabulary.size(), (System.currentTimeMillis() - start) / 1000.0);
             }
         }
         long[] use = area.own.usage();
-        System.out.printf("cells used %d, synapses %d%n", use[0], use[1]);
+        System.out.printf("trained %d dialogues, %d words; cells used %d, synapses %d; %s%n", dialogues, words, use[0], use[1],
+                evaluate(area, test, bigram));
         String out = System.getenv("MODEL_OUT");
         if (out != null) {
-            int min = Integer.parseInt(System.getenv().getOrDefault("MIN_COUNT", "2"));
+            int min = Integer.parseInt(System.getenv().getOrDefault("MIN_COUNT", "12"));
+            int keep = Integer.parseInt(System.getenv().getOrDefault("KEEP", "6"));
             try (var o = Files.newOutputStream(Path.of(out))) {
-                EnglishBase.write(area, min, o);
+                EnglishBase.write(area, min, keep, o);
             }
+            area = null;
             EnglishBase base;
-            try (var in = Files.newInputStream(Path.of(out))) {
-                base = EnglishBase.read(in);
+            try (var i = Files.newInputStream(Path.of(out))) {
+                base = EnglishBase.read(i);
             }
             long[] bu = base.sheet.usage();
             System.out.printf("frozen model: %d bytes, %d cells, %d synapses%n", Files.size(Path.of(out)), bu[0], bu[1]);

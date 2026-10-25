@@ -116,6 +116,8 @@ public final class Brain {
     static final float SPEECH_BABBLE_GAIN = 1.5f;
     /** Chance per tick, at full babbling, of trying out a word. */
     static final float BABBLE_WORD_RATE = 0.03f;
+    /** How much more readily a word just heard from someone else comes to the voice. */
+    static final float PRIMED = 1.25f;
     static final float HEARING_VOICE_WEIGHT = 0.1f;
     /** A word is said when at least SAY_FEATURES of its feature pools fire this much... */
     static final float SAY_ON = 0.3f;
@@ -141,12 +143,20 @@ public final class Brain {
     static final int REMARK_WORDS = 5;
     /** Ways of starting a line it weighs before giving up on a remark. */
     static final int REMARK_OPENERS = 48;
+    /** Ways of starting an answer it weighs. */
+    static final int REPLY_OPENERS = 16;
+    /** A line thought through has at least this many words (counting punctuation). */
+    static final int LINE_MIN_WORDS = 3;
+    /** How much a line loses for being just as natural out of nowhere as in answer. */
+    static final float RELEVANCE = 0.1f;
+    /** How much saying what the concept system holds counts toward picking a line. */
+    static final float MEANING = 4f;
     /**
      * How strongly what the concept system holds picks among the words the language area offers:
      * each word's chance is multiplied by e^(gain x how much more than usual its meaning is present).
      */
     static final float GROUNDING_GAIN = 15f;
-    static final float GROUNDING_MAX = 4f;
+    static final float GROUNDING_MAX = 6f;
     /** Words weighed one word ahead, and how much the best word after each counts. */
     static final int PLAN_CANDIDATES = 8;
     static final float PLAN_WEIGHT = 1f;
@@ -225,8 +235,12 @@ public final class Brain {
     private float[] boost = new float[1024];
     private float[] fit = new float[1024];
     private final int[] planWord = new int[PLAN_CANDIDATES];
-    /** The first word of a line it decided to start on its own, until it has said it; or -1. */
-    private int opener = -1;
+    /** The line it thought through and is saying, by vocabulary number, or null; and how far it got. */
+    private int[] plan;
+    private int planAt;
+    /** Its last few lines, so it does not say the same thing again and again. */
+    private final int[][] said = new int[8][];
+    private int saidNext;
     private final float[] planScore = new float[PLAN_CANDIDATES];
 
     final float[] input = new float[INPUT_SIZE];
@@ -562,18 +576,29 @@ public final class Brain {
             String w = f.heardWords.get(i);
             boolean own = f.heardOwn.get(i);
             language.hear(w, !own);
-            opener = -1;
+            if (!own) {
+                plan = null;
+            } else if (plan != null && !w.equals(WordCode.TURN)) {
+                // Following the line it planned; a slip of the tongue drops the plan.
+                if (planAt < plan.length && plan[planAt] == language.vocabulary.find(w)) {
+                    planAt++;
+                } else {
+                    plan = null;
+                }
+            }
             if (!w.equals(WordCode.TURN)) {
                 // Others' words are linked to what is around while they are said, and bring up
                 // what they mean. Its own words do neither, or it would teach itself its mistakes.
                 if (!own) {
                     int id = language.vocabulary.find(w);
+                    primed[primedNext++ % primed.length] = id;
                     links.learn(id, meaning, Math.max(0, meaningCount), ConceptLinks.TALK_RATE);
                     links.evoke(id);
                 }
                 continue;
             }
             lastLineTick = ticks;
+            plan = null;
             if (own) {
                 replyUrge = 0f;
             } else {
@@ -583,7 +608,17 @@ public final class Brain {
             }
             lineWords = 0;
         }
-        expected = groundedWord(false);
+        if (replyUrge >= URGE_MIN && lineWords == 0 && plan == null && language.atTurnStart()) {
+            // Someone finished a line: think the answer through before starting it.
+            plan = thinkThrough(REPLY_OPENERS, -1, 0);
+            planAt = 0;
+        }
+        expected = plan != null ? planned() : groundedWord(false);
+    }
+
+    /** The next word of the planned line, or the end of the turn once it is all said. */
+    private int planned() {
+        return planAt < plan.length ? plan[planAt] : language.vocabulary.find(WordCode.TURN);
     }
 
     /**
@@ -707,46 +742,110 @@ public final class Brain {
                 || ticks - lastLineTick < REMARK_QUIET) {
             return;
         }
-        // It weighs a few ways of starting the line and, of the lines that soon get to what it
-        // noticed, says the one that comes most naturally to its language area.
         LanguageArea.Place before = language.place();
         language.startLine();
-        groundedWord(false);
-        int[] openers = openers();
-        int chosen = -1;
-        float bestEase = Float.NEGATIVE_INFINITY;
-        for (int opener : openers) {
-            if (language.vocabulary.word(opener).equals(WordCode.TURN)) {
-                continue;
-            }
-            language.startLine();
-            int w = opener;
-            float ease = 0f;
-            boolean says = false;
-            for (int k = 0; k < REMARK_WORDS && !says; k++) {
-                if (w < 0 || language.vocabulary.word(w).equals(WordCode.TURN)) {
-                    break;
-                }
-                ease += (float) Math.log(likelihood(w));
-                says = sameWord(language.vocabulary.word(w), language.vocabulary.word(noticed));
-                language.hear(language.vocabulary.word(w), false);
-                w = groundedWord(false);
-            }
-            if (says && ease > bestEase) {
-                bestEase = ease;
-                chosen = opener;
-            }
-        }
-        language.restore(before);
-        if (chosen < 0) {
+        int[] line = thinkThrough(REMARK_OPENERS, noticed, REMARK_WORDS);
+        if (line == null) {
+            language.restore(before);
             return;
         }
-        language.startLine();
         nextRemark = ticks + REMARK_COOLDOWN;
         replyUrge = REMARK_URGE;
         lineWords = 0;
-        opener = chosen;
-        expected = chosen;
+        plan = line;
+        planAt = 0;
+        expected = planned();
+    }
+
+    /**
+     * The frontal part thinks a line through before saying it: from where the language area is
+     * now (the start of a line), it tries a few ways of opening, follows each to its end word by
+     * word as it would say it, and keeps the one that comes most naturally (the likeliest words
+     * per word, ending where a line ends). With mustSay set, only lines that get to that word
+     * within the first sayWithin words count. Returns the line, or null if none would do; the
+     * language area is left where it started.
+     */
+    private int[] thinkThrough(int tries, int mustSay, int sayWithin) {
+        LanguageArea.Place start = language.place();
+        groundedWord(false);
+        int[] openers = openers(tries);
+        int turn = language.vocabulary.find(WordCode.TURN);
+        int[] best = null;
+        float bestEase = Float.NEGATIVE_INFINITY;
+        int[] line = new int[MAX_LINE_WORDS];
+        for (int opener : openers) {
+            if (opener == turn) {
+                continue;
+            }
+            language.restore(start);
+            int w = opener;
+            int length = 0;
+            float ease = 0f;
+            float meant = 0f;
+            boolean says = mustSay < 0;
+            while (length < MAX_LINE_WORDS && w >= 0 && w != turn) {
+                ease += (float) Math.log(meantLikelihood(w));
+                meant = Math.max(meant, (float) Math.log(fit[w]));
+                if (!says && length < sayWithin) {
+                    says = sameWord(language.vocabulary.word(w), language.vocabulary.word(mustSay));
+                }
+                line[length++] = w;
+                language.hear(language.vocabulary.word(w), false);
+                w = groundedWord(false);
+            }
+            if (!says || length < LINE_MIN_WORDS || saidLately(line, length)) {
+                continue;
+            }
+            // How naturally the line ends there, too; and how much more natural it is as an answer
+            // to this than as something to say out of nowhere, so a line that fits anything ("i
+            // know, but...") loses to one that answers what was said.
+            ease += (float) Math.log(likelihood(turn));
+            // And a line that says what is held in mind beats one that says nothing about it.
+            ease = (ease - RELEVANCE * outOfNowhere(line, length) + MEANING * meant) / (length + 1);
+            if (ease > bestEase) {
+                bestEase = ease;
+                best = Arrays.copyOf(line, length);
+            }
+        }
+        language.restore(start);
+        if (best != null) {
+            said[saidNext++ % said.length] = best;
+        }
+        return best;
+    }
+
+    /** How likely the line is as the opening of a talk, with nothing said before it. */
+    private float outOfNowhere(int[] line, int length) {
+        language.startLine();
+        float ease = 0f;
+        for (int k = 0; k < length; k++) {
+            ease += (float) Math.log(likelihood(line[k]));
+            language.hear(language.vocabulary.word(line[k]), false);
+        }
+        return ease + (float) Math.log(likelihood(language.vocabulary.find(WordCode.TURN)));
+    }
+
+    /** Whether it said this very line a little while ago: people don't repeat themselves. */
+    private boolean saidLately(int[] line, int length) {
+        for (int[] old : said) {
+            if (old != null && old.length == length && Arrays.equals(old, 0, length, line, 0, length)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * How likely this word is next once meaning is weighed in, as groundedWord last weighed it:
+     * a line that names what is held in mind comes as naturally as a stock line.
+     */
+    private float meantLikelihood(int word) {
+        float[] sc = language.scores();
+        float total = 0f;
+        for (int w = 0; w < language.vocabulary.size(); w++) {
+            total += sc[w] * fit[w];
+        }
+        return total > 0f ? Math.max(1e-6f, sc[word] * fit[word] / total) : 1e-6f;
     }
 
     /** How likely the language area finds this word next, 0..1. */
@@ -760,18 +859,18 @@ public final class Brain {
     }
 
     /** The likeliest first words of a line, weighed by meaning, best first. */
-    private int[] openers() {
+    private int[] openers(int tries) {
         float[] sc = language.scores();
         int words = language.vocabulary.size();
-        int[] top = new int[REMARK_OPENERS];
-        float[] topScore = new float[REMARK_OPENERS];
+        int[] top = new int[tries];
+        float[] topScore = new float[tries];
         int found = 0;
         for (int w = 0; w < words; w++) {
             float v = sc[w] * fit[w];
-            if (v <= 0f || found == REMARK_OPENERS && v <= topScore[found - 1]) {
+            if (v <= 0f || found == tries && v <= topScore[found - 1]) {
                 continue;
             }
-            int p = found < REMARK_OPENERS ? found++ : found - 1;
+            int p = found < tries ? found++ : found - 1;
             while (p > 0 && topScore[p - 1] < v) {
                 top[p] = top[p - 1];
                 topScore[p] = topScore[p - 1];
@@ -1034,8 +1133,8 @@ public final class Brain {
         // Each word's usual presence is learned all day long, not only in conversation, and
         // what to say next follows what the concept system holds even between heard words.
         int heldWord = groundedWord(true);
-        if (replyUrge >= URGE_MIN && opener >= 0) {
-            expected = opener;
+        if (replyUrge >= URGE_MIN && plan != null) {
+            expected = planned();
         } else if (replyUrge >= URGE_MIN && heldWord >= 0) {
             expected = heldWord;
         } else {
@@ -1122,6 +1221,10 @@ public final class Brain {
      * the end of it, or the line is very long), the villager says the end of its turn. A mouth says
      * one word at a time, so this is the one place a single winner is picked.
      */
+    /** The last few words heard from others, primed for the voice. */
+    private final int[] primed = {-1, -1, -1, -1};
+    private int primedNext;
+
     private int decodeVoice() {
         if (voiceCooldown > 0) {
             voiceCooldown--;
@@ -1133,6 +1236,15 @@ public final class Brain {
             replyUrge = 0f;
             voiceCooldown = VOICE_COOLDOWN;
             return v.id(WordCode.TURN);
+        }
+        // Most of the time the voice is quiet: no word can be on its lips without enough of its
+        // features, so there is no need to look through every word.
+        int active = 0;
+        for (float r : speechRates) {
+            active += r > SAY_ON ? 1 : 0;
+        }
+        if (active < SAY_FEATURES) {
+            return -1;
         }
         int word = -1;
         float best = 0f;
@@ -1146,6 +1258,14 @@ public final class Brain {
             for (int feature : features) {
                 on += speechRates[feature] > SAY_ON ? 1 : 0;
                 sum += speechRates[feature];
+            }
+            // A word just heard is on the tip of the tongue: of words that sound alike to the voice,
+            // it is the one that comes out, as a child echoes what it hears.
+            for (int p : primed) {
+                if (p == w) {
+                    sum *= PRIMED;
+                    break;
+                }
             }
             if (on >= SAY_FEATURES && (sum > best || sum == best && w == expected)) {
                 best = sum;

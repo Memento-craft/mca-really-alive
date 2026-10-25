@@ -81,4 +81,32 @@ class ConversationTest {
         assertTrue(answered >= LINES.length - 1, "answered only " + answered);
         assertTrue(fidelity > 0.8f, "voice strayed from the language area: " + fidelity);
     }
+
+    /**
+     * A longer talk, one line after another, as a player would chat: every line gets an answer
+     * of its own, not the same stock line again and again.
+     */
+    @Test
+    void villagerKeepsUpAConversation() {
+        Brain b = Brain.create(Genome.defaults(), 5, 1f);
+        b.setBabbleScale(1f);
+        for (int t = 0; t < 500; t++) {
+            b.step(frame());
+        }
+        String[] talk = {"hey, how's it going?", "what did you do today?", "oh nice, was it hard work?",
+            "what's your favourite food?", "i've never tried that. is it sweet?", "do you have any family?",
+            "that's lovely. i have to go now.", "see you tomorrow!"};
+        int[] onScript = {0, 0};
+        java.util.Set<String> answers = new java.util.HashSet<>();
+        int answered = 0;
+        for (String line : talk) {
+            List<String> said = talk(b, line, onScript);
+            System.out.println("  player: " + line + "\n  villager: " + String.join(" ", said));
+            answered += said.size() >= 2 ? 1 : 0;
+            answers.add(String.join(" ", said));
+        }
+        System.out.printf("answered %d of %d lines with %d different answers%n", answered, talk.length, answers.size());
+        assertTrue(answered >= talk.length - 1, "answered only " + answered);
+        assertTrue(answers.size() >= talk.length - 1, "repeated itself: " + answers.size() + " different answers");
+    }
 }
