@@ -377,9 +377,11 @@ public final class BrainManager {
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
         f.set(FeelChannel.USING_ITEM, h.hands.usingProgress());
         if (h.hands.screenOpen()) {
-            // The head does not move while a screen is open, so its tilt is not felt as something
-            // to correct; what is under the pointer is in focus, and a stack on the pointer is held.
-            f.set(FeelChannel.SCREEN_OPEN, 1f);
+            // The screen is felt the more the longer nothing is done on it, which drives the urge to
+            // leave it. The head does not move while a screen is open, so its tilt is not felt as
+            // something to correct; what is under the pointer is in focus, and a stack on the
+            // pointer is held.
+            f.set(FeelChannel.SCREEN_OPEN, h.hands.screenBoredom());
             f.set(FeelChannel.HEAD_UP, 0f);
             f.set(FeelChannel.HEAD_DOWN, 0f);
             ItemStack onPointer = h.hands.onPointer();

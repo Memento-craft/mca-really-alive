@@ -15,6 +15,11 @@ public final class Motives {
     /** Making something: taking what it crafted, smelted or brewed out of the result slot. */
     public static final float MAKE = 0.5f;
     /**
+     * Seeing something new form in a result slot, as planks appear once a log is in the grid:
+     * the sign that making is under way, before anything is taken.
+     */
+    public static final float FORM = 0.2f;
+    /**
      * Using a held thing turned a block into a different block: tilling dirt, planting a seed,
      * stripping a log. Opening a door or a chest changes nothing that way, and is not felt.
      */

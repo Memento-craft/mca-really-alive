@@ -94,19 +94,28 @@ public final class Brain {
     static final int CANDIDATES = 3;
     static final float REFLEX_WEIGHT = 2.0f;
     static final float ORIENT_WEIGHT = 0.8f;
+    /** The pull of a creature above or below the gaze, gentler than the pull to either side. */
+    static final float VERTICAL_ORIENT_WEIGHT = 0.4f;
     static final float PLACING_WEIGHT = 2.0f;
     static final float CLIMB_WEIGHT = 1.5f;
     /**
      * An open screen gently drives the inventory key, the urge to get back to the world: without it a
      * babbling brain that toggles the key at random sat in its inventory half its life, standing still.
-     * Weak, so a screen stays open long enough to do something on it; learning can change it.
+     * The screen is felt more the longer nothing is done on it (boredom), so the urge is weak just
+     * after opening it or clicking on it and strong once it has sat idle; learning can change it.
      */
     static final float LEAVE_SCREEN_WEIGHT = 0.35f;
+    /**
+     * An open screen also drives the left button a little, the urge to fiddle with what is in
+     * front of the hands: without it a newborn clicked a slot about once per screen and never put
+     * anything in the crafting grid.
+     */
+    static final float FIDDLE_WEIGHT = 0.3f;
     /**
      * How much the inventory key and the mouse wheel babble, against the other keys. A player
      * presses them now and then, not as often as they walk or look about.
      */
-    static final float INVENTORY_BABBLE = 0.3f;
+    static final float INVENTORY_BABBLE = 0.5f;
     static final float WHEEL_BABBLE = 0.5f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
@@ -354,10 +363,10 @@ public final class Brain {
      * horizon instead of drifting to the floor or sky. A creature seen to one side drives turning
      * toward it. The placing reflex lifts the body when the front of it bumps into something, and
      * being in water drives the jump pool, which is how a player swims up. A ladder seen to one side
-     * turns the gaze toward it like a creature does, and holding on to a ladder drives walking
-     * into it, which is how a player climbs. An open screen drives the inventory key a little, the
-     * urge to get back to the world, so screens get closed again. Learning can still
-     * strengthen, weaken or override these synapses.
+     * turns the gaze toward it like a creature does, and either one above or below tips it up or
+     * down, more gently. Holding on to a ladder drives walking into it, which is how a player
+     * climbs. An open screen drives the inventory key a little, the urge to get back to the world,
+     * so screens get closed again. Learning can still strengthen, weaken or override these synapses.
      */
     private void wireReflexes() {
         int headDown = IN_FEEL + FeelChannel.HEAD_DOWN.ordinal();
@@ -393,6 +402,14 @@ public final class Brain {
                 for (int m : motorPools[turn.ordinal()]) {
                     connect(i, m, ORIENT_WEIGHT * Math.abs(offset));
                 }
+                // And up or down, more gently: a creature or a ladder above or below draws the eyes
+                // to it, as a thing on a screen draws the pointer to its row.
+                int row = slot / SenseLayout.VISION_CHANNELS / SenseLayout.VISION_W;
+                float rise = (row + 0.5f) / SenseLayout.VISION_H * 2f - 1f;
+                MotorChannel tilt = rise < 0 ? MotorChannel.PITCH_UP : MotorChannel.PITCH_DOWN;
+                for (int m : motorPools[tilt.ordinal()]) {
+                    connect(i, m, VERTICAL_ORIENT_WEIGHT * Math.abs(rise));
+                }
             }
             int[] pool = inputSlot[i] == headDown ? motorPools[MotorChannel.PITCH_UP.ordinal()]
                     : inputSlot[i] == headUp ? motorPools[MotorChannel.PITCH_DOWN.ordinal()] : null;
@@ -405,8 +422,8 @@ public final class Brain {
     }
 
     /**
-     * The reflex of the hands, added after the first brains were saved: an open screen drives the
-     * inventory key.
+     * The reflexes of the hands, added after the first brains were saved: an open screen drives the
+     * inventory key and the left button.
      */
     private void wireHandReflexes(int i) {
         if (role[i] != ROLE_RECEPTOR) {
@@ -415,6 +432,9 @@ public final class Brain {
         if (inputSlot[i] == IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()) {
             for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
                 connect(i, m, LEAVE_SCREEN_WEIGHT);
+            }
+            for (int m : motorPools[MotorChannel.ATTACK.ordinal()]) {
+                connect(i, m, FIDDLE_WEIGHT);
             }
         }
     }
