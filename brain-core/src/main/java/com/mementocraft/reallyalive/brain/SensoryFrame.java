@@ -18,6 +18,12 @@ public final class SensoryFrame {
     /** The words heard this tick, in order, and whether each was the villager's own. */
     public final List<String> heardWords = new ArrayList<>();
     public final List<Boolean> heardOwn = new ArrayList<>();
+    /** Who said each heard word, by name as the villager knows them, or null if it can't tell. */
+    public final List<String> heardFrom = new ArrayList<>();
+    /** People the villager saw die this tick, by name. */
+    public final List<String> died = new ArrayList<>();
+    /** Crops the villager harvested itself this tick ("wheat", "carrots"). */
+    public final List<String> harvested = new ArrayList<>();
     /**
      * Things named for the villager this tick: someone points at what it is seeing, smelling or
      * feeling, or at what it is doing, and says the word, as parents do with a child. Named words
@@ -26,6 +32,8 @@ public final class SensoryFrame {
     public final List<String> named = new ArrayList<>();
     /** 0..1, how near someone to talk to is (a player or villager within a few blocks). */
     public float company;
+    /** 0..1, how near a child is among those to talk to. */
+    public float youngCompany;
     /** 0..1, from things that feel good (reaching a goal, eating). */
     public float pleasure;
     /** 0..1, from damage. */
@@ -48,8 +56,14 @@ public final class SensoryFrame {
      * for the villager's own voice, which it hears like any other.
      */
     public void hear(String word, boolean own) {
+        hear(word, own, null);
+    }
+
+    /** As {@link #hear(String, boolean)}, knowing who said it. */
+    public void hear(String word, boolean own, String from) {
         heardWords.add(word);
         heardOwn.add(own);
+        heardFrom.add(from);
         if (!word.equals(WordCode.TURN)) {
             for (int f : WordCode.features(word)) {
                 words[f] = 1f;
@@ -71,8 +85,12 @@ public final class SensoryFrame {
         Arrays.fill(words, 0f);
         heardWords.clear();
         heardOwn.clear();
+        heardFrom.clear();
+        died.clear();
+        harvested.clear();
         named.clear();
         company = 0f;
+        youngCompany = 0f;
         pleasure = 0f;
         pain = 0f;
     }

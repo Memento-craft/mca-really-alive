@@ -16,6 +16,9 @@ public final class SelfKnowledge {
     private static final String WORK_KEYS = "work job living profession";
     private static final String AGE_KEYS = "old age kid grown";
     private static final String[] ASK_AGE = {"how old are you?", "are you a kid?", "are you a grown up?"};
+    private static final String[] ASK_HARVEST = {"how much have you harvested?", "how many crops have you harvested?",
+        "how much wheat have you grown?", "what do you grow?", "how is the harvest?", "what crops do you farm?"};
+    private static final String HARVEST_KEYS = "harvest harvested crops crop grow grown farm wheat carrots potatoes beetroots";
 
     private SelfKnowledge() {}
 
@@ -24,6 +27,10 @@ public final class SelfKnowledge {
      * "librarian") or null for none.
      */
     public static void tell(Brain b, String name, String work, boolean child) {
+        b.selfFullName = name;
+        b.selfName = Brain.firstName(name);
+        b.selfWork = work;
+        b.selfChild = child;
         b.talk.forgetSelf();
         b.talk.you = java.util.Arrays.stream(ids(b, "you your yourself")).sorted().toArray();
         if (name != null && !name.isBlank()) {
@@ -37,6 +44,40 @@ public final class SelfKnowledge {
             know(b, ASK_WORK, WORK_KEYS, work == null || work.isBlank() ? "i don't have a job right now."
                     : "i'm " + article(work) + " " + work + ".");
             know(b, ASK_AGE, AGE_KEYS, "i'm a grown up.");
+            if (work != null && !work.isBlank()) {
+                mine(b, "work", "i'm " + article(work) + " " + work + ".", 0f);
+            }
+        }
+        String harvest = harvest(b);
+        if (harvest != null) {
+            know(b, ASK_HARVEST, HARVEST_KEYS, harvest);
+            int total = b.deeds.values().stream().mapToInt(Integer::intValue).sum();
+            // The more it has done, the prouder it is of it, and the more it comes to mind to tell.
+            mine(b, "harvest", harvest, Math.min(1f, total / 200f));
+        }
+    }
+
+    /** What it harvested, counted, the most first: "i've harvested 212 wheat and 40 carrots.". */
+    static String harvest(Brain b) {
+        if (b.deeds.isEmpty()) {
+            return null;
+        }
+        List<java.util.Map.Entry<String, Integer>> crops = new java.util.ArrayList<>(b.deeds.entrySet());
+        crops.sort((x, y) -> y.getValue() - x.getValue());
+        StringBuilder line = new StringBuilder("i've harvested ");
+        for (int i = 0; i < Math.min(3, crops.size()); i++) {
+            if (i > 0) {
+                line.append(i == Math.min(3, crops.size()) - 1 ? " and " : ", ");
+            }
+            line.append(crops.get(i).getValue()).append(' ').append(crops.get(i).getKey());
+        }
+        return line.append('.').toString();
+    }
+
+    /** Something about itself it may choose to tell, kept with its memories of people. */
+    private static void mine(Brain b, String key, String line, float pride) {
+        if (b.selfName != null) {
+            b.people.learn(b.selfName, ids(b, line), pride, key);
         }
     }
 

@@ -45,6 +45,8 @@ public final class BrainCommand {
                                 }, "Brain switched off"))))
                         .then(Commands.literal("info").then(Commands.argument("villager", EntityArgument.entity())
                                 .executes(BrainCommand::info)))
+                        .then(Commands.literal("memories").then(Commands.argument("villager", EntityArgument.entity())
+                                .executes(BrainCommand::memories)))
                         .then(Commands.literal("babble").then(Commands.argument("villagers", EntityArgument.entities())
                                 .then(Commands.argument("scale", FloatArgumentType.floatArg(0f, 4f))
                                         .executes(c -> {
@@ -119,6 +121,26 @@ public final class BrainCommand {
         }
         h.setGoal(pos);
         return true;
+    }
+
+    /** What a villager remembers of people, what it counted of its own work, and how keen it is to tell. */
+    private static int memories(CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
+        Entity e = EntityArgument.getEntity(c, "villager");
+        if (!(e instanceof Villager v) || BrainManager.get() == null || BrainManager.get().handle(v) == null) {
+            c.getSource().sendFailure(Component.literal("That villager has no brain switched on"));
+            return 0;
+        }
+        Brain b = BrainManager.get().handle(v).brain();
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("harvested %s, finds telling worth %.2f", b.deeds(), b.tellValue()));
+        for (String person : b.peopleRemembered()) {
+            sb.append("\n").append(person).append(':');
+            for (String line : b.recollectionsOf(person)) {
+                sb.append("\n  ").append(line);
+            }
+        }
+        c.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
+        return 1;
     }
 
     private static int info(CommandContext<CommandSourceStack> c) throws CommandSyntaxException {

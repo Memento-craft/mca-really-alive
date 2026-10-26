@@ -237,12 +237,41 @@ public final class Brain {
     int lineWords;
     /** How near someone to talk to is, this tick. */
     float company;
+    float youngCompany;
     long lastLineTick = Long.MIN_VALUE / 2;
     long nextRemark;
     /** Links between words and the meaning cells of the concept system, both ways. */
     ConceptLinks links = new ConceptLinks();
     /** Exchanges this villager heard or took part in. */
     ExchangeMemory.Own talk = new ExchangeMemory.Own();
+    /** What it remembers of people, the dead among them, and of its own deeds. */
+    Recollections people = new Recollections();
+    /** Its own first name, lower case, as it was last told who it is; null if it has none. */
+    String selfName;
+    String selfFullName;
+    String selfWork;
+    boolean selfChild;
+    /** What it did itself and kept count of: crops harvested, by kind. */
+    final java.util.Map<String, Integer> deeds = new java.util.concurrent.ConcurrentSkipListMap<>();
+    /**
+     * How much it has found telling people things worth it (0..1): it goes up when someone answers
+     * what it told, down when no one does, so whether a villager passes on what it remembers is its
+     * own, learned choice.
+     */
+    float tellValue = TELL_START;
+    /** Chance per check, scaled by how much it wants to, that it tells something (tests raise it). */
+    float tellRate = TELL_RATE;
+    long nextTell;
+    private Recollections.Memory telling;
+    private long toldAt = Long.MIN_VALUE / 2;
+    private boolean awaitingAnswer;
+    /** Felt loss of someone it knew, and the pleasure of being listened to; both fade. */
+    float grief;
+    float heardJoy;
+    /** Who is saying the line being heard. */
+    private String lineSpeaker;
+    /** Names of people it has heard speak, so it knows them for names when they are talked about. */
+    final Set<String> met = new java.util.HashSet<>();
     /** The last line heard before this one ended, and whether it was its own. */
     private int[] lastLine;
     /** The words of the line being heard, whoever says it. */
@@ -541,8 +570,10 @@ public final class Brain {
         System.arraycopy(f.feel, 0, input, IN_FEEL, FeelChannel.COUNT);
         System.arraycopy(poolRates, 0, input, IN_EFFERENCE, MotorChannel.COUNT);
         System.arraycopy(f.smell, 0, input, IN_SMELL, OlfactoryChannel.COUNT);
-        input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure);
-        input[IN_EMOTION + SenseLayout.EMO_PAIN] = SensoryFrame.clamp01(f.pain);
+        input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure + heardJoy);
+        input[IN_EMOTION + SenseLayout.EMO_PAIN] = SensoryFrame.clamp01(f.pain + grief);
+        grief *= GRIEF_KEEP;
+        heardJoy *= 0.9f;
         input[IN_EMOTION + SenseLayout.EMO_CURIOSITY] = SensoryFrame.clamp01(surprise * CURIOSITY_GAIN);
         System.arraycopy(f.sound, 0, input, IN_SOUND, SoundChannel.COUNT);
         System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.WORD_FEATURES);
@@ -586,6 +617,16 @@ public final class Brain {
      */
     private void listen(SensoryFrame f) {
         company = f.company;
+        youngCompany = f.youngCompany;
+        for (String d : f.died) {
+            sawDie(d);
+        }
+        if (!f.harvested.isEmpty()) {
+            for (String crop : f.harvested) {
+                deeds.merge(crop, 1, Integer::sum);
+            }
+            SelfKnowledge.tell(this, selfFullName, selfWork, selfChild);
+        }
         for (String w : f.named) {
             links.learn(language.vocabulary.id(w), meaning, Math.max(0, meaningCount), ConceptLinks.NAME_RATE);
         }
@@ -616,6 +657,13 @@ public final class Brain {
                     lineSoFar.clear();
                 }
                 lineSoFarOwn = own;
+                if (!own) {
+                    lineSpeaker = i < f.heardFrom.size() ? f.heardFrom.get(i) : null;
+                    String who = firstName(lineSpeaker);
+                    if (who != null && met.size() < 512) {
+                        met.add(who);
+                    }
+                }
                 if (lineSoFar.size() < MAX_LINE_WORDS * 2) {
                     lineSoFar.add(language.vocabulary.find(w));
                 }
@@ -664,6 +712,7 @@ public final class Brain {
                 && !(own && aboutTheMoment(line))) {
             talk.remember(lastLine, line, memory);
         }
+        heardAboutPeople(line, own);
         lastLine = line;
         lastLineOwn = own;
         if (!own) {
@@ -806,6 +855,169 @@ public final class Brain {
         }
     }
 
+    /** Its own first name, as words are said: lower case. */
+    static String firstName(String name) {
+        if (name == null) {
+            return null;
+        }
+        java.util.List<String> words = WordCode.tokenize(name);
+        return words.isEmpty() ? null : words.get(0);
+    }
+
+    /** It saw someone die: it remembers the death, and grieves if it knew them. */
+    private void sawDie(String name) {
+        String person = firstName(name);
+        if (person == null || person.equals(selfName)) {
+            return;
+        }
+        boolean knew = people.died(person, language.vocabulary);
+        people.learn(person, ids(person + " died."), knew ? 1f : DEATH_FEELING * 0.5f, null);
+        if (knew) {
+            grief = 1f;
+        }
+    }
+
+    private int[] ids(String line) {
+        java.util.List<String> words = WordCode.tokenize(line);
+        int[] ids = new int[words.size()];
+        for (int i = 0; i < ids.length; i++) {
+            ids[i] = language.vocabulary.id(words.get(i));
+        }
+        return ids;
+    }
+
+    /**
+     * A line just ended. If it was its own telling, it waits to see whether anyone takes it up.
+     * If someone else's line answered its telling, that felt good, and telling was worth it. What
+     * someone says about themselves is remembered of them, and what is said about someone else is
+     * remembered of that person, a death above all.
+     */
+    private void heardAboutPeople(int[] line, boolean own) {
+        if (own) {
+            if (telling != null) {
+                awaitingAnswer = true;
+                toldAt = ticks;
+                telling = null;
+            }
+            return;
+        }
+        if (awaitingAnswer && ticks - toldAt <= ANSWER_WINDOW) {
+            awaitingAnswer = false;
+            heardJoy = HEARD + (youngCompany > 0f ? PASSED_ON : 0f);
+            tellValue = tellValue + TELL_LEARN * (1f - tellValue);
+        }
+        Vocabulary v = language.vocabulary;
+        int ask = v.find("?");
+        for (int w : line) {
+            if (w < 0 || w == ask) {
+                return;
+            }
+        }
+        String speaker = firstName(lineSpeaker);
+        boolean death = false;
+        for (int w : line) {
+            String word = v.word(w);
+            death |= word.equals("died") || word.equals("dead") || word.equals("passed") || word.equals("killed");
+        }
+        if (speaker != null && !speaker.equals(selfName)) {
+            int[] about = Recollections.aboutSpeaker(line, speaker, v);
+            if (about != null) {
+                people.learn(speaker, people.dead.contains(speaker) ? Recollections.pastTense(about, v) : about,
+                        TOLD_FEELING, null);
+                return;
+            }
+        }
+        // A line about someone else, said as it is: "misu was the best farmer.", "misu died.".
+        for (int k = 0; k < line.length; k++) {
+            String word = v.word(line[k]);
+            if (word.equals(selfName) || word.equals(speaker) || !aName(line, k)) {
+                continue;
+            }
+            for (int w : line) {
+                String x = v.word(w);
+                if (x.equals("i") || x.startsWith("i'") || x.equals("my") || x.equals("me") || x.startsWith("you")) {
+                    return;
+                }
+            }
+            if (death) {
+                if (people.died(word, v)) {
+                    grief = Math.max(grief, 0.7f);
+                }
+            }
+            people.learn(word, line, death ? DEATH_FEELING : TOLD_FEELING, null);
+            return;
+        }
+    }
+
+    /**
+     * Whether the word at k is someone's name: a person it remembers, or a word the shared English
+     * does not have, followed by what is said of people ("misu was", "misu's", "misu died").
+     */
+    private boolean aName(int[] line, int k) {
+        Vocabulary v = language.vocabulary;
+        String word = v.word(line[k]);
+        if (!Character.isLetter(word.charAt(0)) || word.contains("'")) {
+            return false;
+        }
+        if (people.knows(word) || met.contains(word)) {
+            return true;
+        }
+        // A name is no common word ("dinner was great." is not about someone called dinner).
+        ToneLinks tones = ToneLinks.shared();
+        if (tones != null && tones.common(line[k]) || k + 1 >= line.length) {
+            return false;
+        }
+        String next = v.word(line[k + 1]);
+        return Set.of("is", "was", "has", "had", "died", "grew", "grows", "used", "did", "does", "made", "makes",
+                "could", "can", "loved", "loves", "liked", "likes", "harvested", "worked", "works", "lived", "lives",
+                "knew", "knows", "kept", "keeps", "planted", "plants", "will", "would").contains(next);
+    }
+
+    /**
+     * Telling: with someone around and nothing being said, a memory may come to mind (a strong
+     * one, a felt one, one not told lately, and above all one of someone whose name is on its
+     * mind), and the villager may choose to tell it. How often it does is what it learned telling
+     * is worth, and it is keener with a child to listen. Telling it again keeps it from fading.
+     */
+    private void maybeTell() {
+        if (company <= 0f || replyUrge >= URGE_MIN || plan != null || ticks < nextTell
+                || ticks - lastLineTick < REMARK_QUIET || people.memories.isEmpty()) {
+            return;
+        }
+        Recollections.Memory best = null;
+        float bestWant = 0f;
+        for (Recollections.Memory m : people.memories) {
+            float want = Recollections.salience(m, ticks);
+            int name = language.vocabulary.find(m.person);
+            if (name >= 0 && name < boost.length && boost[name] > 0f) {
+                want *= 1f + GROUNDING_GAIN * boost[name];
+            }
+            if (want > bestWant) {
+                bestWant = want;
+                best = m;
+            }
+        }
+        float urge = tellRate * tellValue * Math.min(2f, bestWant) * (1f + youngCompany);
+        if (best == null || voiceRng.nextFloat() >= urge) {
+            return;
+        }
+        nextTell = ticks + TELL_COOLDOWN;
+        best.lastTold = ticks;
+        if (best.key == null) {
+            best.strength = Math.min(1f, best.strength + Recollections.RETOLD);
+            best.rehearsed++;
+        }
+        telling = best;
+        language.startLine();
+        replyUrge = REMARK_URGE;
+        lineWords = 0;
+        lineSoFar.clear();
+        plan = best.line.clone();
+        planAt = 0;
+        said[saidNext++ % said.length] = plan;
+        expected = planned();
+    }
+
     /**
      * Speaking up: when something new comes up strongly in the concept system and someone is
      * around to hear, the frontal part thinks a line through, word by word, as it would say it.
@@ -902,6 +1114,10 @@ public final class Brain {
                 }
             }
             weighRecalled(mine, match, OWN_RECALL_WEIGHT, true, start, turn);
+            // Asked about someone it remembers, what it remembers of them comes to mind.
+            float[] fits = new float[RECALLED];
+            int[][] known = people.recall(heard, language.vocabulary, selfName, memory, RECALLED, fits);
+            weighRecalled(known, fits, OWN_RECALL_WEIGHT, true, start, turn, true);
             if (toldLine != null) {
                 // What it was told, said back the other way round: "you have a dog named rex."
                 weighRecalled(new int[][] {toldBack(toldLine)}, new float[] {1f}, TOLD_WEIGHT, true, start, turn);
@@ -937,6 +1153,24 @@ public final class Brain {
     static final int EXCHANGE_GAP = 1200;
     /** How strongly a word must fit what is perceived (log of its grounding lift) to be about the moment. */
     static final float MOMENT_FIT = 1f;
+
+    /** How much it wants to tell people things before it has learned whether that is worth it. */
+    static final float TELL_START = 0.5f;
+    static final float TELL_MIN = 0.05f;
+    /** How fast it learns whether telling is worth it, per telling. */
+    static final float TELL_LEARN = 0.25f;
+    /** Chance per check (every MAINTENANCE_INTERVAL ticks) of telling, at full urge: about once a minute. */
+    static final float TELL_RATE = 0.02f;
+    static final int TELL_COOLDOWN = 1200;
+    /** Someone who speaks within this many ticks of its telling was listening. */
+    static final int ANSWER_WINDOW = 200;
+    /** Inborn pleasure of being listened to, and more when the listener is a child. */
+    static final float HEARD = Motives.HEARD;
+    static final float PASSED_ON = Motives.PASSED_ON;
+    static final float GRIEF_KEEP = 0.9995f;
+    /** How much a memory about someone is felt, and more so one of a death. */
+    static final float TOLD_FEELING = 0.2f;
+    static final float DEATH_FEELING = 0.8f;
         private static final Set<String> SENTENCE_ENDS = Set.of(".", "!", "?");
     private int[] thoughtBest;
     private float thoughtEase;
@@ -961,6 +1195,12 @@ public final class Brain {
      */
     private void weighRecalled(int[][] recalled, float[] match, float strength, boolean own,
             LanguageArea.Place start, int turn) {
+        weighRecalled(recalled, match, strength, own, start, turn, false);
+    }
+
+    /** As above; known facts may always be said again, however lately (asked again, told again). */
+    private void weighRecalled(int[][] recalled, float[] match, float strength, boolean own,
+            LanguageArea.Place start, int turn, boolean facts) {
         int[] line = new int[MAX_LINE_WORDS];
         for (int r = 0; r < recalled.length; r++) {
             language.restore(start);
@@ -987,7 +1227,7 @@ public final class Brain {
                 language.hear(language.vocabulary.word(w), false);
                 groundedWord(false);
             }
-            weigh(line, length, RECALL_EASE * ease, meant, turn, strength * match[r], own && match[r] >= SAME_QUESTION);
+            weigh(line, length, RECALL_EASE * ease, meant, turn, strength * match[r], facts || own && match[r] >= SAME_QUESTION);
         }
     }
 
@@ -1479,6 +1719,13 @@ public final class Brain {
             expected = heldWord;
         } else {
             maybeRemark();
+            maybeTell();
+        }
+        people.fade(ticks);
+        if (awaitingAnswer && ticks - toldAt > ANSWER_WINDOW) {
+            // No one took it up: telling was not worth it this time.
+            awaitingAnswer = false;
+            tellValue = Math.max(TELL_MIN, tellValue + TELL_LEARN * (0f - tellValue));
         }
         // Synaptic scaling, using synInput as scratch space (it is empty between ticks).
         float[] excSum = synInput;
@@ -1978,6 +2225,54 @@ public final class Brain {
     }
 
     /** Scales motor babbling, for example 0 to see only what the villager has learned. */
+    /** What it remembers of a person (first name, lower case), as it would say it. */
+    public java.util.List<String> recollectionsOf(String person) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (Recollections.Memory m : snapshot()) {
+            if (m.person.equals(person)) {
+                StringBuilder sb = new StringBuilder();
+                for (int w : m.line) {
+                    sb.append(sb.isEmpty() ? "" : " ").append(word(w));
+                }
+                out.add(sb.toString());
+            }
+        }
+        return out;
+    }
+
+    /** Everyone it remembers something of. */
+    public java.util.Set<String> peopleRemembered() {
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        for (Recollections.Memory m : snapshot()) {
+            out.add(m.person);
+        }
+        return out;
+    }
+
+    /** Its memories of people, copied; read from another thread while it steps, it may come up short. */
+    private java.util.List<Recollections.Memory> snapshot() {
+        try {
+            return new java.util.ArrayList<>(people.memories);
+        } catch (RuntimeException e) {
+            return java.util.List.of();
+        }
+    }
+
+    /** What it did itself and counted: crops harvested by kind. */
+    public java.util.Map<String, Integer> deeds() {
+        return java.util.Collections.unmodifiableMap(deeds);
+    }
+
+    /** How much it has found telling people things worth it, 0..1. */
+    public float tellValue() {
+        return tellValue;
+    }
+
+    /** How keen it is to tell what it remembers, per check; for tests that can't wait days. */
+    public void setTellRate(float rate) {
+        tellRate = rate;
+    }
+
     public void setBabbleScale(float scale) {
         babbleScale = Math.max(0f, scale);
     }

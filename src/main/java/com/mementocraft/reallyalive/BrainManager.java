@@ -24,7 +24,9 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.control.JumpControl;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.control.LookControl;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.entity.npc.Villager;
@@ -88,8 +90,9 @@ public final class BrainManager {
         final SensoryFrame frame = new SensoryFrame();
         final float[] vision = new float[frame.vision.length];
         final float[] colour = new float[frame.colour.length];
-        /** Someone to talk to is near, checked now and then. */
+        /** Someone to talk to is near, checked now and then, and whether a child is among them. */
         boolean company;
+        boolean child;
         final float[] scent = new float[OlfactoryChannel.COUNT];
         CompletableFuture<MotorCommand> pending;
         MotorCommand command = MotorCommand.IDLE;
@@ -111,6 +114,9 @@ public final class BrainManager {
         /** The last line shown in chat, and how many have been. */
         String lastLine;
         int lines;
+        /** Names of people seen dying, and crops it harvested, since the brain last sensed. */
+        final List<String> deathsSeen = new ArrayList<>();
+        final List<String> harvested = new ArrayList<>();
 
         Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
                JumpControl originalJump) {
@@ -293,6 +299,40 @@ public final class BrainManager {
         });
     }
 
+    /** How far a death can be seen; within NEAR it is noticed even out of sight. */
+    private static final double DEATH_SEEN = 16.0;
+    private static final double DEATH_NEAR = 4.0;
+
+    /**
+     * Someone died: brain villagers that see it (or are right there) take it in, by the name they
+     * would know the dead by. What they make of it is up to their brains.
+     */
+    public void witness(LivingEntity dead) {
+        String name = dead instanceof Player p ? p.getGameProfile().getName()
+                : dead.hasCustomName() ? dead.getCustomName().getString() : null;
+        if (name == null) {
+            return;
+        }
+        for (Handle h : handles.values()) {
+            LivingEntity w = h.move.mob();
+            if (w == dead || w.level() != dead.level() || !w.isAlive()) {
+                continue;
+            }
+            double dist = w.distanceTo(dead);
+            if (dist < DEATH_NEAR || dist < DEATH_SEEN && w.hasLineOfSight(dead)) {
+                h.deathsSeen.add(name);
+            }
+        }
+    }
+
+    /** A brain villager harvested a ripe crop: it knows what it did. */
+    public void harvested(Villager v, String crop) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.harvested.add(crop);
+        }
+    }
+
     /** Before the villager ticks: take the brain's latest keys and put them on the body. */
     public void beforeTick(Villager v) {
         Handle h = handles.get(v.getUUID());
@@ -359,6 +399,14 @@ public final class BrainManager {
             h.company = Naming.someoneNear(v);
         }
         f.company = h.company ? 1f : 0f;
+        if (h.company && h.age % 10 == 0) {
+            h.child = Naming.childNear(v);
+        }
+        f.youngCompany = h.company && h.child ? 1f : 0f;
+        f.died.addAll(h.deathsSeen);
+        h.deathsSeen.clear();
+        f.harvested.addAll(h.harvested);
+        h.harvested.clear();
         Senses.feel(v, f);
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);

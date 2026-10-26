@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 7;
+    private static final int VERSION = 8;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -100,6 +100,7 @@ public final class BrainIO {
         writeLanguage(b, out);
         b.links.write(out, b.n);
         writeTalk(b, out);
+        writePeople(b, out);
     }
 
     public static Brain read(DataInput in) throws IOException {
@@ -107,7 +108,7 @@ public final class BrainIO {
             throw new IOException("Not a brain file");
         }
         int version = in.readInt();
-        if (version != VERSION && version != 6 && version != 5 && version != 4) {
+        if (version != VERSION && version != 7 && version != 6 && version != 5 && version != 4) {
             throw new IOException("Unsupported brain version " + version);
         }
         float[] genes = new float[in.readInt()];
@@ -237,6 +238,9 @@ public final class BrainIO {
         if (version >= 7) {
             readTalk(b, in);
         }
+        if (version >= 8) {
+            readPeople(b, in);
+        }
         b.addMissingReceptors();
         return b;
     }
@@ -269,6 +273,26 @@ public final class BrainIO {
             if (memory != null) {
                 b.talk.remember(lines[0], lines[1], memory);
             }
+        }
+    }
+
+    /** What it remembers of people, how much it likes telling, and what it did itself. */
+    private static void writePeople(Brain b, DataOutput out) throws IOException {
+        b.people.write(out, b.language.vocabulary);
+        out.writeFloat(b.tellValue);
+        out.writeInt(b.deeds.size());
+        for (var d : b.deeds.entrySet()) {
+            out.writeUTF(d.getKey());
+            out.writeInt(d.getValue());
+        }
+    }
+
+    private static void readPeople(Brain b, DataInput in) throws IOException {
+        b.people.read(in, b.language.vocabulary);
+        b.tellValue = in.readFloat();
+        int deeds = in.readInt();
+        for (int i = 0; i < deeds; i++) {
+            b.deeds.put(in.readUTF(), in.readInt());
         }
     }
 
