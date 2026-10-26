@@ -67,6 +67,10 @@ dependencies {
     // MCA Reborn, so dev runs have MCA villagers to drive. The addon itself only touches vanilla
     // villager classes, so it does not compile against MCA.
     localRuntime "maven.modrinth:minecraft-comes-alive-reborn:${mca_version}"
+    // Create, to check that its blocks answer a brain villager's hands: ./gradlew runGameTestServer -Pwith_create
+    if (project.hasProperty('with_create')) {
+        localRuntime "maven.modrinth:create:${create_version}"
+    }
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {

@@ -399,6 +399,8 @@ public final class LearningTests {
         // Ticks in the last tries on a ladder, and of those, pushing forward into it.
         int[] onLadder = {0, 0};
         int[] pushingLadder = {0, 0};
+        // Ticks in the last tries with a screen open (its own inventory, opened by the inventory key).
+        int[] inScreen = {0, 0};
         // Ticks holding a block, and of those, pressing use, in the first and the last tries; and
         // blocks placed in the first and the last tries.
         int[] useHeldFirst = {0, 0};
@@ -419,6 +421,10 @@ public final class LearningTests {
             }
             if (outcomes.size() >= c.episodes - WINDOW) {
                 onLadder[1]++;
+                inScreen[1]++;
+                if (handle.hands().screenOpen()) {
+                    inScreen[0]++;
+                }
                 if (v.onClimbable()) {
                     onLadder[0]++;
                     pushingLadder[1]++;
@@ -481,8 +487,9 @@ public final class LearningTests {
             int last = count(outcomes, c.episodes - WINDOW, Outcome.REACHED);
             int lastFalls = count(outcomes, c.episodes - WINDOW, Outcome.FELL);
             String report = String.format("%s: reached the goal in %d of the first %d tries and %d of the last %d (%d falls);"
-                            + " in the last tries jump was held %d%% of the time in water, %d%% on land%s",
-                    c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry),
+                            + " in the last tries jump was held %d%% of the time in water, %d%% on land,"
+                            + " a screen was open %d%% of the time%s",
+                    c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry), percent(inScreen),
                     c == Course.LEDGE ? String.format("; sneaking %d%% of the time near the edge",
                             percent(sneakNearEdge)) : "")
                     + (c == Course.STEP ? String.format("; holding a block, it pressed place %d%% of the time in the first tries"

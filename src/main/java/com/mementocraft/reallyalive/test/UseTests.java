@@ -9,6 +9,9 @@ import com.mementocraft.reallyalive.brain.ThingCode;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.util.Mth;
@@ -220,7 +223,8 @@ public final class UseTests {
         }
 
         MouseScript waitTicks(int ticks) {
-            for (int i = 0; i < ticks; i++) {
+            // Each idle step lasts two ticks, like a key press and release.
+            for (int i = 0; i < ticks / 2; i++) {
                 steps.add(MotorCommand.IDLE);
             }
             return this;
@@ -383,6 +387,29 @@ public final class UseTests {
             boolean started = new HarvestFarmland().tryStart(h.getLevel(), v, h.getLevel().getGameTime());
             h.assertFalse(started, "the vanilla farmer's harvesting started for a brain villager");
             h.succeed();
+        });
+    }
+
+    /**
+     * With Create installed (it is never required), its wrench turns a shaft for a villager as it
+     * does for a player: Create's blocks answer the stand-in's click like any player's.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void createsWrenchTurnsAShaftIfCreateIsInstalled(GameTestHelper h) {
+        var wrench = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "wrench"));
+        var shaft = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (wrench.isEmpty() || shaft.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos at = new BlockPos(5, 2, 12);
+        h.setBlock(at, shaft.get().defaultBlockState());
+        BlockState before = h.getBlockState(at);
+        useOn(h, new ItemStack(wrench.get()), new Vec3(5.5, 2.5, 12.5), () -> {
+            BlockState after = h.getBlockState(at);
+            LOG.info("Create shaft before {} after the wrench {}", before, after);
+            h.assertTrue(after.getBlock() == shaft.get() && !after.equals(before), "the wrench did not turn the shaft: " + after);
         });
     }
 
