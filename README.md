@@ -72,6 +72,11 @@ of a line and those of the answers that followed it in SODA ("toys" goes with "d
 "rain" with "umbrella", "soaked"), so a line whose words go with what it heard is preferred. Asked
 "what flavor was it?" a villager now says "chocolate chip mint." rather than a name; judged blind
 on 25 changed answers to those real talks, the new answer was better 14 times, worse 4.
+The tone of an answer has to fit too (`ToneLinks`, 1.3 MB): among the 3,000 commonest words, how
+much more or less often a word of a line and a word of its answer come together than by chance,
+so "my grandma passed away" is answered with "sorry" rather than "that's great!", and "thank you"
+with "you're welcome". The last sentence of what was heard counts twice. Judged blind on 24
+changed answers, better 11 times, worse 2.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

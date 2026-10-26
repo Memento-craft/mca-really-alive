@@ -154,6 +154,8 @@ public final class Brain {
     static final float MEANING = 4f;
     /** How much an answer's words going with the words of the line it answers count. */
     static final float TOPIC = 1f;
+    /** How much the tone of an answer's words going with the line it answers counts. */
+    static final float TONE = 3f;
     /**
      * How strongly what the concept system holds picks among the words the language area offers:
      * each word's chance is multiplied by e^(gain x how much more than usual its meaning is present).
@@ -946,11 +948,32 @@ public final class Brain {
         ease += (float) Math.log(likelihood(turn));
         TopicLinks topics = TopicLinks.shared();
         float about = topics == null || topicHeard == null ? 0f : TOPIC * topics.fit(topicHeard, line, length);
+        ToneLinks tones = ToneLinks.shared();
+        about += tones == null || topicHeard == null ? 0f : TONE * tones.fit(lastSentenceTwice(topicHeard), line, length);
         ease = (ease - RELEVANCE * outOfNowhere(line, length) + MEANING * meant + about) / (length + 1) + recalled;
         if (ease > thoughtEase) {
             thoughtEase = ease;
             thoughtBest = Arrays.copyOf(line, length);
         }
+    }
+
+    /**
+     * A heard line with its last sentence counted twice: "nice to meet you. what do you do for
+     * work?" is answered more in the tone of the question than of the greeting before it.
+     */
+    private int[] lastSentenceTwice(int[] heard) {
+        int from = 0;
+        for (int k = 0; k < heard.length - 1; k++) {
+            if (heard[k] >= 0 && SENTENCE_ENDS.contains(language.vocabulary.word(heard[k]))) {
+                from = k + 1;
+            }
+        }
+        if (from == 0) {
+            return heard;
+        }
+        int[] weighted = Arrays.copyOf(heard, heard.length * 2 - from);
+        System.arraycopy(heard, from, weighted, heard.length, heard.length - from);
+        return weighted;
     }
 
     /** How likely the line is as the opening of a talk, with nothing said before it. */

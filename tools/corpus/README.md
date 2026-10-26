@@ -31,6 +31,13 @@ CORPUS=soda_clean.txt TOPICS_OUT=brain-core/src/main/resources/reallyalive/topic
   ./gradlew -p brain-core test --tests '*TopicLinksTest' -i
 ```
 
+And the tone links (`tones.bin.gz`), with an absolute output path:
+
+```
+CORPUS=soda_clean.txt TONES_OUT=$PWD/brain-core/src/main/resources/reallyalive/tones.bin.gz TEST_HEAP=6g \
+  ./gradlew -p brain-core test --tests '*ToneLinksTest' -i
+```
+
 Sources: `generate.py` (scripted scenarios and word lists), `trees.py` (branching conversations
 where every reply fits its line), `facts.py` (questions and answers about the world), `grammar.py`
 (told sentences where verbs only take objects that fit), `chatter.py` (likes, experiences, wishes
