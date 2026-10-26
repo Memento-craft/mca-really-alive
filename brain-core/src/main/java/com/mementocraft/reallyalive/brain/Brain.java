@@ -1865,6 +1865,10 @@ public final class Brain {
             // Saying a line it thought through, the word it means comes out over one that sounds
             // alike, or a word just heard would slip into the middle of the line.
             word = expected;
+        } else if (plan != null && telling != null && word >= 0) {
+            // Telling what it remembers, it says it as it knows it: until the word it means comes
+            // up, no other word comes out (a babbled word would garble the memory it passes on).
+            return -1;
         }
         if (word >= 0 && plan != null && planAt == 0 && lineWords == 0 && word != plan[0]) {
             // It holds its tongue until the line it thought through begins: a word cooed just
