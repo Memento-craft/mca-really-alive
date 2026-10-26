@@ -219,4 +219,29 @@ public final class KnowledgeTests {
             }
         });
     }
+
+    /**
+     * Watching: a child facing a villager that digs sees its hand work (the attack key), which is
+     * what its own motor pools mirror; facing away, it sees nothing.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 200)
+    public static void childSeesWhatAnotherVillagerDoes(GameTestHelper h) {
+        Villager digger = named(h, new Vec3(4.5, 2, 16.5), "Misu");
+        Villager child = named(h, new Vec3(4.5, 2, 18.5), "Lia");
+        child.setAge(-24000);
+        BrainManager.Handle hd = attach(h, digger);
+        BrainManager.Handle hc = attach(h, child);
+        hd.hold(new com.mementocraft.reallyalive.brain.MotorCommand(0, 0, false, false, false, 0f, 0f, true, false));
+        hc.hold(com.mementocraft.reallyalive.brain.MotorCommand.IDLE);
+        boolean[] saw = {false};
+        h.onEachTick(() -> {
+            child.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, digger.getEyePosition());
+            child.setYHeadRot(child.getYRot());
+            saw[0] |= hc.frame().watched[com.mementocraft.reallyalive.brain.MotorChannel.ATTACK.ordinal()] > 0f;
+            if (saw[0]) {
+                LOG.info("watch: the child saw the digger's hand work at tick {}", h.getTick());
+                h.succeed();
+            }
+        });
+    }
 }

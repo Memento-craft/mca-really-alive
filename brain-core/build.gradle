@@ -20,6 +20,8 @@ test {
     useJUnitPlatform()
     // The shared English alone takes about 310 MB; training it (EnglishProbeTest) needs far more.
     maxHeapSize = System.getenv('TEST_HEAP') ?: '2g'
+    // -Dreallyalive.<name>=<value> on the command line reaches the tests, for tuning runs.
+    System.getProperties().each { k, v -> if (k.toString().startsWith('reallyalive.')) systemProperty k.toString(), v }
     if (System.getenv('MAX_SYNAPSES')) {
         systemProperty 'reallyalive.maxSynapses', System.getenv('MAX_SYNAPSES')
     }

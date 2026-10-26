@@ -24,6 +24,8 @@ public final class Motives {
     public static final float HEARD = 0.3f;
     /** And more when the one listening was a child: passing something on. */
     public static final float PASSED_ON = 0.2f;
+    /** Per tick, doing what it sees someone else do: the pull to imitate that apprenticeship rests on. */
+    public static final float IMITATE = Float.parseFloat(System.getProperty("reallyalive.imitate", "0.2"));
     /** Finishing a line written down for whoever reads it later. */
     public static final float WROTE = 0.2f;
 

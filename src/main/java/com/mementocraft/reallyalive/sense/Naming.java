@@ -91,7 +91,7 @@ public final class Naming {
     }
 
     /** The nearest creature in the middle of its view that it has a clear line of sight to. */
-    private static LivingEntity creatureInView(LivingEntity body) {
+    public static LivingEntity creatureInView(LivingEntity body) {
         Vec3 eye = body.getEyePosition();
         Vec3 look = body.getLookAngle();
         LivingEntity best = null;

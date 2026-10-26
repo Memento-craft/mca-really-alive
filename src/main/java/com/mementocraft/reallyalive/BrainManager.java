@@ -10,6 +10,7 @@ import com.mementocraft.reallyalive.brain.Brain;
 import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.BrainIO;
 import com.mementocraft.reallyalive.brain.Genome;
+import com.mementocraft.reallyalive.brain.MotorChannel;
 import com.mementocraft.reallyalive.brain.MotorCommand;
 import com.mementocraft.reallyalive.brain.OlfactoryChannel;
 import com.mementocraft.reallyalive.brain.Rng;
@@ -133,6 +134,8 @@ public final class BrainManager {
         final java.util.ArrayDeque<String[]> reading = new java.util.ArrayDeque<>();
         Object readScreen;
         boolean useWasDown;
+        /** Keys it last saw someone in view press. */
+        final float[] watched = new float[MotorChannel.COUNT];
         int linesRead;
 
         Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
@@ -428,6 +431,42 @@ public final class BrainManager {
         }
     }
 
+    /** Ticks between looks at what someone in view is doing with their hands and feet. */
+    private static final int WATCH_INTERVAL = 4;
+    private static final double WATCH_RANGE = 8.0;
+
+    /**
+     * What the villager or player it is looking at is doing, as keys: a brain villager's keys are
+     * known exactly; for anyone else what shows (a swinging arm, crouching, sprinting, an item in
+     * use) stands for the key that does it.
+     */
+    private void watch(Villager v, float[] out) {
+        java.util.Arrays.fill(out, 0f);
+        LivingEntity seen = Naming.creatureInView(v);
+        if (seen == null || !(seen instanceof Player || seen instanceof Villager) || seen.distanceTo(v) > WATCH_RANGE) {
+            return;
+        }
+        Handle other = seen instanceof Villager sv ? handles.get(sv.getUUID()) : null;
+        if (other != null) {
+            MotorCommand k = other.held != null ? other.held : other.command;
+            out[MotorChannel.FORWARD.ordinal()] = k.forward() > 0 ? 1f : 0f;
+            out[MotorChannel.BACK.ordinal()] = k.forward() < 0 ? 1f : 0f;
+            out[MotorChannel.LEFT.ordinal()] = k.strafe() > 0 ? 1f : 0f;
+            out[MotorChannel.RIGHT.ordinal()] = k.strafe() < 0 ? 1f : 0f;
+            out[MotorChannel.JUMP.ordinal()] = k.jump() ? 1f : 0f;
+            out[MotorChannel.SNEAK.ordinal()] = k.sneak() ? 1f : 0f;
+            out[MotorChannel.SPRINT.ordinal()] = k.sprint() ? 1f : 0f;
+            out[MotorChannel.ATTACK.ordinal()] = k.attack() ? 1f : 0f;
+            out[MotorChannel.USE.ordinal()] = k.use() ? 1f : 0f;
+            return;
+        }
+        out[MotorChannel.ATTACK.ordinal()] = seen.swinging ? 1f : 0f;
+        out[MotorChannel.USE.ordinal()] = seen.isUsingItem() ? 1f : 0f;
+        out[MotorChannel.SNEAK.ordinal()] = seen.isShiftKeyDown() ? 1f : 0f;
+        out[MotorChannel.SPRINT.ordinal()] = seen.isSprinting() ? 1f : 0f;
+        out[MotorChannel.FORWARD.ordinal()] = seen.getDeltaMovement().horizontalDistanceSqr() > 0.003 ? 1f : 0f;
+    }
+
     /** Ticks between words read: reading goes faster than talking. */
     private static final int READ_TICKS = 3;
 
@@ -494,6 +533,10 @@ public final class BrainManager {
         f.harvested.addAll(h.harvested);
         h.harvested.clear();
         f.canWrite = Books.canWriteIn(v.getMainHandItem());
+        if (h.age % WATCH_INTERVAL == 0) {
+            watch(v, h.watched);
+        }
+        System.arraycopy(h.watched, 0, f.watched, 0, h.watched.length);
         for (String w : h.wroteWords) {
             f.hear(w, true);
         }

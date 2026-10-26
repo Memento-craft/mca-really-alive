@@ -26,6 +26,11 @@ public final class SensoryFrame {
     public final List<String> heardFrom = new ArrayList<>();
     /** Whether each heard word was read in a book rather than heard said. */
     public final List<Boolean> heardRead = new ArrayList<>();
+    /**
+     * The keys someone it is watching is pressing (0..1 per {@link MotorChannel}): a villager in
+     * view digging, placing or walking, as one sees another's hands and feet move.
+     */
+    public final float[] watched = new float[MotorChannel.COUNT];
     /** It holds something to write in (a book and quill with room left). */
     public boolean canWrite;
     /** People the villager saw die this tick, by name. */
@@ -109,6 +114,7 @@ public final class SensoryFrame {
         heardFrom.clear();
         heardRead.clear();
         canWrite = false;
+        Arrays.fill(watched, 0f);
         died.clear();
         harvested.clear();
         named.clear();

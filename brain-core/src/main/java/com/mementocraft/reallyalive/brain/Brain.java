@@ -315,6 +315,10 @@ public final class Brain {
     final float[] input = new float[INPUT_SIZE];
     final float[] poolRates = new float[MotorChannel.COUNT];
     final float[] babble = new float[MotorChannel.COUNT];
+    /** Keys it sees someone press this tick. */
+    final float[] watched = new float[MotorChannel.COUNT];
+    /** The pleasure of doing what it sees done, felt next tick. */
+    float copyJoy;
     final float[] emotionRates = new float[SenseLayout.EMOTION_RECEPTORS];
     final MotorDecoder decoder = new MotorDecoder();
     final ForwardModel forwardModel;
@@ -675,7 +679,7 @@ public final class Brain {
         System.arraycopy(f.feel, 0, input, IN_FEEL, FeelChannel.COUNT);
         System.arraycopy(poolRates, 0, input, IN_EFFERENCE, MotorChannel.COUNT);
         System.arraycopy(f.smell, 0, input, IN_SMELL, OlfactoryChannel.COUNT);
-        input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure + heardJoy);
+        input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure + heardJoy + copyJoy);
         input[IN_EMOTION + SenseLayout.EMO_PAIN] = SensoryFrame.clamp01(f.pain + grief);
         grief *= GRIEF_KEEP;
         heardJoy *= 0.9f;
@@ -725,6 +729,7 @@ public final class Brain {
     private void listen(SensoryFrame f) {
         company = f.company;
         youngCompany = f.youngCompany;
+        System.arraycopy(f.watched, 0, watched, 0, MotorChannel.COUNT);
         canWrite = f.canWrite;
         for (String d : f.died) {
             sawDie(d);
@@ -1282,6 +1287,12 @@ public final class Brain {
     /** How strongly a word must fit what is perceived (log of its grounding lift) to be about the moment. */
     static final float MOMENT_FIT = 1f;
 
+    /** How strongly watching someone press a key drives its own pool for it, and how much less once grown. */
+    static final float MIRROR_GAIN = Float.parseFloat(System.getProperty("reallyalive.mirror", "0.6"));
+    static final float MIRROR_GROWN = 0.7f;
+    /** A motor pool firing this much counts as doing what is watched. */
+    static final float COPY_ON = 0.3f;
+
     /** How much it wants to tell people things before it has learned whether that is worth it. */
     static final float TELL_START = 0.5f;
     static final float TELL_MIN = 0.05f;
@@ -1632,11 +1643,14 @@ public final class Brain {
     private void driveMotorBabble() {
         float experience = Math.min(1f, ticks / (float) EXPERIENCE_TICKS);
         float amp = genome.get(Genome.BABBLE) * (1f - 0.7f * experience) * babbleScale;
+        // Mirroring: seeing someone press a key stirs its own pool for it, more the younger it
+        // is, so a child tries what it watches the grown-ups do (and learns it when it works).
+        float mirror = MIRROR_GAIN * (1f - MIRROR_GROWN * maturity) * babbleScale;
         for (int c = 0; c < MotorChannel.COUNT; c++) {
             babble[c] += -0.1f * babble[c] + 0.3f * rng.gaussian();
             float gain = c == MotorChannel.INVENTORY.ordinal() ? INVENTORY_BABBLE
                     : c == MotorChannel.HOTBAR.ordinal() ? WHEEL_BABBLE : 1f;
-            float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN * gain;
+            float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN * gain + mirror * watched[c];
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
                 extInput[motorPools[c][k]] = drive;
             }
@@ -1934,6 +1948,12 @@ public final class Brain {
             }
             speechRates[w] = speechRates[w] * 0.6f + 0.4f * count / SenseLayout.SPEECH_POOL_SIZE;
         }
+        // Doing what it sees someone do feels good: the inborn pull to imitate.
+        float copied = 0f;
+        for (int c = 0; c < MotorChannel.COUNT; c++) {
+            copied += watched[c] * Math.min(1f, poolRates[c] / COPY_ON);
+        }
+        copyJoy = Math.min(1f, Motives.IMITATE * copied);
     }
 
     /**
