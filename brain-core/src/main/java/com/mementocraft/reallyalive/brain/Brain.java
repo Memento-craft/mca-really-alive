@@ -104,18 +104,20 @@ public final class Brain {
      * The screen is felt more the longer nothing is done on it (boredom), so the urge is weak just
      * after opening it or clicking on it and strong once it has sat idle; learning can change it.
      */
-    static final float LEAVE_SCREEN_WEIGHT = 0.35f;
+    static final float LEAVE_SCREEN_WEIGHT = 0.6f;
     /**
      * An open screen also drives the left button a little, the urge to fiddle with what is in
      * front of the hands: without it a newborn clicked a slot about once per screen and never put
      * anything in the crafting grid.
      */
     static final float FIDDLE_WEIGHT = 0.3f;
+    /** Curiosity about what it carries -> inventory key, to look it over. */
+    static final float CURIOUS_WEIGHT = 0.6f;
     /**
      * How much the inventory key and the mouse wheel babble, against the other keys. A player
      * presses them now and then, not as often as they walk or look about.
      */
-    static final float INVENTORY_BABBLE = 0.5f;
+    static final float INVENTORY_BABBLE = 0.3f;
     static final float WHEEL_BABBLE = 0.5f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
@@ -423,7 +425,8 @@ public final class Brain {
 
     /**
      * The reflexes of the hands, added after the first brains were saved: an open screen drives the
-     * inventory key and the left button.
+     * inventory key and the left button, and curiosity about what it carries drives the inventory
+     * key too, so a villager now and then looks over its things as a player does.
      */
     private void wireHandReflexes(int i) {
         if (role[i] != ROLE_RECEPTOR) {
@@ -435,6 +438,11 @@ public final class Brain {
             }
             for (int m : motorPools[MotorChannel.ATTACK.ordinal()]) {
                 connect(i, m, FIDDLE_WEIGHT);
+            }
+        }
+        if (inputSlot[i] == IN_FEEL + FeelChannel.CURIOUS.ordinal()) {
+            for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                connect(i, m, CURIOUS_WEIGHT);
             }
         }
     }

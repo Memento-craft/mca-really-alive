@@ -376,6 +376,7 @@ public final class BrainManager {
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
         f.set(FeelChannel.USING_ITEM, h.hands.usingProgress());
+        f.set(FeelChannel.CURIOUS, h.hands.curiosity());
         if (h.hands.screenOpen()) {
             // The screen is felt the more the longer nothing is done on it, which drives the urge to
             // leave it. The head does not move while a screen is open, so its tilt is not felt as

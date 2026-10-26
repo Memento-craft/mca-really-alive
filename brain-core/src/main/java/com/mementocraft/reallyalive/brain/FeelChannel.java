@@ -38,9 +38,14 @@ public enum FeelChannel {
     /** A stack hangs on the mouse pointer, picked up from a slot. */
     POINTER_HOLDING,
     /** How far eating or drinking the thing in hand has got. */
-    USING_ITEM;
+    USING_ITEM,
+    // Added in brain file version 9.
+    /** It carries something it has not looked over in a screen for a long while, or ever. */
+    CURIOUS;
 
     public static final int COUNT = values().length;
     /** Channels a brain saved before brain file version 8 has. */
     static final int COUNT_V7 = 27;
+    /** Channels a brain saved with brain file version 8 has. */
+    static final int COUNT_V8 = 30;
 }
