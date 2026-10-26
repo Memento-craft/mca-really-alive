@@ -93,6 +93,11 @@ final class ToneLinks {
         return sum;
     }
 
+    /** Whether the word is among the commonest, which the table holds. */
+    boolean common(int word) {
+        return word >= 0 && word < row.length && row[word] >= 0;
+    }
+
     private static boolean contains(int[] line, int word) {
         for (int w : line) {
             if (w == word) {

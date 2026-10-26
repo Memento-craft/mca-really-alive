@@ -258,6 +258,8 @@ final class ExchangeMemory {
 
         /** The words that ask something of the villager itself ("you", "your"), sorted ids. */
         int[] you = new int[0];
+        /** The question mark's word id. */
+        int ask = -1;
 
         /** As {@link ExchangeMemory#recall}, from this villager's own memories. */
         int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, ExchangeMemory shared) {
@@ -294,6 +296,10 @@ final class ExchangeMemory {
             if (heardNorm == 0f) {
                 return new int[0][];
             }
+            boolean asking = false;
+            for (int w : heard) {
+                asking |= w == ask && ask >= 0;
+            }
             // Its own memories are vivid: even a vague line brings them up at full strength.
             Integer[] order = new Integer[n];
             float[] v = new float[n];
@@ -309,7 +315,11 @@ final class ExchangeMemory {
                 // other memories need the lines to match as wholes.
                 double lean = slots[p] >= CAPACITY ? 0.9 : 0.5;
                 v[p] = (float) (Math.pow(covered, lean) * Math.pow(heardCovered, 1 - lean));
-                if (slots[p] >= CAPACITY && !askedOfIt(slots[p], heard)) {
+                if (slots[p] >= CAPACITY ? !askedOfIt(slots[p], heard)
+                        : asking != (Arrays.binarySearch(cues[slots[p]], ask) >= 0)) {
+                    // A question is not answered as the telling it asks about was: told "my
+                    // favourite colour is green." and asked "what's my favourite colour?", the
+                    // answer is not "why green?" again.
                     v[p] = 0f;
                 }
             }

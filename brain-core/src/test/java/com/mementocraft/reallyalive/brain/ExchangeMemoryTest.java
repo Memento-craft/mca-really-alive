@@ -25,6 +25,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * builds the shipped memory when EXCHANGES_OUT is set (see tools/corpus/README.md).
  */
 class ExchangeMemoryTest {
+    /** Stand-ins SODA left where a name should be ("hi, i'm person's name."), never said back. */
+    private static final java.util.regex.Pattern PLACEHOLDER =
+            java.util.regex.Pattern.compile("(?i)person ?[xyz]\\b|person's name|insert name|\\[name\\]");
+
     @Test
     void aHeardLineBringsUpAnswersAboutTheSameThing() {
         ExchangeMemory memory = ExchangeMemory.shared();
@@ -59,7 +63,8 @@ class ExchangeMemoryTest {
      * Builds the memory from corpus files (comma separated, each with a stride: every n-th pair of
      * lines is kept, as file:n). The answer's line is cued by the telling words of the line it
      * answered; the commonest words and names (capitalised mid-sentence in SODA) are no cues, and
-     * answers naming someone are left out, since villagers don't know those people.
+     * answers naming someone or holding a stand-in for a name are left out, since villagers don't
+     * know those people.
      */
     @Test
     void build() throws IOException {
@@ -116,7 +121,8 @@ class ExchangeMemoryTest {
                         continue;
                     }
                     List<String> cur = WordCode.tokenize(line);
-                    if (prev != null && pairNo++ % stride == 0 && cur.size() >= 2 && cur.size() <= 24) {
+                    if (prev != null && pairNo++ % stride == 0 && cur.size() >= 2 && cur.size() <= 24
+                            && !PLACEHOLDER.matcher(line).find()) {
                         char[] answer = new char[cur.size()];
                         boolean ok = true;
                         for (int i = 0; i < answer.length && ok; i++) {

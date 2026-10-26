@@ -156,6 +156,13 @@ public final class Brain {
     static final float TOPIC = 1f;
     /** How much the tone of an answer's words going with the line it answers counts. */
     static final float TONE = 3f;
+    /** How strongly a question must cue a line told earlier (summed telling-word weight), and how much its words are lifted. */
+    static final float TOLD_CUE = Float.parseFloat(System.getProperty("reallyalive.toldCue", "5"));
+    /** How many lines back a told line can be. */
+    static final int TOLD_LINES = 8;
+    static final int TOLD_QUESTION_WORDS = 10;
+    static final float TOLD_WEIGHT = Float.parseFloat(System.getProperty("reallyalive.toldWeight", "3"));
+    static final float TOLD_LIFT = (float) Math.exp(Float.parseFloat(System.getProperty("reallyalive.toldLift", "3")));
     /**
      * How strongly what the concept system holds picks among the words the language area offers:
      * each word's chance is multiplied by e^(gain x how much more than usual its meaning is present).
@@ -656,6 +663,9 @@ public final class Brain {
         }
         lastLine = line;
         lastLineOwn = own;
+        if (!own) {
+            heardLines[heardLinesNext++ % heardLines.length] = line;
+        }
     }
 
     /**
@@ -705,6 +715,13 @@ public final class Brain {
         for (int w = 0; w < words; w++) {
             fit[w] = (float) Math.exp(clamp(GROUNDING_GAIN * boost[w] - shift, -GROUNDING_MAX, GROUNDING_MAX));
             anyMeaning |= boost[w] != 0f;
+        }
+        // What it was told earlier in the talk and is being asked about now comes to mind too.
+        for (int w : recalledFocus) {
+            if (w < words) {
+                fit[w] *= TOLD_LIFT;
+                anyMeaning = true;
+            }
         }
         // The few words worth planning past, by how well they fit on their own.
         int found = 0;
@@ -825,6 +842,7 @@ public final class Brain {
     private int[] thinkThrough(int tries, int mustSay, int sayWithin) {
         LanguageArea.Place start = language.place();
         topicHeard = mustSay < 0 && !language.heardOwnLine() ? language.heardLine() : null;
+        recalledFocus = topicHeard == null ? new int[0] : toldBefore(topicHeard);
         groundedWord(false);
         int[] openers = openers(tries);
         int turn = language.vocabulary.find(WordCode.TURN);
@@ -871,10 +889,16 @@ public final class Brain {
             int[] heard = language.heardLine();
             int[] before = language.earlierLine();
             weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match), match, RECALL_WEIGHT, false, start, turn);
+            talk.ask = language.vocabulary.find("?");
             int[][] mine = talk.recall(heard, before, 0f, RECALLED, match, memory);
             weighRecalled(mine, match, OWN_RECALL_WEIGHT, true, start, turn);
+            if (toldLine != null) {
+                // What it was told, said back the other way round: "you have a dog named rex."
+                weighRecalled(new int[][] {toldBack(toldLine)}, new float[] {1f}, TOLD_WEIGHT, true, start, turn);
+            }
         }
         language.restore(start);
+        recalledFocus = new int[0];
         int[] best = thoughtBest;
         if (best != null) {
             said[saidNext++ % said.length] = best;
@@ -901,6 +925,11 @@ public final class Brain {
     private float thoughtEase;
     /** The line being answered, whose topic an answer should keep to; null when not answering. */
     private int[] topicHeard;
+    /** Lines others said lately, the latest last; and the words of one being asked about now. */
+    private final int[][] heardLines = new int[16][];
+    private int heardLinesNext;
+    private int[] recalledFocus = new int[0];
+    private int[] toldLine;
 
     /**
      * Weighs a line thought through to here, with the language area just after its last word, and
@@ -982,6 +1011,118 @@ public final class Brain {
         int[] weighted = Arrays.copyOf(heard, heard.length * 2 - from);
         System.arraycopy(heard, from, weighted, heard.length, heard.length - from);
         return weighted;
+    }
+
+    /**
+     * Asked something ("what's my dog's name?"), the line it was told earlier in the talk that
+     * shares the most telling words with the question ("i have a dog named rex.") comes back, and
+     * its telling words that the question lacks ("rex") are what the answer should say. Returns
+     * those words, or none if the heard line is no question or nothing told fits it well enough.
+     */
+    private int[] toldBefore(int[] heard) {
+        ExchangeMemory memory = ExchangeMemory.shared();
+        int ask = language.vocabulary.find("?");
+        toldLine = null;
+        // A short, plain question about the speaker ("where do i live?"), not a long outburst
+        // that ends in one.
+        if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask
+                || !aboutSpeaker(heard)) {
+            return new int[0];
+        }
+        ToneLinks tones = ToneLinks.shared();
+        int name = language.vocabulary.find("name");
+        boolean askingName = contains(heard, name);
+        int[] best = null;
+        float bestCue = TOLD_CUE;
+        // The latest line is the question itself; only what the speaker told about themselves
+        // lately, not other questions, is recalled.
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] told = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (told.length == 0 || told[told.length - 1] == ask || !aboutSpeaker(told)) {
+                continue;
+            }
+            float cue = 0f;
+            boolean named = false;
+            for (int w : told) {
+                if (w >= 0 && saidIn(heard, w)) {
+                    cue += memory.weight(w);
+                }
+                named |= w >= 0 && memory.weight(w) == 0f && tones != null && !tones.common(w)
+                        && Character.isLetter(language.vocabulary.word(w).charAt(0));
+            }
+            if (askingName && named) {
+                // "what's my name?" asks for a name, and "hi, i'm josh." gave one.
+                cue += memory.weight(name);
+            }
+            if (cue > bestCue) {
+                bestCue = cue;
+                best = told;
+            }
+        }
+        if (best == null) {
+            return new int[0];
+        }
+        toldLine = best;
+        // Telling words: those that cue remembered exchanges, and names, which never do but are
+        // not among the commonest words either.
+        return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))
+                && (memory.weight(w) > 0f || tones != null && !tones.common(w))).distinct().toArray();
+    }
+
+    /** Whether a line is the speaker talking about themselves ("i", "my", "me"). */
+    private boolean aboutSpeaker(int[] line) {
+        for (int w : line) {
+            if (w >= 0) {
+                String word = language.vocabulary.word(w);
+                if (word.equals("i") || word.equals("my") || word.equals("me") || word.equals("i'm") || word.equals("myself")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** A line told by someone else, as said back to them: "i" becomes "you", "my" "your". */
+    private int[] toldBack(int[] told) {
+        String[][] swaps = {{"i", "you"}, {"me", "you"}, {"my", "your"}, {"i'm", "you're"},
+            {"i've", "you've"}, {"i'll", "you'll"}, {"i'd", "you'd"}, {"myself", "yourself"}, {"am", "are"}};
+        int[] back = told.clone();
+        for (int k = 0; k < back.length; k++) {
+            if (back[k] < 0) {
+                continue;
+            }
+            String w = language.vocabulary.word(back[k]);
+            for (String[] swap : swaps) {
+                if (w.equals(swap[0])) {
+                    back[k] = language.vocabulary.find(swap[1]);
+                }
+            }
+        }
+        return back;
+    }
+
+    /** Whether a word, or the same word with an "s" or "'s" or "ed" on it, is in the line. */
+    private boolean saidIn(int[] line, int word) {
+        String a = language.vocabulary.word(word);
+        for (int w : line) {
+            if (w >= 0) {
+                String b = language.vocabulary.word(w);
+                if (sameWord(a, b) || a.equals(b + "'s") || b.equals(a + "'s") || a.equals(b + "d") || b.equals(a + "d")
+                        || a.equals(b + "ed") || b.equals(a + "ed")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean contains(int[] line, int word) {
+        for (int w : line) {
+            if (w == word) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** How likely the line is as the opening of a talk, with nothing said before it. */

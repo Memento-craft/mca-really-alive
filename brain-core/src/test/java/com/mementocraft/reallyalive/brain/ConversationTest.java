@@ -198,4 +198,35 @@ class ConversationTest {
         System.out.printf("answered about itself truthfully %d of %d%n", right, asked);
         assertTrue(right >= asked - 1, "answered about itself truthfully only " + right + " of " + asked);
     }
+
+    /**
+     * Told something earlier in a talk, a villager answers a question about it with what it was
+     * told: "i have a dog named rex." ... "what's my dog's name?" "you have a dog named rex."
+     */
+    @Test
+    void villagerRemembersWhatItWasTold() {
+        String[][] talks = {{"hi, i'm josh.", "how are you?", "what's my name?", "josh"},
+            {"i have a dog named rex.", "he likes to play fetch.", "what's my dog's name?", "rex"},
+            {"my favourite colour is green.", "what's yours?", "what's my favourite colour?", "green"},
+            {"i live in the big house by the river.", "it's very old.", "where do i live?", "river"},
+            {"i'm going to the mine tomorrow.", "i need iron.", "where am i going tomorrow?", "mine"},
+            {"i'm sad today.", "my cat ran away.", "why am i sad?", "sad"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 500 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("remembered what it was told %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "remembered what it was told only " + right + " of " + talks.length);
+    }
 }
