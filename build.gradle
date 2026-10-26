@@ -34,6 +34,8 @@ neoForge {
         gameTestServer {
             type = 'gameTestServer'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            // Only these learning benchmarks, e.g. -Pbenchmarks=TILL,STEP (all when unset).
+            systemProperty 'reallyalive.benchmarks', project.findProperty('benchmarks') ?: ''
         }
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'

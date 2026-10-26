@@ -97,6 +97,18 @@ public final class Brain {
     static final float PLACING_WEIGHT = 2.0f;
     static final float CLIMB_WEIGHT = 1.5f;
     /**
+     * An open screen gently drives the inventory key, the urge to get back to the world: without it a
+     * babbling brain that toggles the key at random sat in its inventory half its life, standing still.
+     * Weak, so a screen stays open long enough to do something on it; learning can change it.
+     */
+    static final float LEAVE_SCREEN_WEIGHT = 0.35f;
+    /**
+     * How much the inventory key and the mouse wheel babble, against the other keys. A player
+     * presses them now and then, not as often as they walk or look about.
+     */
+    static final float INVENTORY_BABBLE = 0.3f;
+    static final float WHEEL_BABBLE = 0.5f;
+    /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
      * same place on the sheet. This keeps maps intact, like the retinotopic maps of a real visual
      * system: what is seen on the left stays on the left side of each lobe.
@@ -376,7 +388,8 @@ public final class Brain {
      * toward it. The placing reflex lifts the body when the front of it bumps into something, and
      * being in water drives the jump pool, which is how a player swims up. A ladder seen to one side
      * turns the gaze toward it like a creature does, and holding on to a ladder drives walking
-     * into it, which is how a player climbs. Learning can still
+     * into it, which is how a player climbs. An open screen drives the inventory key a little, the
+     * urge to get back to the world, so screens get closed again. Learning can still
      * strengthen, weaken or override these synapses.
      */
     private void wireReflexes() {
@@ -393,6 +406,7 @@ public final class Brain {
                     connect(i, m, w);
                 }
             }
+            wireLeaveScreen(i);
             if (inputSlot[i] == onClimbable) {
                 // Climbing: holding a ladder drives walking into it, which is how a player climbs.
                 for (int m : motorPools[MotorChannel.FORWARD.ordinal()]) {
@@ -419,6 +433,15 @@ public final class Brain {
                 for (int m : pool) {
                     connect(i, m, REFLEX_WEIGHT);
                 }
+            }
+        }
+    }
+
+    /** The leave-the-screen reflex, for a receptor that feels a screen open. */
+    private void wireLeaveScreen(int i) {
+        if (role[i] == ROLE_RECEPTOR && inputSlot[i] == IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()) {
+            for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                connect(i, m, LEAVE_SCREEN_WEIGHT);
             }
         }
     }
@@ -546,6 +569,7 @@ public final class Brain {
         }
         for (int i = first; i < n; i++) {
             wireOut(i);
+            wireLeaveScreen(i);
         }
     }
 
@@ -1610,7 +1634,9 @@ public final class Brain {
         float amp = genome.get(Genome.BABBLE) * (1f - 0.7f * experience) * babbleScale;
         for (int c = 0; c < MotorChannel.COUNT; c++) {
             babble[c] += -0.1f * babble[c] + 0.3f * rng.gaussian();
-            float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN;
+            float gain = c == MotorChannel.INVENTORY.ordinal() ? INVENTORY_BABBLE
+                    : c == MotorChannel.HOTBAR.ordinal() ? WHEEL_BABBLE : 1f;
+            float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN * gain;
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
                 extInput[motorPools[c][k]] = drive;
             }
