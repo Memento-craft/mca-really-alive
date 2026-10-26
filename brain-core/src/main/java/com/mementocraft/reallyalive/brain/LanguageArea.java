@@ -414,6 +414,11 @@ public final class LanguageArea {
         activate();
     }
 
+    /** Forgets the words of a line that was never ended, so they are not taken as part of the next one. */
+    void dropUnended() {
+        utterance.clear();
+    }
+
     /** The word this area most expects next, or null when it expects nothing. */
     public String expect() {
         int best = bestWord(-1);

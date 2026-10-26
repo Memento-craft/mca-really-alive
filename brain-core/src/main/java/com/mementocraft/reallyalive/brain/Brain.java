@@ -595,6 +595,11 @@ public final class Brain {
         for (int i = 0; i < f.heardWords.size(); i++) {
             String w = f.heardWords.get(i);
             boolean own = f.heardOwn.get(i);
+            if (!w.equals(WordCode.TURN) && !lineSoFar.isEmpty() && lineSoFarOwn != own) {
+                // Someone else spoke up after words it cooed and never ended (or the other way
+                // round): those were no line, and are not part of this one.
+                language.dropUnended();
+            }
             language.hear(w, !own);
             if (!own) {
                 plan = null;
@@ -608,8 +613,6 @@ public final class Brain {
             }
             if (!w.equals(WordCode.TURN)) {
                 if (!lineSoFar.isEmpty() && lineSoFarOwn != own) {
-                    // Someone else spoke up after words it cooed and never ended (or the other way
-                    // round): those were no line, and are not part of this one.
                     lineSoFar.clear();
                 }
                 lineSoFarOwn = own;
