@@ -37,6 +37,8 @@ import java.util.Optional;
  * that picks up scents drifting from nearby things. Runs on the server thread.
  */
 public final class Senses {
+    /** Degrees below the horizon the head rests at while the hands hold something. */
+    static final float WORK_TILT = 30f;
     /** A player's default vertical field of view, and the matching horizontal span at 16:9. */
     public static final float FOV_V = 70f;
     public static final float FOV_H = 100f;
@@ -201,8 +203,12 @@ public final class Senses {
         f.set(FeelChannel.VEL_UP, (float) v.y * 2.5f);
         f.set(FeelChannel.VEL_DOWN, (float) -v.y * 2.5f);
 
-        f.set(FeelChannel.HEAD_UP, -body.getXRot() / 90f);
-        f.set(FeelChannel.HEAD_DOWN, body.getXRot() / 90f);
+        // The head is felt against its resting tilt, which the level-head reflex holds. With something
+        // in hand it rests lower, on the ground in front where the hands can work, as a player looks
+        // at what they are doing; with empty hands it rests on the horizon.
+        float rest = body.getMainHandItem().isEmpty() ? 0f : WORK_TILT;
+        f.set(FeelChannel.HEAD_UP, (rest - body.getXRot()) / 90f);
+        f.set(FeelChannel.HEAD_DOWN, (body.getXRot() - rest) / 90f);
         f.set(FeelChannel.FALL_DISTANCE, body.fallDistance / 10f);
         f.set(FeelChannel.HEALTH, body.getHealth() / body.getMaxHealth());
         f.set(FeelChannel.HUNGER, 0f);

@@ -65,6 +65,9 @@ public final class Hands {
     public static final double ENTITY_REACH = 3.0;
     private static final int BREAK_PAUSE = 5;
     private static final int USE_REPEAT = 4;
+    /** The keyboard's repeat: half a second before the first repeat, then one every tick or so. */
+    private static final int KEY_REPEAT_DELAY = 10;
+    private static final int KEY_REPEAT_EVERY = 5;
     /** A player picks up items this close (Player.aiStep). */
     private static final double PICKUP_XZ = 1.0;
     private static final double PICKUP_Y = 0.5;
@@ -75,6 +78,8 @@ public final class Hands {
     private boolean attackWasDown;
     private boolean useWasDown;
     private boolean inventoryWasDown;
+    /** Ticks the inventory key has been held, for the keyboard's repeat. */
+    private int inventoryHeld;
     private boolean wheelWasDown;
     private StandIn standIn;
     /** The open screen, or null. Its own inventory counts as a screen while it is open. */
@@ -179,6 +184,12 @@ public final class Hands {
         pickUpNearby();
         boolean inventoryPressed = keys.inventory() && !inventoryWasDown;
         inventoryWasDown = keys.inventory();
+        inventoryHeld = keys.inventory() ? inventoryHeld + 1 : 0;
+        // A held key repeats after half a second, and a screen takes each repeat as a press: holding
+        // the inventory key closes the screen it opened, as it does for a player.
+        if (screen != null && inventoryHeld > KEY_REPEAT_DELAY && (inventoryHeld - KEY_REPEAT_DELAY) % KEY_REPEAT_EVERY == 0) {
+            inventoryPressed = true;
+        }
         if (screen != null) {
             workScreen(keys, inventoryPressed);
             return;

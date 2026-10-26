@@ -373,7 +373,7 @@ public final class Brain {
                     connect(i, m, w);
                 }
             }
-            wireLeaveScreen(i);
+            wireHandReflexes(i);
             if (inputSlot[i] == onClimbable) {
                 // Climbing: holding a ladder drives walking into it, which is how a player climbs.
                 for (int m : motorPools[MotorChannel.FORWARD.ordinal()]) {
@@ -404,9 +404,15 @@ public final class Brain {
         }
     }
 
-    /** The leave-the-screen reflex, for a receptor that feels a screen open. */
-    private void wireLeaveScreen(int i) {
-        if (role[i] == ROLE_RECEPTOR && inputSlot[i] == IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()) {
+    /**
+     * The reflex of the hands, added after the first brains were saved: an open screen drives the
+     * inventory key.
+     */
+    private void wireHandReflexes(int i) {
+        if (role[i] != ROLE_RECEPTOR) {
+            return;
+        }
+        if (inputSlot[i] == IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()) {
             for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
                 connect(i, m, LEAVE_SCREEN_WEIGHT);
             }
@@ -536,7 +542,7 @@ public final class Brain {
         }
         for (int i = first; i < n; i++) {
             wireOut(i);
-            wireLeaveScreen(i);
+            wireHandReflexes(i);
         }
     }
 
