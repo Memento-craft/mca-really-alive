@@ -17,10 +17,11 @@ CORPUS=train.txt,soda_clean.txt EVAL=soda_eval.txt BITS=24 MIN_COUNT=20 KEEP=96 
   ./gradlew -p brain-core test --tests '*EnglishProbeTest' -i
 ```
 
-The remembered exchanges (`exchanges.bin.gz`) are built from the same files, every n-th pair of lines:
+The remembered exchanges (`exchanges.bin.gz`) are built from the same files, every n-th pair of lines, and every
+pair of the hand-written conversations (use absolute paths, the build runs in `brain-core`):
 
 ```
-CORPUS=soda_clean.txt:3,train.txt:40 EXCHANGES_OUT=brain-core/src/main/resources/reallyalive/exchanges.bin.gz \
+CORPUS=soda_clean.txt:3,train.txt:40,tools/corpus/dialogues.txt EXCHANGES_OUT=brain-core/src/main/resources/reallyalive/exchanges.bin.gz \
   ./gradlew -p brain-core test --tests '*ExchangeMemoryTest' -i
 ```
 

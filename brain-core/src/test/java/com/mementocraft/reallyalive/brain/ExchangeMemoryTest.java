@@ -116,6 +116,9 @@ class ExchangeMemoryTest {
             try (BufferedReader r = Files.newBufferedReader(Path.of(fs[0]))) {
                 String line;
                 while ((line = r.readLine()) != null) {
+                    if (line.startsWith("#")) {
+                        continue;
+                    }
                     if (line.isBlank()) {
                         prev = null;
                         continue;
