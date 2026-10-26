@@ -31,7 +31,16 @@ public enum FeelChannel {
     /** The crosshair rests on a block within arm's reach (a player sees its outline). */
     TARGET_IN_REACH,
     /** How far digging the targeted block has got (a player sees it crack). */
-    DIG_PROGRESS;
+    DIG_PROGRESS,
+    // Added after the first brains were saved; saved brains get these receptors on load.
+    /** A screen is open (its own inventory, a crafting table, a brewing stand, a chest...). */
+    SCREEN_OPEN,
+    /** A stack hangs on the mouse pointer, picked up from a slot. */
+    POINTER_HOLDING,
+    /** How far eating or drinking the thing in hand has got. */
+    USING_ITEM;
 
     public static final int COUNT = values().length;
+    /** Channels a brain saved before brain file version 8 has. */
+    static final int COUNT_V7 = 27;
 }

@@ -46,6 +46,14 @@ public final class SenseLayout {
     /** Neurons per speech pool, one pool per word feature. */
     public static final int SPEECH_POOL_SIZE = 6;
 
+    /**
+     * Features of a thing seen up close or held (see {@link ThingCode}): what the crosshair or the
+     * mouse pointer rests on, and what is in hand or on the pointer. A player sees what a block or
+     * an item is; the rays above only see its shape and colour.
+     */
+    public static final int THING_FEATURES = 32;
+    public static final int THING_FEATURES_ACTIVE = 4;
+
     /** Neurons per motor pool. Rates are read as the fraction of the pool firing. */
     public static final int MOTOR_POOL_SIZE = 12;
 
