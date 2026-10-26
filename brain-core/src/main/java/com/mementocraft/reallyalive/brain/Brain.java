@@ -160,6 +160,9 @@ public final class Brain {
     static final float TOLD_CUE = Float.parseFloat(System.getProperty("reallyalive.toldCue", "5"));
     /** How many lines back a told line can be. */
     static final int TOLD_LINES = 8;
+    static final float TOLD_LINK = 2f;
+    static final float TOLD_TELLING = 5f;
+    static final float TOLD_COVER = 0.5f;
     static final int TOLD_QUESTION_WORDS = 10;
     static final float TOLD_WEIGHT = Float.parseFloat(System.getProperty("reallyalive.toldWeight", "3"));
     static final float TOLD_LIFT = (float) Math.exp(Float.parseFloat(System.getProperty("reallyalive.toldLift", "3")));
@@ -1033,8 +1036,10 @@ public final class Brain {
     /**
      * Asked something ("what's my dog's name?"), the line it was told earlier in the talk that
      * shares the most telling words with the question ("i have a dog named rex.") comes back, and
-     * its telling words that the question lacks ("rex") are what the answer should say. Returns
-     * those words, or none if the heard line is no question or nothing told fits it well enough.
+     * its telling words that the question lacks ("rex") are what the answer should say. Asked about
+     * someone or something else ("where is the key?"), any line told lately can answer, if it said
+     * most of what the question asks about. Returns those words, or none if the heard line is no
+     * question or nothing told fits it well enough.
      */
     private int[] toldBefore(int[] heard) {
         ExchangeMemory memory = ExchangeMemory.shared();
@@ -1042,9 +1047,13 @@ public final class Brain {
         toldLine = null;
         // A short, plain question about the speaker ("where do i live?"), not a long outburst
         // that ends in one.
-        if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask
-                || !aboutSpeaker(heard)) {
+        if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
+        }
+        boolean aboutThem = aboutSpeaker(heard);
+        float asked = 0f;
+        for (int w : heard) {
+            asked += w >= 0 ? memory.weight(w) : 0f;
         }
         ToneLinks tones = ToneLinks.shared();
         int name = language.vocabulary.find("name");
@@ -1056,7 +1065,7 @@ public final class Brain {
         // lately, not other questions, is recalled.
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
             int[] told = heardLines[(heardLinesNext - k) % heardLines.length];
-            if (told.length == 0 || told[told.length - 1] == ask || !aboutSpeaker(told)) {
+            if (told.length == 0 || told[told.length - 1] == ask || aboutThem && !aboutSpeaker(told)) {
                 continue;
             }
             float cue = 0f;
@@ -1071,6 +1080,30 @@ public final class Brain {
             if (askingName && named) {
                 // "what's my name?" asks for a name, and "hi, i'm josh." gave one.
                 cue += memory.weight(name);
+            }
+            float telling = 0f;
+            float linked = 0f;
+            TopicLinks topics = TopicLinks.shared();
+            for (int q : heard) {
+                if (q < 0 || memory.weight(q) == 0f) {
+                    continue;
+                }
+                if (saidIn(told, q)) {
+                    telling = Math.max(telling, memory.weight(q));
+                } else if (topics != null) {
+                    // A word of the question the line did not say, but one that goes with a word
+                    // it did ("what was he wearing?" "a purple coat.").
+                    float link = 0f;
+                    for (int w : told) {
+                        link = Math.max(link, topics.link(q, w));
+                    }
+                    linked += link >= TOLD_LINK ? memory.weight(q) : 0f;
+                }
+            }
+            if (!aboutThem && (cue + linked < TOLD_COVER * asked || telling < TOLD_TELLING)) {
+                // About someone or something else, the question has to be mostly about what the
+                // line told ("where is the key?" after "the red key is under the bed.").
+                continue;
             }
             if (cue > bestCue) {
                 bestCue = cue;
@@ -1136,13 +1169,29 @@ public final class Brain {
         for (int w : line) {
             if (w >= 0) {
                 String b = language.vocabulary.word(w);
-                if (sameWord(a, b) || a.equals(b + "'s") || b.equals(a + "'s") || a.equals(b + "d") || b.equals(a + "d")
-                        || a.equals(b + "ed") || b.equals(a + "ed")) {
+                if (sameWord(a, b) || stem(a).equals(stem(b))) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /**
+     * A word without its ending, so forms of it match: "dried" and "dry", "escaped" and "escape",
+     * "keeps" and "keep", "mayor's" and "mayor".
+     */
+    static String stem(String w) {
+        if (w.endsWith("'s")) {
+            w = w.substring(0, w.length() - 2);
+        }
+        for (String end : new String[] {"ing", "ied", "ies", "ed", "es", "s", "d"}) {
+            if (w.endsWith(end) && w.length() - end.length() >= (end.startsWith("i") ? 2 : 3)) {
+                w = w.substring(0, w.length() - end.length()) + (end.startsWith("i") ? "y" : "");
+                break;
+            }
+        }
+        return w.endsWith("e") && w.length() > 3 ? w.substring(0, w.length() - 1) : w;
     }
 
     private static boolean contains(int[] line, int word) {

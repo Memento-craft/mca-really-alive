@@ -88,4 +88,17 @@ final class TopicLinks {
         }
         return sum;
     }
+
+    /** How strongly one word goes with another across a turn, either way round (0 if not linked). */
+    float link(int a, int b) {
+        return Math.max(one(a, b), one(b, a));
+    }
+
+    private float one(int q, int w) {
+        if (q < 0 || q >= to.length || w < 0 || w >= 65536) {
+            return 0f;
+        }
+        int at = Arrays.binarySearch(to[q], (char) w);
+        return at >= 0 ? strength[q][at] : 0f;
+    }
 }

@@ -234,4 +234,38 @@ class ConversationTest {
         System.out.printf("remembered what it was told %d of %d%n", right, talks.length);
         assertTrue(right >= talks.length - 1, "remembered what it was told only " + right + " of " + talks.length);
     }
+
+    /**
+     * Told something new about someone or something else, with other talk in between, a villager
+     * answers a question about it, even asked in other words ("what was the man wearing?" after "a
+     * man in a purple coat arrived.").
+     */
+    @Test
+    void villagerUnderstandsWhatItIsToldAboutOthers() {
+        String[][] talks = {{"the red key is under the bed.", "the weather is nice today.", "where is the key?", "bed"},
+            {"a fox stole two chickens from the farm last night.", "i had soup for lunch.", "what did the fox steal?", "chickens"},
+            {"the blacksmith is making a sword for the captain.", "the market was busy.", "who is the sword for?", "captain"},
+            {"our well dried up because it hasn't rained for weeks.", "my feet hurt from walking.", "why did the well dry up?", "rained"},
+            {"a strange man in a purple coat arrived at the inn.", "the weather is nice today.", "what was the man wearing?", "coat"},
+            {"the twins are seven years old.", "i had soup for lunch.", "how old are the twins?", "seven"},
+            {"the cows escaped through a hole in the fence.", "the market was busy.", "how did the cows escape?", "hole"},
+            {"the festival starts at sunset on friday.", "my feet hurt from walking.", "when does the festival start?", "sunset"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 700 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("understood what it was told about others %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "understood what it was told only " + right + " of " + talks.length);
+    }
 }

@@ -84,6 +84,14 @@ and it can be said back the other way round: "you have a dog named rex.", "you l
 house by the river.", "your favourite colour is green.". Asked why, the line told just after comes
 back: "i'm sad today." "my cat ran away." ... "why am i sad?" "because your cat ran away." (10 of 10
 such questions, 0 before).
+It works the same for what anyone says about anything, in sentences it never heard before:
+told "a strange man in a purple coat arrived at the inn." and then something else, and asked
+"what was the man wearing?", it answers "a strange man in a purple coat arrived at the inn.". The
+question has to be mostly about what the line said, counting word forms ("dried", "dry") and
+words that go together across a turn by the topic links ("wearing", "coat"), and to share at least
+one telling word with it, so ordinary chat doesn't bring old lines back. On 20 new sentences each
+asked about after other talk it answers 19 (3 before), and 18 of 20 on a second set written
+afterwards.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
