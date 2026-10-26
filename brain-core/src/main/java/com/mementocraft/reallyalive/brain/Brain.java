@@ -1410,6 +1410,7 @@ public final class Brain {
         }
         int word = -1;
         float best = 0f;
+        boolean plannedOn = false;
         for (int w = 0; w < v.size(); w++) {
             int[] features = v.features(w);
             if (features.length == 0) {
@@ -1433,6 +1434,12 @@ public final class Brain {
                 best = sum;
                 word = w;
             }
+            plannedOn |= w == expected && on >= SAY_FEATURES;
+        }
+        if (plan != null && plannedOn) {
+            // Saying a line it thought through, the word it means comes out over one that sounds
+            // alike, or a word just heard would slip into the middle of the line.
+            word = expected;
         }
         if (word >= 0 && plan != null && planAt == 0 && lineWords == 0 && word != plan[0]) {
             // It holds its tongue until the line it thought through begins: a word cooed just
