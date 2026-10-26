@@ -19,6 +19,8 @@ final class ExchangeMemory {
 
     /** How strongly a line must cue (root of summed squared cue weights) to recall at full strength. */
     static final float CLEAR_CUES = 8f;
+    /** How much of a match is measured against the best match for the same line, rather than outright. */
+    static final float RELATIVE = Float.parseFloat(System.getProperty("reallyalive.relative", "0.5"));
 
     private static ExchangeMemory shared;
     private static boolean tried;
@@ -158,7 +160,10 @@ final class ExchangeMemory {
                 out[i][j] = a[j];
             }
             if (match != null && i < match.length) {
-                match[i] = topScore[i] * clarity;
+                // A long line shares only a part of itself with any one remembered cue, so its best
+                // match is low however well it was answered; half of how well an answer matched is
+                // how close it comes to the best one.
+                match[i] = (1f - RELATIVE + RELATIVE / topScore[0]) * topScore[i] * clarity;
             }
         }
         return out;

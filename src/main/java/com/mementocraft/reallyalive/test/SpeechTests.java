@@ -367,7 +367,8 @@ public final class SpeechTests {
         if (!v.hasCustomName()) {
             v.setCustomName(net.minecraft.network.chat.Component.literal("Tibbs"));
         }
-        String name = v.getCustomName().getString().trim().split("\\s+")[0].toLowerCase();
+        // Heard and said as words: "Jin-Woo" is "jin woo".
+        String name = String.join(" ", WordCode.tokenize(v.getCustomName().getString().trim().split("\\s+")[0]));
         BrainManager.Handle handle = attach(h, v);
         String[] questions = {"what's your name?", "what do you do for work?"};
         String[] expected = {name, "farmer"};
