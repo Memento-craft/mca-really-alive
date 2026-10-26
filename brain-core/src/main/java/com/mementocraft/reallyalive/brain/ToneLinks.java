@@ -62,7 +62,8 @@ final class ToneLinks {
 
     /**
      * How well the tone of a line goes with the heard line: for each of its words, how much it
-     * goes with the heard words on average (for or against), summed.
+     * goes with the heard words on average (for or against), summed. Words of the heard line said
+     * back do not count.
      */
     float fit(int[] heard, int[] line, int length) {
         int[] rows = new int[heard.length];
@@ -78,7 +79,9 @@ final class ToneLinks {
         float sum = 0f;
         for (int j = 0; j < length; j++) {
             int a = line[j] >= 0 && line[j] < row.length ? row[line[j]] : -1;
-            if (a < 0) {
+            if (a < 0 || contains(heard, line[j])) {
+                // A word said back ("what was that?" "it was...") goes with itself in any talk,
+                // and says nothing about tone.
                 continue;
             }
             int s = 0;
@@ -88,5 +91,14 @@ final class ToneLinks {
             sum += s / (16f * n);
         }
         return sum;
+    }
+
+    private static boolean contains(int[] line, int word) {
+        for (int w : line) {
+            if (w == word) {
+                return true;
+            }
+        }
+        return false;
     }
 }
