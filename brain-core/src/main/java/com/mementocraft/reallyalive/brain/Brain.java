@@ -240,6 +240,7 @@ public final class Brain {
     private int[] lastLine;
     /** The words of the line being heard, whoever says it. */
     private final java.util.List<Integer> lineSoFar = new java.util.ArrayList<>();
+    private boolean lineSoFarOwn;
     private boolean lastLineOwn;
     private int[] meaning = new int[0];
     private float[] meaningKeep = new float[0];
@@ -599,6 +600,12 @@ public final class Brain {
                 }
             }
             if (!w.equals(WordCode.TURN)) {
+                if (!lineSoFar.isEmpty() && lineSoFarOwn != own) {
+                    // Someone else spoke up after words it cooed and never ended (or the other way
+                    // round): those were no line, and are not part of this one.
+                    lineSoFar.clear();
+                }
+                lineSoFarOwn = own;
                 if (lineSoFar.size() < MAX_LINE_WORDS * 2) {
                     lineSoFar.add(language.vocabulary.find(w));
                 }
@@ -801,6 +808,7 @@ public final class Brain {
         nextRemark = ticks + REMARK_COOLDOWN;
         replyUrge = REMARK_URGE;
         lineWords = 0;
+        lineSoFar.clear();
         plan = line;
         planAt = 0;
         expected = planned();
