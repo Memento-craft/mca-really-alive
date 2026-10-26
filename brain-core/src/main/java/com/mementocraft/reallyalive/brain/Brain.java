@@ -152,6 +152,8 @@ public final class Brain {
     static final float RELEVANCE = 0.1f;
     /** How much saying what the concept system holds counts toward picking a line. */
     static final float MEANING = 4f;
+    /** How much an answer's words going with the words of the line it answers count. */
+    static final float TOPIC = 1f;
     /**
      * How strongly what the concept system holds picks among the words the language area offers:
      * each word's chance is multiplied by e^(gain x how much more than usual its meaning is present).
@@ -614,6 +616,8 @@ public final class Brain {
             if (own) {
                 replyUrge = 0f;
             } else {
+                // Someone finished a line: the cooing stops, the answer comes next.
+                Arrays.fill(speechBabble, 0f);
                 boolean player = f.sound[SoundChannel.PLAYER_VOICE.ordinal()] > 0f;
                 villagerLines = player ? 0 : villagerLines + 1;
                 replyUrge = player ? 1f : (float) Math.pow(0.5, villagerLines);
@@ -810,6 +814,7 @@ public final class Brain {
      */
     private int[] thinkThrough(int tries, int mustSay, int sayWithin) {
         LanguageArea.Place start = language.place();
+        topicHeard = mustSay < 0 && !language.heardOwnLine() ? language.heardLine() : null;
         groundedWord(false);
         int[] openers = openers(tries);
         int turn = language.vocabulary.find(WordCode.TURN);
@@ -884,6 +889,8 @@ public final class Brain {
         private static final Set<String> SENTENCE_ENDS = Set.of(".", "!", "?");
     private int[] thoughtBest;
     private float thoughtEase;
+    /** The line being answered, whose topic an answer should keep to; null when not answering. */
+    private int[] topicHeard;
 
     /**
      * Weighs a line thought through to here, with the language area just after its last word, and
@@ -937,7 +944,9 @@ public final class Brain {
             return;
         }
         ease += (float) Math.log(likelihood(turn));
-        ease = (ease - RELEVANCE * outOfNowhere(line, length) + MEANING * meant) / (length + 1) + recalled;
+        TopicLinks topics = TopicLinks.shared();
+        float about = topics == null || topicHeard == null ? 0f : TOPIC * topics.fit(topicHeard, line, length);
+        ease = (ease - RELEVANCE * outOfNowhere(line, length) + MEANING * meant + about) / (length + 1) + recalled;
         if (ease > thoughtEase) {
             thoughtEase = ease;
             thoughtBest = Arrays.copyOf(line, length);
@@ -1401,6 +1410,11 @@ public final class Brain {
                 best = sum;
                 word = w;
             }
+        }
+        if (word >= 0 && plan != null && planAt == 0 && lineWords == 0 && word != plan[0]) {
+            // It holds its tongue until the line it thought through begins: a word cooed just
+            // before is not let out in front of the answer.
+            return -1;
         }
         if (word >= 0) {
             voiceCooldown = VOICE_COOLDOWN;

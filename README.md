@@ -67,6 +67,11 @@ each remembered answer is linked to the telling words of the line it answered, s
 brings up answers people gave to lines like it ("watch out! zombies!" brings up "i'll get my
 sword.", "stay behind me."), and those are weighed next to the lines it makes up. Playing one side
 of 120 real talks it never saw, the share of stock answers fell from 68% to 19%.
+Answers also keep to what was said (`TopicLinks`, 1.3 MB): Hebbian links between the telling words
+of a line and those of the answers that followed it in SODA ("toys" goes with "dolls", "legos";
+"rain" with "umbrella", "soaked"), so a line whose words go with what it heard is preferred. Asked
+"what flavor was it?" a villager now says "chocolate chip mint." rather than a name; judged blind
+on 25 changed answers to those real talks, the new answer was better 14 times, worse 4.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

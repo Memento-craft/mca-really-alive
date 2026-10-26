@@ -24,6 +24,13 @@ CORPUS=soda_clean.txt:12,train.txt:40 EXCHANGES_OUT=brain-core/src/main/resource
   ./gradlew -p brain-core test --tests '*ExchangeMemoryTest' -i
 ```
 
+The topic links (`topics.bin.gz`) are built from SODA alone:
+
+```
+CORPUS=soda_clean.txt TOPICS_OUT=brain-core/src/main/resources/reallyalive/topics.bin.gz TEST_HEAP=6g \
+  ./gradlew -p brain-core test --tests '*TopicLinksTest' -i
+```
+
 Sources: `generate.py` (scripted scenarios and word lists), `trees.py` (branching conversations
 where every reply fits its line), `facts.py` (questions and answers about the world), `grammar.py`
 (told sentences where verbs only take objects that fit), `chatter.py` (likes, experiences, wishes
