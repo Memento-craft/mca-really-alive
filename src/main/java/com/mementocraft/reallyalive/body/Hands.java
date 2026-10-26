@@ -25,6 +25,7 @@ import net.minecraft.world.item.PotionItem;
 import net.minecraft.world.item.UseAnim;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.core.component.DataComponents;
@@ -66,8 +67,8 @@ public final class Hands {
     private static final int BREAK_PAUSE = 5;
     private static final int USE_REPEAT = 4;
     /** The keyboard's repeat: half a second before the first repeat, then one every tick or so. */
-    private static final int KEY_REPEAT_DELAY = 10;
-    private static final int KEY_REPEAT_EVERY = 5;
+    private static final int KEY_REPEAT_DELAY = 40;
+    private static final int KEY_REPEAT_EVERY = 20;
     /** A player picks up items this close (Player.aiStep). */
     private static final double PICKUP_XZ = 1.0;
     private static final double PICKUP_Y = 0.5;
@@ -77,6 +78,12 @@ public final class Hands {
     private final Villager body;
     private boolean attackWasDown;
     private boolean useWasDown;
+    /**
+     * A mouse button pressed on a screen while holding a stack, as a player starts a drag: 0 left,
+     * 1 right, -1 none. The slots dragged over share the stack when the button is let go.
+     */
+    private int dragButton = -1;
+    private final java.util.LinkedHashSet<Slot> dragSlots = new java.util.LinkedHashSet<>();
     private boolean inventoryWasDown;
     /** Ticks the inventory key has been held, for the keyboard's repeat. */
     private int inventoryHeld;
@@ -102,6 +109,10 @@ public final class Hands {
     private int placedThisTick;
     private int changedThisTick;
     private int madeThisTick;
+    private int formedThisTick;
+    /** Whether a result slot showed something after the last click, and what has been shown on this screen. */
+    private boolean resultShown;
+    private final java.util.Set<net.minecraft.world.item.Item> formedOnScreen = new java.util.HashSet<>();
     /** Diagnostics for benchmarks: tries to place, why they failed, and where the last block went. */
     public int placeTries;
     public int placeNoTarget;
@@ -113,6 +124,14 @@ public final class Hands {
     public int changedTotal;
     public int screensOpened;
     public int madeTotal;
+    /** Diagnostics: clicks on a screen's slots, and results seen forming in a result slot. */
+    public int screenClicks;
+    public int clicksOnThings;
+    /** Ticks since the screen was opened or last clicked on: how long it has gone without doing anything. */
+    private int screenIdle;
+    /** Ticks without a click after which a screen is wholly boring. */
+    private static final int SCREEN_BORED_TICKS = 100;
+    public int formedTotal;
 
     public Hands(Villager body) {
         this.body = body;
@@ -146,9 +165,10 @@ public final class Hands {
             pleasure += Motives.COLLECT;
         }
         carried = screen != null ? -1 : now;
-        pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE;
+        pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE + formedThisTick * Motives.FORM;
         changedThisTick = 0;
         madeThisTick = 0;
+        formedThisTick = 0;
         if (dugThisTick) {
             pleasure += Motives.DIG_PER_TICK;
         }
@@ -185,7 +205,7 @@ public final class Hands {
         boolean inventoryPressed = keys.inventory() && !inventoryWasDown;
         inventoryWasDown = keys.inventory();
         inventoryHeld = keys.inventory() ? inventoryHeld + 1 : 0;
-        // A held key repeats after half a second, and a screen takes each repeat as a press: holding
+        // A held key repeats after two seconds, and a screen takes each repeat as a press: holding
         // the inventory key closes the screen it opened, as it does for a player.
         if (screen != null && inventoryHeld > KEY_REPEAT_DELAY && (inventoryHeld - KEY_REPEAT_DELAY) % KEY_REPEAT_EVERY == 0) {
             inventoryPressed = true;
@@ -248,6 +268,16 @@ public final class Hands {
     /** What the crosshair rests on, or null: a block, a creature, or nothing within reach. */
     public HitResult target() {
         return targetInReach() ? target : null;
+    }
+
+    /**
+     * How boring the open screen has become, from a fifth just after opening it, clicking on it or
+     * while carrying a stack, to wholly after five seconds of doing nothing there; 0 with no screen
+     * open. The urge to leave a screen grows with it, so a screen is left soon once nothing is
+     * being done on it.
+     */
+    public float screenBoredom() {
+        return screen == null ? 0f : Mth.clamp(screenIdle / (float) SCREEN_BORED_TICKS, 0.2f, 1f);
     }
 
     /** True while a screen is open. */
@@ -735,6 +765,9 @@ public final class Hands {
         stopDigging();
         screen = menu;
         screensOpened++;
+        screenIdle = 0;
+        resultShown = false;
+        formedOnScreen.clear();
         // The pointer starts in the middle of the screen, where a player's mouse appears.
         float[] b = bounds(menu);
         pointerX = (b[0] + b[2]) / 2f;
@@ -761,6 +794,8 @@ public final class Hands {
         }
         screen = null;
         pointed = null;
+        dragButton = -1;
+        dragSlots.clear();
         attackWasDown = true;
         useWasDown = true;
     }
@@ -788,20 +823,97 @@ public final class Hands {
             pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0], b[2]);
             pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1], b[3]);
             pointed = slotAt(screen, pointerX, pointerY);
+            // Carrying a stack about is doing something; only an empty pointer gets bored.
+            screenIdle = screen.getCarried().isEmpty() ? screenIdle + 1 : 0;
             boolean left = keys.attack() && !attackWasDown;
             boolean right = keys.use() && !useWasDown;
+            boolean leftUp = !keys.attack() && attackWasDown;
+            boolean rightUp = !keys.use() && useWasDown;
             attackWasDown = keys.attack();
             useWasDown = keys.use();
-            if (pointed != null && (left || right)) {
-                ClickType type = left && keys.sneak() ? ClickType.QUICK_MOVE : ClickType.PICKUP;
-                screen.clicked(pointed.index, left ? 0 : 1, type, p);
-                screen.broadcastChanges();
-            }
+            mouse(p, keys.sneak(), left ? 0 : right ? 1 : -1, dragButton == 0 && leftUp || dragButton == 1 && rightUp);
         } finally {
             if (screen != null) {
                 p.giveBack(body);
             }
         }
+    }
+
+    /**
+     * The mouse on a screen, as a player's works: a press with nothing on the pointer clicks at
+     * once (picking up, or shift-moving, what is under it); a press while holding a stack starts a
+     * drag instead, every slot the pointer then passes over joins it, and letting go shares the
+     * stack out over them, or, if the pointer never reached a slot that takes it, puts it down where
+     * the pointer is.
+     */
+    private void mouse(StandIn p, boolean shift, int pressed, boolean released) {
+        if (dragButton < 0 && pressed >= 0) {
+            if (screen.getCarried().isEmpty()) {
+                if (pointed != null) {
+                    click(p, pointed.index, pressed, shift ? ClickType.QUICK_MOVE : ClickType.PICKUP);
+                }
+            } else {
+                dragButton = pressed;
+                dragSlots.clear();
+            }
+        }
+        if (dragButton < 0) {
+            return;
+        }
+        ItemStack carried = screen.getCarried();
+        if (pointed != null && !carried.isEmpty() && carried.getCount() > dragSlots.size()
+                && AbstractContainerMenu.canItemQuickReplace(pointed, carried, true) && pointed.mayPlace(carried)
+                && screen.canDragTo(pointed)) {
+            dragSlots.add(pointed);
+        }
+        if (!released) {
+            return;
+        }
+        if (dragSlots.size() > 1) {
+            click(p, -999, AbstractContainerMenu.getQuickcraftMask(0, dragButton), ClickType.QUICK_CRAFT);
+            for (Slot s : dragSlots) {
+                click(p, s.index, AbstractContainerMenu.getQuickcraftMask(1, dragButton), ClickType.QUICK_CRAFT);
+            }
+            click(p, -999, AbstractContainerMenu.getQuickcraftMask(2, dragButton), ClickType.QUICK_CRAFT);
+        } else if (pointed != null) {
+            click(p, pointed.index, dragButton, shift ? ClickType.QUICK_MOVE : ClickType.PICKUP);
+        }
+        dragButton = -1;
+        dragSlots.clear();
+    }
+
+    private void click(StandIn p, int slot, int button, ClickType type) {
+        screenIdle = 0;
+        if (slot >= 0 && screen.getSlot(slot).hasItem()) {
+            clicksOnThings++;
+        }
+        screen.clicked(slot, button, type, p);
+        screen.broadcastChanges();
+        if (slot >= 0) {
+            screenClicks++;
+        }
+        noticeResult(screen);
+    }
+
+    /**
+     * Something new appearing in a result slot after a click, the way planks show up as soon as a
+     * log lands in the grid, is felt as a small pleasure: the first sign that the hands are making
+     * something, as cracks are for digging. Felt once per kind of thing per screen, so putting the
+     * same log in and out again does not keep paying; taking the result is what pays most.
+     */
+    private void noticeResult(AbstractContainerMenu menu) {
+        ItemStack shown = ItemStack.EMPTY;
+        for (Slot s : menu.slots) {
+            if (s instanceof ResultSlot && s.hasItem()) {
+                shown = s.getItem();
+                break;
+            }
+        }
+        if (!shown.isEmpty() && !resultShown && formedOnScreen.add(shown.getItem())) {
+            formedThisTick++;
+            formedTotal++;
+        }
+        resultShown = !shown.isEmpty();
     }
 
     /** Where a screen's slots lie, in its pixels, with a margin: min x, min y, max x, max y. */

@@ -36,6 +36,8 @@ public final class WorkLearningTests {
     private static final String ARENA = "arena";
     private static final int TICKS = 60_000;
     private static final int WINDOW = 10_000;
+    /** Crafting takes a long chain of chance steps before the first success, so it gets longer. */
+    private static final int CRAFT_TICKS = 150_000;
     /** Tilled ground goes back to dirt this often, so there is always something to till. */
     private static final int REGROW = 200;
 
@@ -62,9 +64,9 @@ public final class WorkLearningTests {
      * and the ground under the dirt are bedrock: a villager that digs (one did, with its hoe, and
      * walked out under the wall) stays in the pen, and the dirt it digs up grows back.
      */
-    private static Villager pen(GameTestHelper h, ItemStack inHand) {
+    private static Villager pen(GameTestHelper h, ItemStack inHand, int ticks) {
         BrainManager.get().setLockstep(true);
-        h.getLevel().getServer().tickRateManager().requestGameToSprint(TICKS + 400);
+        h.getLevel().getServer().tickRateManager().requestGameToSprint(ticks + 400);
         for (int x = 0; x <= 10; x++) {
             for (int z = 7; z <= 17; z++) {
                 boolean wall = x == 0 || x == 10 || z == 7 || z == 17;
@@ -102,7 +104,7 @@ public final class WorkLearningTests {
         }
         ItemStack hoe = new ItemStack(Items.WOODEN_HOE);
         hoe.set(DataComponents.UNBREAKABLE, new Unbreakable(false));
-        Villager v = pen(h, hoe);
+        Villager v = pen(h, hoe, TICKS);
         BrainManager.Handle handle = BrainManager.get().handle(v);
         int[] tick = {0};
         int[] windowStart = {0};
@@ -167,6 +169,24 @@ public final class WorkLearningTests {
         });
     }
 
+    private static int carried(Villager v, net.minecraft.world.item.Item item) {
+        int n = v.getMainHandItem().is(item) ? v.getMainHandItem().getCount() : 0;
+        return n + v.getInventory().countItem(item);
+    }
+
+    /** Takes away whatever was put on the pen's floor. */
+    private static void clearPen(GameTestHelper h) {
+        for (int x = 1; x <= 9; x++) {
+            for (int z = 8; z <= 16; z++) {
+                for (int y = 2; y <= 3; y++) {
+                    if (!h.getBlockState(new BlockPos(x, y, z)).isAir()) {
+                        h.setBlock(x, y, z, Blocks.AIR);
+                    }
+                }
+            }
+        }
+    }
+
     private static String aimed(GameTestHelper h, BrainManager.Handle handle) {
         if (handle.hands().target() instanceof BlockHitResult hit) {
             return h.getLevel().getBlockState(hit.getBlockPos()).getBlock() + " at " + h.relativePos(hit.getBlockPos());
@@ -174,31 +194,93 @@ public final class WorkLearningTests {
         return String.valueOf(handle.hands().target());
     }
 
-    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
     public static void newbornCraftsPlanksOnItsOwn(GameTestHelper h) {
         if (!selected(h, "CRAFT")) {
             return;
         }
-        Villager v = pen(h, new ItemStack(Items.OAK_LOG, 64));
+        Villager v = pen(h, new ItemStack(Items.OAK_LOG, 64), CRAFT_TICKS);
         BrainManager.Handle handle = BrainManager.get().handle(v);
         int[] tick = {0};
         int[] screenTicks = {0};
         int[] pointerHolding = {0};
+        // While a screen is open: ticks pressing the left button, the inventory key, and over a slot.
+        int[] attackTicks = {0};
+        int[] keyTicks = {0};
+        int[] overSlot = {0};
+        int[] handBacks = {0};
+        int[] overThing = {0};
+        double[] pointerSum = {0, 0};
+        int[] holdingOverGrid = {0};
+        int[] holdingOverResult = {0};
         h.onEachTick(() -> {
             tick[0]++;
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                // Logs placed about the pen are cleared away; one that has no logs left is handed
+                // more, as a parent would, so the benchmark keeps measuring crafting, not building.
+                clearPen(h);
+                regrow(h);
+                if (carried(v, Items.OAK_LOG) == 0) {
+                    v.getInventory().removeItemType(Items.OAK_LOG, 64);
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.OAK_LOG, 64));
+                    handBacks[0]++;
+                }
+            }
             if (handle.hands().screenOpen()) {
                 screenTicks[0]++;
+                attackTicks[0] += handle.command().attack() ? 1 : 0;
+                keyTicks[0] += handle.command().inventory() ? 1 : 0;
+                overSlot[0] += handle.hands().pointedSlot() != null ? 1 : 0;
+                overThing[0] += handle.hands().pointedSlot() != null && handle.hands().pointedSlot().hasItem() ? 1 : 0;
+                if (screenTicks[0] <= 3) {
+                    // What the eyes see on the first screen: where its things are against the pointer.
+                    float[] vision = new float[com.mementocraft.reallyalive.brain.SenseLayout.VISION_SIZE];
+                    float[] colour = new float[com.mementocraft.reallyalive.brain.SenseLayout.COLOUR_SIZE];
+                    var menu = handle.hands().screen();
+                    com.mementocraft.reallyalive.sense.ScreenSight.see(menu, handle.hands().pointerX(), handle.hands().pointerY(), vision, colour);
+                    StringBuilder seen = new StringBuilder();
+                    for (int y = 0; y < com.mementocraft.reallyalive.brain.SenseLayout.VISION_H; y++) {
+                        for (int x = 0; x < com.mementocraft.reallyalive.brain.SenseLayout.VISION_W; x++) {
+                            if (vision[com.mementocraft.reallyalive.brain.SenseLayout.visionIndex(x, y, com.mementocraft.reallyalive.brain.SenseLayout.CH_CREATURE)] > 0) {
+                                seen.append(" thing@").append(x).append(',').append(y);
+                            }
+                        }
+                    }
+                    StringBuilder slots = new StringBuilder();
+                    for (var sl : menu.slots) {
+                        if (sl.hasItem()) {
+                            slots.append(" ").append(sl.index).append('@').append(sl.x).append(',').append(sl.y).append('=').append(sl.getItem());
+                        }
+                    }
+                    LOG.info("CRAFT screen look: pointer {},{}; seen{}; slots{}; command yaw {} pitch {}", handle.hands().pointerX(),
+                            handle.hands().pointerY(), seen, slots, handle.command().yawDelta(), handle.command().pitchDelta());
+                }
+                pointerSum[0] += handle.hands().pointerX();
+                pointerSum[1] += handle.hands().pointerY();
                 if (!handle.hands().onPointer().isEmpty()) {
                     pointerHolding[0]++;
+                    // Where the pointer is while it holds a stack: the crafting grid, its result, or elsewhere.
+                    net.minecraft.world.inventory.Slot at = handle.hands().pointedSlot();
+                    if (at != null && at.index >= 1 && at.index <= 4) {
+                        holdingOverGrid[0]++;
+                    } else if (at != null && at.index == 0) {
+                        holdingOverResult[0]++;
+                    }
                 }
             }
             if (tick[0] % WINDOW == 0) {
-                LOG.info("CRAFT newborn: by tick {}: opened {} screens, made {}", tick[0], handle.hands().screensOpened, handle.hands().madeTotal);
+                LOG.info("CRAFT newborn: by tick {}: opened {} screens, clicked {} slots ({} holding something), saw {} results form, made {};"
+                                + " in screens {} ticks, left button {}, inventory key {}, over a slot {}, over a thing {}, mean pointer {},{}; carries {} logs, {} planks;"
+                                + " logs handed back {} times; a stack on the pointer {} ticks, over the grid {}, over the result {}", tick[0],
+                        handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().clicksOnThings, handle.hands().formedTotal, handle.hands().madeTotal,
+                        screenTicks[0], attackTicks[0], keyTicks[0], overSlot[0], overThing[0],
+                        Math.round(pointerSum[0] / Math.max(1, screenTicks[0])), Math.round(pointerSum[1] / Math.max(1, screenTicks[0])), carried(v, Items.OAK_LOG), carried(v, Items.OAK_PLANKS),
+                        handBacks[0], pointerHolding[0], holdingOverGrid[0], holdingOverResult[0]);
             }
-            if (tick[0] == TICKS) {
+            if (tick[0] == CRAFT_TICKS) {
                 String report = String.format("CRAFT: made %d things in %d ticks; opened its inventory %d times, open %d%% of the time,"
                                 + " with a stack on the pointer %d%% of that",
-                        handle.hands().madeTotal, TICKS, handle.hands().screensOpened, 100 * screenTicks[0] / TICKS,
+                        handle.hands().madeTotal, CRAFT_TICKS, handle.hands().screensOpened, 100 * screenTicks[0] / CRAFT_TICKS,
                         screenTicks[0] == 0 ? 0 : 100 * pointerHolding[0] / screenTicks[0]);
                 LOG.info("CRAFT newborn learning result: {}", report);
                 if (handle.hands().madeTotal >= 3) {

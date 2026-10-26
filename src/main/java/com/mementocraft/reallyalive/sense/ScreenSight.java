@@ -5,6 +5,7 @@ import com.mementocraft.reallyalive.brain.SenseLayout;
 import com.mementocraft.reallyalive.brain.ThingCode;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.BlockItem;
@@ -19,17 +20,27 @@ import java.util.Arrays;
 /**
  * What the eyes see while a screen is open, and what a thing up close looks like. A screen covers
  * the view as it does a player's: the eye rays see its slots instead of the world, in a window
- * one screen wide centred on the mouse pointer, so the centre of the eye is wherever the pointer
+ * centred on the mouse pointer, so the centre of the eye is wherever the pointer
  * is, as the crosshair is in the world. A slot looks like a near, solid square; a slot holding
  * something also looks like a creature does, so the inborn orienting reflex pulls the pointer
- * towards things, as it pulls the gaze towards creatures.
+ * towards things, as it pulls the gaze towards creatures, and a slot of the thing being worked
+ * catches the eye as a ladder does.
  */
 public final class ScreenSight {
-    /** The window the eyes see, in screen pixels: a usual screen's size. */
-    public static final float VIEW_W = 176f;
-    public static final float VIEW_H = 166f;
+    /**
+     * The window the eyes see, in screen pixels: twice a usual screen's size, so the whole screen is
+     * in view wherever the pointer is, as a player sees all of it while looking at one slot. With
+     * one screen's size, a villager holding a stack in the bottom row could not see the crafting
+     * grid at the top, and never carried anything there.
+     */
+    public static final float VIEW_W = 352f;
+    public static final float VIEW_H = 332f;
     private static final int PANEL = 0xC6C6C6;
     private static final int SLOT = 0x8B8B8B;
+    /** How strongly a slot of the thing being worked catches the eye. */
+    private static final float WORK_SLOT = 0.6f;
+    /** How brightly a slot that catches the eye shows in the cells around its own. */
+    private static final float GLOW = 0.7f;
 
     private ScreenSight() {}
 
@@ -41,6 +52,11 @@ public final class ScreenSight {
         float left = pointerX - VIEW_W / 2f;
         float top = pointerY - VIEW_H / 2f;
         float[] b = Hands.bounds(menu);
+        // What catches the eye depends on the hand: with nothing on the pointer, things to pick up;
+        // with a stack on it, the places to put it, the slots of the thing being worked.
+        boolean carrying = !menu.getCarried().isEmpty();
+        float thingPull = carrying ? 0.2f : 1f;
+        float workPull = carrying ? WORK_SLOT : 0.2f * WORK_SLOT;
         for (int y = 0; y < SenseLayout.VISION_H; y++) {
             for (int x = 0; x < SenseLayout.VISION_W; x++) {
                 float px = left + (x + 0.5f) * cellW;
@@ -62,13 +78,39 @@ public final class ScreenSight {
             }
             ItemStack stack = s.getItem();
             vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_SOLID)] = 1f;
+            if (!(s.container instanceof Inventory)) {
+                // The slots of the thing being worked (a crafting grid and its result, a brewing
+                // stand's bottles, a chest's contents) stand out from one's own pockets, as the
+                // grid and its arrow do on a player's screen, and draw the eye the way a ladder does.
+                glow(vision, x, y, SenseLayout.CH_CLIMBABLE, workPull);
+            }
             if (stack.isEmpty()) {
                 paint(colour, x, y, SLOT);
             } else {
                 float full = stack.getCount() / (float) Math.max(1, stack.getMaxStackSize());
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.95f;
-                vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)] = 0.5f + 0.5f * full;
+                glow(vision, x, y, SenseLayout.CH_CREATURE, thingPull * (0.5f + 0.5f * full));
                 paint(colour, x, y, colourOf(stack));
+            }
+        }
+    }
+
+    /**
+     * Marks a slot that catches the eye in its cell and, more faintly, the cells around it, the
+     * way a thing stands out a little beyond its edges. A slot fills a single cell, and one cell
+     * pulled the gaze far too weakly to move the pointer: a creature in the world fills many.
+     */
+    private static void glow(float[] vision, int x, int y, int channel, float value) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int cx = x + dx;
+                int cy = y + dy;
+                if (cx < 0 || cy < 0 || cx >= SenseLayout.VISION_W || cy >= SenseLayout.VISION_H) {
+                    continue;
+                }
+                float v = dx == 0 && dy == 0 ? value : GLOW * value;
+                int i = SenseLayout.visionIndex(cx, cy, channel);
+                vision[i] = Math.max(vision[i], v);
             }
         }
     }
