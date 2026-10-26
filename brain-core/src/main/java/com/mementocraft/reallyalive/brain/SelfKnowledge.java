@@ -8,10 +8,13 @@ import java.util.List;
  * remembered exchanges, where it is weighed like any other line it could say.
  */
 public final class SelfKnowledge {
-    private static final String[] ASK_NAME = {"what is your name?", "what's your name?", "who are you?",
-        "what are you called?", "and you are?"};
-    private static final String[] ASK_WORK = {"what do you do?", "what do you do for work?", "what is your job?",
-        "what's your job?", "what do you do for a living?", "where do you work?"};
+    private static final String[] ASK_NAME = {"what is your name?", "what's your name?", "your name?",
+        "what are you called?", "tell me your name."};
+    private static final String[] ASK_WORK = {"what do you do for work?", "what is your job?", "what's your job?",
+        "what do you do for a living?", "where do you work?", "what's your work?"};
+    /** Words one of which must be in the question for each answer. */
+    private static final String WORK_KEYS = "work job living profession";
+    private static final String AGE_KEYS = "old age kid grown";
     private static final String[] ASK_AGE = {"how old are you?", "are you a kid?", "are you a grown up?"};
 
     private SelfKnowledge() {}
@@ -22,24 +25,26 @@ public final class SelfKnowledge {
      */
     public static void tell(Brain b, String name, String work, boolean child) {
         b.talk.forgetSelf();
+        b.talk.you = java.util.Arrays.stream(ids(b, "you your yourself")).sorted().toArray();
         if (name != null && !name.isBlank()) {
             String first = name.trim().split("\\s+")[0];
-            know(b, ASK_NAME, "my name is " + first + ".");
+            know(b, ASK_NAME, "name called", "my name is " + first + ".");
         }
         if (child) {
-            know(b, ASK_WORK, "i'm just a kid. i like to play.");
-            know(b, ASK_AGE, "i'm still a kid.");
+            know(b, ASK_WORK, WORK_KEYS, "i'm just a kid. i like to play.");
+            know(b, ASK_AGE, AGE_KEYS, "i'm still a kid.");
         } else {
-            know(b, ASK_WORK, work == null || work.isBlank() ? "i don't have a job right now."
+            know(b, ASK_WORK, WORK_KEYS, work == null || work.isBlank() ? "i don't have a job right now."
                     : "i'm " + article(work) + " " + work + ".");
-            know(b, ASK_AGE, "i'm a grown up.");
+            know(b, ASK_AGE, AGE_KEYS, "i'm a grown up.");
         }
     }
 
-    private static void know(Brain b, String[] questions, String answer) {
+    private static void know(Brain b, String[] questions, String keys, String answer) {
         int[] said = ids(b, answer);
+        int[] keyIds = ids(b, keys);
         for (String q : questions) {
-            b.talk.knowSelf(ids(b, q), said);
+            b.talk.knowSelf(ids(b, q), keyIds, said);
         }
     }
 

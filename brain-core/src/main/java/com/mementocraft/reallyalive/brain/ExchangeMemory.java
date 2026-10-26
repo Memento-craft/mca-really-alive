@@ -189,16 +189,18 @@ final class ExchangeMemory {
         int count;
         private int next;
         private int selfCount;
+        private final int[][] selfKeys = new int[SELF_CAPACITY][];
 
         /** Forgets what it knew about itself, before being told again. */
         void forgetSelf() {
             selfCount = 0;
         }
 
-        /** Knows that asked this line, the answer about itself is that one. */
-        void knowSelf(int[] line, int[] answer) {
+        /** Knows that asked this line, the answer about itself is that one; keys must be in what is asked. */
+        void knowSelf(int[] line, int[] keys, int[] answer) {
             if (selfCount < SELF_CAPACITY && line.length > 0 && answer.length > 0) {
                 cues[CAPACITY + selfCount] = cuesOf(line, null);
+                selfKeys[selfCount] = Arrays.stream(keys).sorted().toArray();
                 answers[CAPACITY + selfCount] = answer.clone();
                 selfCount++;
             }
@@ -238,6 +240,24 @@ final class ExchangeMemory {
         private static float cueWeight(int w, ExchangeMemory shared) {
             return Math.max(SMALL_WORD_CUE, shared.weight(w));
         }
+
+        /**
+         * Whether a heard line asks what this piece of self knowledge answers: it has one of the
+         * question's key words ("name", "job") and asks it of the villager ("your name", not
+         * "her name"; "how old are you", not "are you okay").
+         */
+        private boolean askedOfIt(int slot, int[] heard) {
+            int[] keys = selfKeys[slot - CAPACITY];
+            boolean key = false, asked = false;
+            for (int h : heard) {
+                key |= Arrays.binarySearch(keys, h) >= 0;
+                asked |= Arrays.binarySearch(you, h) >= 0;
+            }
+            return key && asked;
+        }
+
+        /** The words that ask something of the villager itself ("you", "your"), sorted ids. */
+        int[] you = new int[0];
 
         /** As {@link ExchangeMemory#recall}, from this villager's own memories. */
         int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, ExchangeMemory shared) {
@@ -289,6 +309,9 @@ final class ExchangeMemory {
                 // other memories need the lines to match as wholes.
                 double lean = slots[p] >= CAPACITY ? 0.9 : 0.5;
                 v[p] = (float) (Math.pow(covered, lean) * Math.pow(heardCovered, 1 - lean));
+                if (slots[p] >= CAPACITY && !askedOfIt(slots[p], heard)) {
+                    v[p] = 0f;
+                }
             }
             Arrays.sort(order, (a, b) -> Float.compare(v[b], v[a]));
             int found = 0;

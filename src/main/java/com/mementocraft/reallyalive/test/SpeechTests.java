@@ -356,9 +356,10 @@ public final class SpeechTests {
 
     /**
      * A villager knows who it is: asked its name it gives the name MCA gave it, and asked its work
-     * it gives its profession.
+     * it gives its profession. Runs in its own batch: villagers of other tests talking within earshot
+     * mix their words into the question it hears.
      */
-    @GameTest(template = ARENA, timeoutTicks = 900)
+    @GameTest(template = ARENA, timeoutTicks = 900, batch = "self_knowledge")
     public static void villagerSaysItsNameAndWork(GameTestHelper h) {
         BrainManager.get().setLockstep(true);
         Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
@@ -370,8 +371,8 @@ public final class SpeechTests {
         BrainManager.Handle handle = attach(h, v);
         String[] questions = {"what's your name?", "what do you do for work?"};
         String[] expected = {name, "farmer"};
-        String[] answers = new String[2];
-        int[] linesBefore = {0};
+        List<List<String>> answers = List.of(new java.util.ArrayList<>(), new java.util.ArrayList<>());
+        int[] seen = {0};
         h.onEachTick(() -> {
             int t = (int) h.getTick() - 20;
             if (t < 0) {
@@ -379,16 +380,21 @@ public final class SpeechTests {
             }
             int q = t / 400;
             if (t % 400 == 0 && q < 2) {
-                linesBefore[0] = handle.lines();
                 Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), questions[q]);
             }
+            // Other tests' villagers may talk nearby too, so every line it says after the
+            // question counts, not just the last one.
+            if (q < 2 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.get(q).add(handle.lastLine());
+            }
             if (t % 400 == 399 && q < 2) {
-                answers[q] = handle.lines() > linesBefore[0] ? handle.lastLine() : "(nothing)";
-                LOG.info("self benchmark: asked \"{}\", the villager ({}) answered \"{}\"", questions[q], name, answers[q]);
+                LOG.info("self benchmark: asked \"{}\", the villager ({}) answered {}", questions[q], name, answers.get(q));
                 if (q == 1) {
                     for (int i = 0; i < 2; i++) {
-                        h.assertTrue(answers[i].toLowerCase().contains(expected[i]),
-                                "asked \"" + questions[i] + "\" it said \"" + answers[i] + "\", not " + expected[i]);
+                        String want = expected[i];
+                        h.assertTrue(answers.get(i).stream().anyMatch(a -> a.toLowerCase().contains(want)),
+                                "asked \"" + questions[i] + "\" it said " + answers.get(i) + ", not " + want);
                     }
                     h.succeed();
                 }
