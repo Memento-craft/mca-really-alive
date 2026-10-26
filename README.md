@@ -44,11 +44,11 @@ about a million real everyday conversations from SODA (Kim et al. 2023, "SODA: M
 Dialogue Distillation with Social Commonsense Contextualization", allenai/soda, CC BY 4.0), keeping
 only conversations whose words all occur at least 50 times (25,000 distinct words). Context cells
 now reach back five words and also to the line before last, over 16 million context cells with up
-to 96 synapses each. On SODA conversations it never saw it guesses the next word 44% of the time
+to 96 synapses each. On SODA conversations it never saw it guesses the next word 44.5% of the time
 (the earlier generated-only English got 17%), and 72% on held-out generated ones. The trained
-English ships as one shared 85 MB file (`english.lang.gz`, synapses seen fewer than 20 times
+English ships as one shared 146 MB file (`english.lang.gz`, synapses seen fewer than 10 times
 pruned, so rare words such as "zombie" keep their place after common contexts) and takes about
-310 MB of server memory, shared by all villagers; each
+470 MB of server memory, shared by all villagers; each
 villager adds what it hears in its own world in a small sheet of its own. When someone finishes a
 line, the villager answers: the word the area expects next drives that word's speech pools, so the
 answer comes out word by word through the same spiking voice it babbles with, and it stops when
@@ -163,6 +163,9 @@ Brains are saved to `<world>/reallyalive/brains/<uuid>.brain`, not in chunk data
 - Brains run on worker threads; the server thread only reads senses and applies keys.
 
 ## Building
+
+The trained files in `brain-core/src/main/resources/reallyalive/` are stored with Git LFS, so
+install it before cloning (`git lfs install`), or run `git lfs pull` in a clone made without it.
 
 ```
 ./gradlew -p brain-core test   # the neural core alone: no Minecraft needed
