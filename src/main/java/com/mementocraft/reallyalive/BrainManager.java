@@ -27,7 +27,9 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
+import com.mementocraft.reallyalive.body.Books;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.inventory.LecternMenu;
 import net.minecraft.world.entity.ai.control.JumpControl;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.control.LookControl;
@@ -122,6 +124,16 @@ public final class BrainManager {
         /** Names of people seen dying, and crops it harvested, since the brain last sensed. */
         final List<String> deathsSeen = new ArrayList<>();
         final List<String> harvested = new ArrayList<>();
+        /** The line it is writing down, its own written words to feel, and how many lines it wrote. */
+        final List<String> writtenLine = new ArrayList<>();
+        final List<String> wroteWords = new ArrayList<>();
+        int linesWritten;
+        String lastWritten;
+        /** Words still to be read, each with its writer (or null), and the lectern screen read last. */
+        final java.util.ArrayDeque<String[]> reading = new java.util.ArrayDeque<>();
+        Object readScreen;
+        boolean useWasDown;
+        int linesRead;
 
         Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
                JumpControl originalJump) {
@@ -136,6 +148,19 @@ public final class BrainManager {
 
         public Brain brain() {
             return brain;
+        }
+
+        /** How many lines it has written down, the last of them, and how many lines it has read. */
+        public int linesWritten() {
+            return linesWritten;
+        }
+
+        public String lastWritten() {
+            return lastWritten;
+        }
+
+        public int linesRead() {
+            return linesRead;
         }
 
         public Hands hands() {
@@ -356,6 +381,7 @@ public final class BrainManager {
         h.move.setCommand(bodyKeys);
         h.hands.tick(keys);
         speak(v, h, keys);
+        read(v, h, keys);
     }
 
     /**
@@ -368,6 +394,19 @@ public final class BrainManager {
         if (keys.say() >= 0 && keys != h.said && h.pending == null) {
             h.said = keys;
             String word = h.brain.word(keys.say());
+            if (word != null && keys.use() && Books.canWriteIn(v.getMainHandItem())) {
+                // Pen to the page: the word is written, not said, and the villager sees what it wrote.
+                h.wroteWords.add(word);
+                if (!word.equals(WordCode.TURN)) {
+                    h.writtenLine.add(word);
+                } else if (!h.writtenLine.isEmpty()) {
+                    h.lastWritten = Speech.join(h.writtenLine);
+                    Books.write(v.getMainHandItem(), h.lastWritten);
+                    h.linesWritten++;
+                    h.writtenLine.clear();
+                }
+                return;
+            }
             if (word != null) {
                 h.spoken = word;
                 Speech.villagerSays(v, word);
@@ -386,6 +425,41 @@ public final class BrainManager {
         }
         if (!h.line.isEmpty() && h.age - h.lastWordAge > UNFINISHED_LINE_TICKS) {
             h.line.clear();
+        }
+    }
+
+    /** Ticks between words read: reading goes faster than talking. */
+    private static final int READ_TICKS = 3;
+
+    /**
+     * Reading: the right mouse button with a book in hand (one not being written in right now), or
+     * a lectern's screen open, puts the book's lines before its eyes, word by word.
+     */
+    private static void read(Villager v, Handle h, MotorCommand keys) {
+        boolean press = keys.use() && !h.useWasDown;
+        h.useWasDown = keys.use();
+        if (!h.reading.isEmpty()) {
+            return;
+        }
+        ItemStack book = null;
+        if (h.hands.screen() instanceof LecternMenu lectern) {
+            if (h.readScreen != lectern) {
+                h.readScreen = lectern;
+                book = lectern.getBook();
+            }
+        } else if (press && !h.brain.isWriting() && Books.hasText(v.getMainHandItem())) {
+            book = v.getMainHandItem();
+        }
+        if (book == null) {
+            return;
+        }
+        String writer = Books.writer(book);
+        for (List<String> line : Books.lines(book)) {
+            for (String w : line) {
+                h.reading.add(new String[] {w, writer});
+            }
+            h.reading.add(new String[] {WordCode.TURN, writer});
+            h.linesRead++;
         }
     }
 
@@ -419,6 +493,15 @@ public final class BrainManager {
         h.deathsSeen.clear();
         f.harvested.addAll(h.harvested);
         h.harvested.clear();
+        f.canWrite = Books.canWriteIn(v.getMainHandItem());
+        for (String w : h.wroteWords) {
+            f.hear(w, true);
+        }
+        h.wroteWords.clear();
+        if (!h.reading.isEmpty() && h.age % READ_TICKS == 0) {
+            String[] next = h.reading.poll();
+            f.read(next[0], next[1]);
+        }
         Senses.feel(v, f);
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);

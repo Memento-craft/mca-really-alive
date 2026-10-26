@@ -272,8 +272,12 @@ public final class Brain {
     /** Felt loss of someone it knew, and the pleasure of being listened to; both fade. */
     float grief;
     float heardJoy;
-    /** Who is saying the line being heard. */
+    /** Who is saying the line being heard, and whether it is being read rather than heard. */
     private String lineSpeaker;
+    private boolean lineRead;
+    /** It is writing a memory down rather than saying it; and whether it has something to write in. */
+    volatile boolean writing;
+    private boolean canWrite;
     /** Names of people it has heard speak, so it knows them for names when they are talked about. */
     final Set<String> met = new java.util.HashSet<>();
     /** The last line heard before this one ended, and whether it was its own. */
@@ -625,6 +629,10 @@ public final class Brain {
             lastCommand = lastCommand.saying(word);
             lineWords++;
         }
+        if (writing) {
+            // Writing is saying with the hand: the pen is held to the page while the line comes.
+            lastCommand = lastCommand.using(true);
+        }
         forwardModel.predict(cb, cbCount, fastRate);
         return lastCommand;
     }
@@ -693,6 +701,7 @@ public final class Brain {
     private void listen(SensoryFrame f) {
         company = f.company;
         youngCompany = f.youngCompany;
+        canWrite = f.canWrite;
         for (String d : f.died) {
             sawDie(d);
         }
@@ -711,6 +720,10 @@ public final class Brain {
         for (int i = 0; i < f.heardWords.size(); i++) {
             String w = f.heardWords.get(i);
             boolean own = f.heardOwn.get(i);
+            boolean read = i < f.heardRead.size() && f.heardRead.get(i);
+            if (!w.equals(WordCode.TURN)) {
+                lineRead = read;
+            }
             if (!w.equals(WordCode.TURN) && !lineSoFar.isEmpty() && lineSoFarOwn != own) {
                 // Someone else spoke up after words it cooed and never ended (or the other way
                 // round): those were no line, and are not part of this one.
@@ -754,6 +767,11 @@ public final class Brain {
             }
             rememberExchange(own);
             lastLineTick = ticks;
+            if (read) {
+                // A line read in a book: taken in, not answered.
+                lineWords = 0;
+                continue;
+            }
             plan = null;
             if (own) {
                 replyUrge = 0f;
@@ -783,7 +801,7 @@ public final class Brain {
         int[] line = lineSoFar.stream().mapToInt(Integer::intValue).toArray();
         lineSoFar.clear();
         ExchangeMemory memory = ExchangeMemory.shared();
-        if (memory != null && lastLine != null && !(own && lastLineOwn) && ticks - lastLineTick < EXCHANGE_GAP
+        if (memory != null && !lineRead && lastLine != null && !(own && lastLineOwn) && ticks - lastLineTick < EXCHANGE_GAP
                 && !(own && aboutTheMoment(line))) {
             talk.remember(lastLine, line, memory);
         }
@@ -969,14 +987,19 @@ public final class Brain {
      */
     private void heardAboutPeople(int[] line, boolean own) {
         if (own) {
-            if (telling != null) {
+            if (telling != null && writing) {
+                // Written down for whoever reads it: no one answers a page, but it is done.
+                telling.written = true;
+                heardJoy = Motives.WROTE;
+            } else if (telling != null) {
                 awaitingAnswer = true;
                 toldAt = ticks;
-                telling = null;
             }
+            telling = null;
+            writing = false;
             return;
         }
-        if (awaitingAnswer && ticks - toldAt <= ANSWER_WINDOW) {
+        if (awaitingAnswer && !lineRead && ticks - toldAt <= ANSWER_WINDOW) {
             awaitingAnswer = false;
             heardJoy = HEARD + (youngCompany > 0f ? PASSED_ON : 0f);
             tellValue = tellValue + TELL_LEARN * (1f - tellValue);
@@ -1055,13 +1078,18 @@ public final class Brain {
      * is worth, and it is keener with a child to listen. Telling it again keeps it from fading.
      */
     private void maybeTell() {
-        if (company <= 0f || replyUrge >= URGE_MIN || plan != null || ticks < nextTell
+        // With no one around but something to write in, it may write a memory down instead.
+        boolean write = company <= 0f && canWrite;
+        if (company <= 0f && !write || replyUrge >= URGE_MIN || plan != null || ticks < nextTell
                 || ticks - lastLineTick < REMARK_QUIET || people.memories.isEmpty()) {
             return;
         }
         Recollections.Memory best = null;
         float bestWant = 0f;
         for (Recollections.Memory m : people.memories) {
+            if (write && m.written) {
+                continue;
+            }
             float want = Recollections.salience(m, ticks);
             int name = language.vocabulary.find(m.person);
             if (name >= 0 && name < boost.length && boost[name] > 0f) {
@@ -1083,6 +1111,7 @@ public final class Brain {
             best.rehearsed++;
         }
         telling = best;
+        writing = write;
         language.startLine();
         replyUrge = REMARK_URGE;
         lineWords = 0;
@@ -1797,6 +1826,11 @@ public final class Brain {
             maybeTell();
         }
         people.fade(ticks);
+        if (writing && (plan == null || replyUrge < URGE_MIN)) {
+            // Lost the thread of what it was writing: the pen comes off the page.
+            writing = false;
+            telling = null;
+        }
         if (awaitingAnswer && ticks - toldAt > ANSWER_WINDOW) {
             // No one took it up: telling was not worth it this time.
             awaitingAnswer = false;
@@ -2340,6 +2374,11 @@ public final class Brain {
     /** What it did itself and counted: crops harvested by kind. */
     public java.util.Map<String, Integer> deeds() {
         return java.util.Collections.unmodifiableMap(deeds);
+    }
+
+    /** Whether it is writing a line down right now (its words go onto the page, not into the air). */
+    public boolean isWriting() {
+        return writing;
     }
 
     /** How much it has found telling people things worth it, 0..1. */

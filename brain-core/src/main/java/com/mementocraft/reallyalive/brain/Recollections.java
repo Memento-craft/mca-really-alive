@@ -40,6 +40,8 @@ final class Recollections {
         /** How often it was told or heard again: retold memories cement, as synapses do. */
         int rehearsed;
         long lastTold = Long.MIN_VALUE / 2;
+        /** It wrote this down already. */
+        boolean written;
         /** For what it knows of itself: which fact this is, so a new count replaces the old one. */
         String key;
     }
@@ -336,6 +338,7 @@ final class Recollections {
             out.writeFloat(m.feeling);
             out.writeInt(m.rehearsed);
             out.writeLong(m.lastTold);
+            out.writeBoolean(m.written);
             out.writeBoolean(m.key != null);
             if (m.key != null) {
                 out.writeUTF(m.key);
@@ -363,6 +366,7 @@ final class Recollections {
             m.feeling = in.readFloat();
             m.rehearsed = in.readInt();
             m.lastTold = in.readLong();
+            m.written = in.readBoolean();
             m.key = in.readBoolean() ? in.readUTF() : null;
             memories.add(m);
         }

@@ -246,4 +246,69 @@ class KnowledgeChainTest {
         }
         assertNull(Recollections.aboutSpeaker(WordCode.tokenize("are you a farmer?").stream().mapToInt(v::id).toArray(), "misu", v));
     }
+
+    /**
+     * Alone with a book and quill, a villager may write down what it remembers; a child who later
+     * reads the page knows it too, though the writer never spoke to her.
+     */
+    @Test
+    void whatIsWrittenDownIsKnownToWhoeverReadsIt() {
+        assertNotNull(EnglishBase.shared(), "the English base is missing from the resources");
+        Brain tomas = villager(31, "Tomas", "mason", false);
+        SensoryFrame seen = ConversationTest.frame();
+        seen.died.add("Misu");
+        tomas.step(seen);
+        tomas.tellRate = 0.3f;
+        List<String> page = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        String wrote = null;
+        int aloud = 0;
+        for (int t = 0; t < 6000 && page.isEmpty(); t++) {
+            SensoryFrame f = ConversationTest.frame();
+            f.canWrite = true;
+            if (wrote != null) {
+                f.hear(wrote, true);
+            }
+            MotorCommand keys = tomas.step(f);
+            wrote = tomas.word(keys.say());
+            if (wrote == null) {
+                continue;
+            }
+            if (!keys.use()) {
+                aloud++;
+                wrote = null;
+            } else if (wrote.equals(WordCode.TURN)) {
+                page.add(line.toString().trim());
+                line.setLength(0);
+            } else {
+                line.append(wrote).append(' ');
+            }
+        }
+        System.out.println("  tomas wrote: " + page + " (words said aloud meanwhile: " + aloud + ")");
+        assertFalse(page.isEmpty(), "alone with a book, it never wrote anything down");
+
+        Brain lia = villager(32, "Lia", null, true);
+        for (int t = 0; t < 200; t++) {
+            lia.step(ConversationTest.frame());
+        }
+        for (String written : page) {
+            List<String> words = new ArrayList<>(WordCode.tokenize(written));
+            words.add(WordCode.TURN);
+            for (String w : words) {
+                for (int k = 0; k < 3; k++) {
+                    SensoryFrame f = ConversationTest.frame();
+                    if (k == 0) {
+                        f.read(w, "Tomas");
+                    }
+                    lia.step(f);
+                }
+            }
+        }
+        System.out.println("  lia read of misu:\n" + memories(lia, "misu"));
+        assertTrue(lia.people.knows("misu"), "reading the page taught her nothing");
+        int[] onScript = {0, 0};
+        String answer = String.join(" ", ConversationTest.talk(lia, "what happened to misu?", onScript));
+        System.out.println("  player: what happened to misu?\n  lia: " + answer);
+        assertTrue(answer.contains("died"), "she should answer from what she read: " + answer);
+    }
 }

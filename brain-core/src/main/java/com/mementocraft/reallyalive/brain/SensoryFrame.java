@@ -24,6 +24,10 @@ public final class SensoryFrame {
     public final List<Boolean> heardOwn = new ArrayList<>();
     /** Who said each heard word, by name as the villager knows them, or null if it can't tell. */
     public final List<String> heardFrom = new ArrayList<>();
+    /** Whether each heard word was read in a book rather than heard said. */
+    public final List<Boolean> heardRead = new ArrayList<>();
+    /** It holds something to write in (a book and quill with room left). */
+    public boolean canWrite;
     /** People the villager saw die this tick, by name. */
     public final List<String> died = new ArrayList<>();
     /** Crops the villager harvested itself this tick ("wheat", "carrots"). */
@@ -68,11 +72,22 @@ public final class SensoryFrame {
         heardWords.add(word);
         heardOwn.add(own);
         heardFrom.add(from);
+        heardRead.add(false);
         if (!word.equals(WordCode.TURN)) {
             for (int f : WordCode.features(word)) {
                 words[f] = 1f;
             }
         }
+    }
+
+    /**
+     * Reads a word in a book, or {@link WordCode#TURN} at the end of a written line, by its writer
+     * if the book says who that was. Read words go through the language area as heard ones do,
+     * but a book is not answered.
+     */
+    public void read(String word, String writer) {
+        hear(word, false, writer);
+        heardRead.set(heardRead.size() - 1, true);
     }
 
     /** Someone names what the villager is seeing, smelling, feeling or doing right now. */
@@ -92,6 +107,8 @@ public final class SensoryFrame {
         heardWords.clear();
         heardOwn.clear();
         heardFrom.clear();
+        heardRead.clear();
+        canWrite = false;
         died.clear();
         harvested.clear();
         named.clear();

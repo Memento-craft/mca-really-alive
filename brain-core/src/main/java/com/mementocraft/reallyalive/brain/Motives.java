@@ -24,6 +24,8 @@ public final class Motives {
     public static final float HEARD = 0.3f;
     /** And more when the one listening was a child: passing something on. */
     public static final float PASSED_ON = 0.2f;
+    /** Finishing a line written down for whoever reads it later. */
+    public static final float WROTE = 0.2f;
 
     private Motives() {}
 }

@@ -155,4 +155,68 @@ public final class KnowledgeTests {
             }
         });
     }
+
+    /**
+     * Reading: a villager given a signed book presses use with it in hand and takes in what it
+     * says: "misu was the best farmer in the village." is now something it remembers of Misu,
+     * whom it never met.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600)
+    public static void villagerReadsABook(GameTestHelper h) {
+        Villager v = named(h, new Vec3(16.5, 2, 4.5), "Lia");
+        BrainManager.Handle handle = attach(h, v);
+        net.minecraft.world.item.ItemStack book = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WRITTEN_BOOK);
+        book.set(net.minecraft.core.component.DataComponents.WRITTEN_BOOK_CONTENT, new net.minecraft.world.item.component.WrittenBookContent(
+                net.minecraft.server.network.Filterable.passThrough("Misu"), "Joshua", 0,
+                List.of(net.minecraft.server.network.Filterable.passThrough(Component.literal("misu was the best farmer in the village."))), true));
+        v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, book);
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            if (t == 10) {
+                handle.hold(new com.mementocraft.reallyalive.brain.MotorCommand(0, 0, false, false, false, 0f, 0f, false, true));
+            }
+            if (t == 14) {
+                handle.hold(com.mementocraft.reallyalive.brain.MotorCommand.IDLE);
+            }
+            List<String> kept = handle.brain().recollectionsOf("misu");
+            if (kept.stream().anyMatch(l -> l.contains("farmer"))) {
+                LOG.info("read: after {} ticks the reader remembers of misu: {}", t, kept);
+                h.succeed();
+            }
+        });
+    }
+
+    /**
+     * Writing: alone with a book and quill after seeing a death, a villager may choose to write
+     * it down; the line goes onto the page, not into chat. A benchmark: whether and when it writes
+     * is its own choice (the urge raised so it needn't take a game day).
+     */
+    @GameTest(template = ARENA, timeoutTicks = 4800, batch = "knowledge_written", required = false)
+    public static void villagerWritesDownADeath(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager writer = named(h, new Vec3(10.5, 2, 10.5), "Tomas");
+        Villager dying = named(h, new Vec3(12.5, 2, 10.5), "Misu");
+        BrainManager.Handle handle = attach(h, writer);
+        handle.brain().setTellRate(0.3f);
+        writer.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND,
+                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WRITABLE_BOOK));
+        String name = first(dying);
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            if (t == 20) {
+                writer.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, dying.getEyePosition());
+                dying.kill();
+            }
+            if (handle.linesWritten() > 0) {
+                List<List<String>> lines = com.mementocraft.reallyalive.body.Books.lines(writer.getMainHandItem());
+                LOG.info("written: after {} ticks the book reads {} (lines said aloud: {})", t, lines, handle.lines());
+                h.assertTrue(lines.stream().anyMatch(l -> l.contains(name)), "the book reads " + lines);
+                h.succeed();
+            }
+            if (t == 4700) {
+                LOG.info("written: nothing written; it holds {}", writer.getMainHandItem());
+                h.fail("it never wrote the death down");
+            }
+        });
+    }
 }
