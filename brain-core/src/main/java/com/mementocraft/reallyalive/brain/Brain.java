@@ -111,6 +111,14 @@ public final class Brain {
      * anything in the crafting grid.
      */
     static final float FIDDLE_WEIGHT = 0.3f;
+    /**
+     * Past this much boredom with an open screen, an inborn urge presses the inventory key that
+     * learning cannot take away, growing to full strength at total boredom. The learnable leave
+     * reflex alone was unlearned by some brains, which then sat in a screen 20-45% of their life.
+     */
+    static final float LEAVE_URGE_FROM = 0.8f;
+    /** How hard that urge drives the inventory key's motor pool, as strong as full babbling. */
+    static final float LEAVE_URGE = BABBLE_GAIN;
     /** Curiosity about what it carries -> inventory key, to look it over. */
     static final float CURIOUS_WEIGHT = 0.6f;
     /**
@@ -1404,6 +1412,13 @@ public final class Brain {
             float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN * gain;
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
                 extInput[motorPools[c][k]] = drive;
+            }
+        }
+        float bored = input[IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()];
+        if (bored > LEAVE_URGE_FROM) {
+            float urge = LEAVE_URGE * (bored - LEAVE_URGE_FROM) / (1f - LEAVE_URGE_FROM);
+            for (int i : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                extInput[i] += urge;
             }
         }
         driveSpeechBabble(amp);

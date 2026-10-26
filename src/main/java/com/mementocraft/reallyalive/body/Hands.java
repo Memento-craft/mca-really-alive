@@ -156,6 +156,13 @@ public final class Hands {
     private static final int SCREEN_BORED_TICKS = 100;
     /** Ticks a screen stays fresh after opening it or clicking on it, before boredom sets in. */
     private static final int SCREEN_FRESH_TICKS = 40;
+    /** Ticks the screen has been open, not counting while something made is showing. */
+    private int screenOpenFor;
+    /**
+     * Ticks after which any screen grows boring, however busy the hands are on it. Without this,
+     * clicks that only shuffled things about kept villagers in their inventory 40% of the time.
+     */
+    private static final int SCREEN_LONG_TICKS = 300;
     public int formedTotal;
 
     public Hands(Villager body) {
@@ -319,11 +326,17 @@ public final class Hands {
     /**
      * How boring the open screen has become: hardly at all for two seconds after opening it,
      * clicking on it or while carrying a stack, then wholly after five more seconds of doing
-     * nothing; 0 with no screen open. The urge to leave a screen grows with it, so a screen is
-     * left soon once nothing is being done on it.
+     * nothing; 0 with no screen open. After fifteen seconds on a screen it grows boring anyway,
+     * unless something made is showing on it. The urge to leave a screen grows with it, so a
+     * screen is left soon once nothing is being done on it.
      */
     public float screenBoredom() {
-        return screen == null ? 0f : Mth.clamp((screenIdle - SCREEN_FRESH_TICKS) / (float) SCREEN_BORED_TICKS, 0.05f, 1f);
+        if (screen == null) {
+            return 0f;
+        }
+        float idle = (screenIdle - SCREEN_FRESH_TICKS) / (float) SCREEN_BORED_TICKS;
+        float tooLong = (screenOpenFor - SCREEN_LONG_TICKS) / (float) SCREEN_BORED_TICKS;
+        return Mth.clamp(Math.max(idle, tooLong), 0.05f, 1f);
     }
 
     /**
@@ -846,6 +859,7 @@ public final class Hands {
         screensOpened++;
         noveltyThisTick += novelty(menu);
         screenIdle = 0;
+        screenOpenFor = 0;
         resultShown = false;
         formedOnScreen.clear();
         // The pointer starts in the middle of the screen, where a player's mouse appears.
@@ -906,6 +920,7 @@ public final class Hands {
             // Carrying a stack about is doing something, and something just made is worth looking
             // at; only an empty pointer over nothing new gets bored.
             screenIdle = screen.getCarried().isEmpty() && !resultShowing(screen) ? screenIdle + 1 : 0;
+            screenOpenFor = resultShowing(screen) ? screenOpenFor : screenOpenFor + 1;
             boolean left = keys.attack() && !attackWasDown;
             boolean right = keys.use() && !useWasDown;
             boolean leftUp = !keys.attack() && attackWasDown;
