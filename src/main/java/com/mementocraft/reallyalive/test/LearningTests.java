@@ -491,8 +491,9 @@ public final class LearningTests {
             int lastFalls = count(outcomes, c.episodes - WINDOW, Outcome.FELL);
             String report = String.format("%s: reached the goal in %d of the first %d tries and %d of the last %d (%d falls);"
                             + " in the last tries jump was held %d%% of the time in water, %d%% on land,"
-                            + " a screen was open %d%% of the time%s",
+                            + " a screen was open %d%% of the time (%d screens opened in all, carrying %s)%s",
                     c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry), percent(inScreen),
+                    handle.hands().screensOpened, carriedList(v),
                     c == Course.LEDGE ? String.format("; sneaking %d%% of the time near the edge",
                             percent(sneakNearEdge)) : "")
                     + (c == Course.STEP ? String.format("; holding a block, it pressed place %d%% of the time in the first tries"
@@ -620,5 +621,15 @@ public final class LearningTests {
             }
         }
         return n;
+    }
+
+    private static String carriedList(net.minecraft.world.entity.npc.Villager v) {
+        StringBuilder b = new StringBuilder(v.getMainHandItem().toString());
+        for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+            if (!v.getInventory().getItem(i).isEmpty()) {
+                b.append(", ").append(v.getInventory().getItem(i));
+            }
+        }
+        return b.toString();
     }
 }

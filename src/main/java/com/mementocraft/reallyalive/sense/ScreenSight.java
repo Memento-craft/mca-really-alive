@@ -7,6 +7,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -38,29 +39,45 @@ public final class ScreenSight {
     private static final int PANEL = 0xC6C6C6;
     private static final int SLOT = 0x8B8B8B;
     /** How strongly a slot of the thing being worked catches the eye. */
-    private static final float WORK_SLOT = 0.6f;
+    private static final float WORK_SLOT = 1f;
     /** How brightly a slot that catches the eye shows in the cells around its own. */
     private static final float GLOW = 0.7f;
+    /** How many cells out from its own a slot that catches the eye still shows. */
+    private static final int GLOW_REACH = 2;
+    /**
+     * How much other things still catch the eye beside something just made: nothing. At 0.3, the
+     * log left in the grid, right under the eye, held the pointer beside the planks it had made.
+     */
+    private static final float OUTSHONE = 0f;
+    /**
+     * How much finer the middle of the eye sees than its edge. With even cells (22 by 33 pixels,
+     * wider than a 16-pixel slot) the orienting reflex stopped once a slot was in the middle cell,
+     * which left the pointer off the slot two times in three; a result showing with the hand free
+     * had the pointer on it only 3% of the time. Here the middle cells are 3 to 7 pixels across,
+     * as a real eye sees sharpest where it looks.
+     */
+    private static final float FOVEA = 2f;
 
     private ScreenSight() {}
 
     public static void see(AbstractContainerMenu menu, float pointerX, float pointerY, float[] vision, float[] colour) {
         Arrays.fill(vision, 0f);
         Arrays.fill(colour, 0f);
-        float cellW = VIEW_W / SenseLayout.VISION_W;
-        float cellH = VIEW_H / SenseLayout.VISION_H;
-        float left = pointerX - VIEW_W / 2f;
-        float top = pointerY - VIEW_H / 2f;
         float[] b = Hands.bounds(menu);
         // What catches the eye depends on the hand: with nothing on the pointer, things to pick up;
-        // with a stack on it, the places to put it, the slots of the thing being worked.
-        boolean carrying = !menu.getCarried().isEmpty();
-        float thingPull = carrying ? 0.2f : 1f;
-        float workPull = carrying ? WORK_SLOT : 0.2f * WORK_SLOT;
+        // with a stack on it, the places it could go in the thing being worked. Even a faint pull
+        // of the other kind (a crafting grid's five slots against one stack of logs) kept the
+        // pointer off the logs most of the time.
+        ItemStack carried = menu.getCarried();
+        // Something just made, sitting in a result slot, outshines the things around it.
+        boolean made = false;
+        for (Slot s : menu.slots) {
+            made |= s instanceof ResultSlot && s.hasItem();
+        }
         for (int y = 0; y < SenseLayout.VISION_H; y++) {
             for (int x = 0; x < SenseLayout.VISION_W; x++) {
-                float px = left + (x + 0.5f) * cellW;
-                float py = top + (y + 0.5f) * cellH;
+                float px = pointerX + offset(x + 0.5f, SenseLayout.VISION_W, VIEW_W);
+                float py = pointerY + offset(y + 0.5f, SenseLayout.VISION_H, VIEW_H);
                 if (px >= b[0] && px < b[2] && py >= b[1] && py < b[3]) {
                     vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.9f;
                     paint(colour, x, y, PANEL);
@@ -71,44 +88,64 @@ public final class ScreenSight {
             if (!s.isActive()) {
                 continue;
             }
-            int x = (int) Math.floor((s.x + 8 - left) / cellW);
-            int y = (int) Math.floor((s.y + 8 - top) / cellH);
+            int x = cell(s.x + 8 - pointerX, SenseLayout.VISION_W, VIEW_W);
+            int y = cell(s.y + 8 - pointerY, SenseLayout.VISION_H, VIEW_H);
             if (x < 0 || y < 0 || x >= SenseLayout.VISION_W || y >= SenseLayout.VISION_H) {
                 continue;
             }
             ItemStack stack = s.getItem();
             vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_SOLID)] = 1f;
-            if (!(s.container instanceof Inventory)) {
-                // The slots of the thing being worked (a crafting grid and its result, a brewing
-                // stand's bottles, a chest's contents) stand out from one's own pockets, as the
-                // grid and its arrow do on a player's screen, and draw the eye the way a ladder does.
-                glow(vision, x, y, SenseLayout.CH_CLIMBABLE, workPull);
+            if (!carried.isEmpty() && (s.container instanceof Inventory) == made && s.mayPlace(carried)
+                    && (stack.isEmpty() || ItemStack.isSameItemSameComponents(stack, carried))) {
+                // A slot of the thing being worked (a crafting grid, a brewing stand's bottles, a
+                // chest) that could take the stack stands out from one's own pockets, as the grid
+                // does on a player's screen, and draws the eye the way a ladder does. Once
+                // something has been made, it is the other way round: the hand looks for a pocket
+                // to put the rest away in, so it is free to take what was made.
+                glow(vision, x, y, SenseLayout.CH_CLIMBABLE, WORK_SLOT);
             }
             if (stack.isEmpty()) {
                 paint(colour, x, y, SLOT);
             } else {
-                float full = stack.getCount() / (float) Math.max(1, stack.getMaxStackSize());
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.95f;
-                glow(vision, x, y, SenseLayout.CH_CREATURE, thingPull * (0.5f + 0.5f * full));
+                float pull = !made || s instanceof ResultSlot ? 1f : OUTSHONE;
+                if (carried.isEmpty() && pull > 0f) {
+                    glow(vision, x, y, SenseLayout.CH_CREATURE, pull);
+                }
                 paint(colour, x, y, colourOf(stack));
             }
         }
     }
 
+    /** How far from the pointer, in pixels, a point at {@code at} cells across the eye is seen. */
+    static float offset(float at, int cells, float view) {
+        float u = 2f * at / cells - 1f;
+        return Math.signum(u) * (float) Math.pow(Math.abs(u), FOVEA) * view / 2f;
+    }
+
+    /** Which cell across the eye sees a point {@code d} pixels from the pointer. */
+    static int cell(float d, int cells, float view) {
+        float u = Math.signum(d) * (float) Math.pow(Math.min(1f, Math.abs(d) / (view / 2f)), 1f / FOVEA);
+        if (Math.abs(d) >= view / 2f) {
+            return d < 0 ? -1 : cells;
+        }
+        return (int) Math.floor((u + 1f) / 2f * cells);
+    }
+
     /**
-     * Marks a slot that catches the eye in its cell and, more faintly, the cells around it, the
+     * Marks a slot that catches the eye in its cell and, fainter with distance, the cells around it, the
      * way a thing stands out a little beyond its edges. A slot fills a single cell, and one cell
      * pulled the gaze far too weakly to move the pointer: a creature in the world fills many.
      */
     private static void glow(float[] vision, int x, int y, int channel, float value) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -GLOW_REACH; dy <= GLOW_REACH; dy++) {
+            for (int dx = -GLOW_REACH; dx <= GLOW_REACH; dx++) {
                 int cx = x + dx;
                 int cy = y + dy;
                 if (cx < 0 || cy < 0 || cx >= SenseLayout.VISION_W || cy >= SenseLayout.VISION_H) {
                     continue;
                 }
-                float v = dx == 0 && dy == 0 ? value : GLOW * value;
+                float v = value * (float) Math.pow(GLOW, Math.max(Math.abs(dx), Math.abs(dy)));
                 int i = SenseLayout.visionIndex(cx, cy, channel);
                 vision[i] = Math.max(vision[i], v);
             }

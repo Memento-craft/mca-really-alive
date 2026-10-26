@@ -21,6 +21,19 @@ public final class Motives {
      */
     public static final float FORM = 0.2f;
     /**
+     * Opening a kind of screen not seen for a while: its novelty, the pull a child feels to look
+     * into a box. Fades as that kind of screen grows familiar and comes back as it is forgotten,
+     * so a villager keeps peeking into its inventory now and then instead of learning that
+     * screens are never worth opening.
+     */
+    public static final float NEW_SCREEN = 0.3f;
+    /**
+     * A click on a screen that moved something: picking a stack up, putting it down, splitting it.
+     * Felt the less the more it has lately been doing so, like a toy that wears off, so the hands
+     * try things out on a screen without shuffling there forever.
+     */
+    public static final float MOVE_THINGS = 0.1f;
+    /**
      * Using a held thing turned a block into a different block: tilling dirt, planting a seed,
      * stripping a log. Opening a door or a chest changes nothing that way, and is not felt.
      */

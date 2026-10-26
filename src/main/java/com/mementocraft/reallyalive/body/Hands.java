@@ -72,8 +72,12 @@ public final class Hands {
     /** A player picks up items this close (Player.aiStep). */
     private static final double PICKUP_XZ = 1.0;
     private static final double PICKUP_Y = 0.5;
-    /** Screen pixels the pointer moves per degree the mouse would have turned the head. */
-    public static final float POINTER_PER_DEGREE = 1f;
+    /**
+     * Screen pixels the pointer moves per degree the mouse would have turned the head. At one, a
+     * newborn's pointer took longer to cross the screen to what it had made than the screen
+     * stayed open.
+     */
+    public static final float POINTER_PER_DEGREE = 2f;
 
     private final Villager body;
     private boolean attackWasDown;
@@ -110,6 +114,25 @@ public final class Hands {
     private int changedThisTick;
     private int madeThisTick;
     private int formedThisTick;
+    private float movedThisTick;
+    /** Clicks that moved something, for tests. */
+    public int moves;
+    /** How much it has lately been moving things about on screens; halves every minute. */
+    private float movedLately;
+    private static final float MOVED_HALF_LIFE = 1200f;
+    private float noveltyThisTick;
+    /** How familiar each kind of screen is, from 0 (never seen) to 1; fades back as it is forgotten. */
+    private final java.util.Map<Object, Float> familiar = new java.util.HashMap<>();
+    private final java.util.Map<Object, Long> lastSeen = new java.util.HashMap<>();
+    /** Ticks for a familiar kind of screen to be about half forgotten. */
+    private static final float FORGET_TICKS = 6000f;
+    /** How much more familiar a kind of screen grows each time it is opened. */
+    private static final float GET_USED = 0.3f;
+    private long ticksLived;
+    /** When each kind of thing it carries was last looked over in a screen. */
+    private final java.util.Map<net.minecraft.world.item.Item, Long> lookedOver = new java.util.HashMap<>();
+    /** Ticks after which a thing looked over is worth looking at again. */
+    private static final long LOOK_AGAIN_TICKS = 6000L;
     /** Whether a result slot showed something after the last click, and what has been shown on this screen. */
     private boolean resultShown;
     private final java.util.Set<net.minecraft.world.item.Item> formedOnScreen = new java.util.HashSet<>();
@@ -131,6 +154,15 @@ public final class Hands {
     private int screenIdle;
     /** Ticks without a click after which a screen is wholly boring. */
     private static final int SCREEN_BORED_TICKS = 100;
+    /** Ticks a screen stays fresh after opening it or clicking on it, before boredom sets in. */
+    private static final int SCREEN_FRESH_TICKS = 40;
+    /** Ticks the screen has been open, not counting while something made is showing. */
+    private int screenOpenFor;
+    /**
+     * Ticks after which any screen grows boring, however busy the hands are on it. Without this,
+     * clicks that only shuffled things about kept villagers in their inventory 40% of the time.
+     */
+    private static final int SCREEN_LONG_TICKS = 300;
     public int formedTotal;
 
     public Hands(Villager body) {
@@ -165,10 +197,14 @@ public final class Hands {
             pleasure += Motives.COLLECT;
         }
         carried = screen != null ? -1 : now;
-        pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE + formedThisTick * Motives.FORM;
+        pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE + formedThisTick * Motives.FORM
+                + movedThisTick * Motives.MOVE_THINGS
+                + noveltyThisTick * Motives.NEW_SCREEN;
+        noveltyThisTick = 0f;
         changedThisTick = 0;
         madeThisTick = 0;
         formedThisTick = 0;
+        movedThisTick = 0f;
         if (dugThisTick) {
             pleasure += Motives.DIG_PER_TICK;
         }
@@ -197,6 +233,23 @@ public final class Hands {
      * body moves.
      */
     public void tick(MotorCommand keys) {
+        ticksLived++;
+        movedLately *= (float) Math.pow(0.5, 1.0 / MOVED_HALF_LIFE);
+        if (screen != null) {
+            forEachCarried(item -> lookedOver.put(item, ticksLived));
+            if (standIn != null) {
+                // What is on the pointer or in a crafting grid is in the stand-in's hands, and seen too.
+                forEachIn(standIn.getInventory(), item -> lookedOver.put(item, ticksLived));
+                if (!screen.getCarried().isEmpty()) {
+                    lookedOver.put(screen.getCarried().getItem(), ticksLived);
+                }
+                for (net.minecraft.world.inventory.Slot s : screen.slots) {
+                    if (s.hasItem()) {
+                        lookedOver.put(s.getItem().getItem(), ticksLived);
+                    }
+                }
+            }
+        }
         sinceSwing++;
         if (useDelay > 0) {
             useDelay--;
@@ -271,13 +324,52 @@ public final class Hands {
     }
 
     /**
-     * How boring the open screen has become, from a fifth just after opening it, clicking on it or
-     * while carrying a stack, to wholly after five seconds of doing nothing there; 0 with no screen
-     * open. The urge to leave a screen grows with it, so a screen is left soon once nothing is
-     * being done on it.
+     * How boring the open screen has become: hardly at all for two seconds after opening it,
+     * clicking on it or while carrying a stack, then wholly after five more seconds of doing
+     * nothing; 0 with no screen open. After fifteen seconds on a screen it grows boring anyway,
+     * unless something made is showing on it. The urge to leave a screen grows with it, so a
+     * screen is left soon once nothing is being done on it.
      */
     public float screenBoredom() {
-        return screen == null ? 0f : Mth.clamp(screenIdle / (float) SCREEN_BORED_TICKS, 0.2f, 1f);
+        if (screen == null) {
+            return 0f;
+        }
+        float idle = (screenIdle - SCREEN_FRESH_TICKS) / (float) SCREEN_BORED_TICKS;
+        float tooLong = (screenOpenFor - SCREEN_LONG_TICKS) / (float) SCREEN_BORED_TICKS;
+        return Mth.clamp(Math.max(idle, tooLong), 0.05f, 1f);
+    }
+
+    /**
+     * 1 while it carries something it has never looked over in a screen, or not for five minutes,
+     * else 0; always 0 with a screen open. Curiosity drives the inventory key, so a villager now and
+     * then opens its inventory to look at what it has, as a player does after picking something up.
+     */
+    public float curiosity() {
+        if (screen != null) {
+            return 0f;
+        }
+        boolean[] curious = {false};
+        forEachCarried(item -> {
+            Long seen = lookedOver.get(item);
+            curious[0] |= seen == null || ticksLived - seen > LOOK_AGAIN_TICKS;
+        });
+        return curious[0] ? 1f : 0f;
+    }
+
+    private void forEachCarried(java.util.function.Consumer<net.minecraft.world.item.Item> action) {
+        if (!body.getMainHandItem().isEmpty()) {
+            action.accept(body.getMainHandItem().getItem());
+        }
+        forEachIn(body.getInventory(), action);
+    }
+
+    private static void forEachIn(net.minecraft.world.Container container,
+            java.util.function.Consumer<net.minecraft.world.item.Item> action) {
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            if (!container.getItem(i).isEmpty()) {
+                action.accept(container.getItem(i).getItem());
+            }
+        }
     }
 
     /** True while a screen is open. */
@@ -765,7 +857,9 @@ public final class Hands {
         stopDigging();
         screen = menu;
         screensOpened++;
+        noveltyThisTick += novelty(menu);
         screenIdle = 0;
+        screenOpenFor = 0;
         resultShown = false;
         formedOnScreen.clear();
         // The pointer starts in the middle of the screen, where a player's mouse appears.
@@ -823,8 +917,10 @@ public final class Hands {
             pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0], b[2]);
             pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1], b[3]);
             pointed = slotAt(screen, pointerX, pointerY);
-            // Carrying a stack about is doing something; only an empty pointer gets bored.
-            screenIdle = screen.getCarried().isEmpty() ? screenIdle + 1 : 0;
+            // Carrying a stack about is doing something, and something just made is worth looking
+            // at; only an empty pointer over nothing new gets bored.
+            screenIdle = screen.getCarried().isEmpty() && !resultShowing(screen) ? screenIdle + 1 : 0;
+            screenOpenFor = resultShowing(screen) ? screenOpenFor : screenOpenFor + 1;
             boolean left = keys.attack() && !attackWasDown;
             boolean right = keys.use() && !useWasDown;
             boolean leftUp = !keys.attack() && attackWasDown;
@@ -840,11 +936,27 @@ public final class Hands {
     }
 
     /**
+     * How new this kind of screen feels, 0 to 1, and it grows more familiar for having been seen.
+     * Familiarity is kept with the time it was last updated and fades when looked up.
+     */
+    private float novelty(AbstractContainerMenu menu) {
+        Object kind = menu.getClass();
+        float f = familiar.getOrDefault(kind, 0f);
+        Long seen = lastSeen.get(kind);
+        if (seen != null) {
+            f *= (float) Math.pow(0.5, (ticksLived - seen) / FORGET_TICKS);
+        }
+        lastSeen.put(kind, ticksLived);
+        familiar.put(kind, Math.min(1f, f + GET_USED));
+        return 1f - f;
+    }
+
+    /**
      * The mouse on a screen, as a player's works: a press with nothing on the pointer clicks at
      * once (picking up, or shift-moving, what is under it); a press while holding a stack starts a
      * drag instead, every slot the pointer then passes over joins it, and letting go shares the
-     * stack out over them, or, if the pointer never reached a slot that takes it, puts it down where
-     * the pointer is.
+     * stack out over them (all of it into one slot, if only one was passed), or, if the pointer
+     * never reached a slot that takes it, clicks where the pointer is.
      */
     private void mouse(StandIn p, boolean shift, int pressed, boolean released) {
         if (dragButton < 0 && pressed >= 0) {
@@ -869,7 +981,7 @@ public final class Hands {
         if (!released) {
             return;
         }
-        if (dragSlots.size() > 1) {
+        if (!dragSlots.isEmpty()) {
             click(p, -999, AbstractContainerMenu.getQuickcraftMask(0, dragButton), ClickType.QUICK_CRAFT);
             for (Slot s : dragSlots) {
                 click(p, s.index, AbstractContainerMenu.getQuickcraftMask(1, dragButton), ClickType.QUICK_CRAFT);
@@ -887,12 +999,38 @@ public final class Hands {
         if (slot >= 0 && screen.getSlot(slot).hasItem()) {
             clicksOnThings++;
         }
+        int before = contents(screen);
         screen.clicked(slot, button, type, p);
         screen.broadcastChanges();
+        if (contents(screen) != before) {
+            // Something moved: felt the less, the more it has lately been moving things about.
+            movedThisTick += 1f / (1f + movedLately);
+            movedLately += 1f;
+            moves++;
+        }
         if (slot >= 0) {
             screenClicks++;
         }
         noticeResult(screen);
+    }
+
+    /** A fingerprint of what lies where on a screen and on its pointer. */
+    private static int contents(AbstractContainerMenu menu) {
+        int h = ItemStack.hashItemAndComponents(menu.getCarried()) * 31 + menu.getCarried().getCount();
+        for (Slot s : menu.slots) {
+            ItemStack stack = s.getItem();
+            h = h * 31 + (stack.isEmpty() ? 0 : ItemStack.hashItemAndComponents(stack) * 67 + stack.getCount());
+        }
+        return h;
+    }
+
+    private static boolean resultShowing(AbstractContainerMenu menu) {
+        for (Slot s : menu.slots) {
+            if (s instanceof ResultSlot && s.hasItem()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

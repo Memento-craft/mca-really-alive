@@ -188,6 +188,8 @@ public final class BrainIO {
         }
         if (version < 8) {
             b.remapLegacyInputs(FeelChannel.COUNT_V7, MotorChannel.COUNT_V7);
+        } else if (version == 8) {
+            b.remapLegacyInputs(FeelChannel.COUNT_V8, MotorChannel.COUNT);
         }
         for (int c = 0; c < motorCount; c++) {
             int[] pool = b.motorPools[c];
