@@ -81,7 +81,9 @@ Villagers also remember what they were told earlier in a talk. Asked a short que
 speaker ("what's my dog's name?"), the line the speaker said about themselves lately that shares
 the most telling words with it ("i have a dog named rex.") comes back, its words are held in mind,
 and it can be said back the other way round: "you have a dog named rex.", "you live in the big
-house by the river.", "your favourite colour is green." (6 of 6 such questions, 0 before).
+house by the river.", "your favourite colour is green.". Asked why, the line told just after comes
+back: "i'm sad today." "my cat ran away." ... "why am i sad?" "because your cat ran away." (10 of 10
+such questions, 0 before).
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

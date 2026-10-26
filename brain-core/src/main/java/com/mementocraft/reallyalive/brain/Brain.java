@@ -891,6 +891,13 @@ public final class Brain {
             weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match), match, RECALL_WEIGHT, false, start, turn);
             talk.ask = language.vocabulary.find("?");
             int[][] mine = talk.recall(heard, before, 0f, RECALLED, match, memory);
+            if (toldLine != null) {
+                // Asked about themselves, what someone said in the first person ("my cat ran
+                // away.") was said by them, and is said back to them the other way round.
+                for (int r = 0; r < mine.length; r++) {
+                    mine[r] = aboutSpeaker(mine[r]) ? toldBack(mine[r]) : mine[r];
+                }
+            }
             weighRecalled(mine, match, OWN_RECALL_WEIGHT, true, start, turn);
             if (toldLine != null) {
                 // What it was told, said back the other way round: "you have a dog named rex."
@@ -1033,6 +1040,7 @@ public final class Brain {
         int name = language.vocabulary.find("name");
         boolean askingName = contains(heard, name);
         int[] best = null;
+        int bestK = 0;
         float bestCue = TOLD_CUE;
         // The latest line is the question itself; only what the speaker told about themselves
         // lately, not other questions, is recalled.
@@ -1057,12 +1065,23 @@ public final class Brain {
             if (cue > bestCue) {
                 bestCue = cue;
                 best = told;
+                bestK = k;
             }
         }
         if (best == null) {
             return new int[0];
         }
         toldLine = best;
+        if (contains(heard, language.vocabulary.find("why")) && bestK > 2) {
+            // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away.").
+            int[] next = heardLines[(heardLinesNext - bestK + 1) % heardLines.length];
+            if (next.length > 0 && next[next.length - 1] != ask && aboutSpeaker(next)) {
+                best = next;
+                toldLine = new int[next.length + 1];
+                toldLine[0] = language.vocabulary.find("because");
+                System.arraycopy(next, 0, toldLine, 1, next.length);
+            }
+        }
         // Telling words: those that cue remembered exchanges, and names, which never do but are
         // not among the commonest words either.
         return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))

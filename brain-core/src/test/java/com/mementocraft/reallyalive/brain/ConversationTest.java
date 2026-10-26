@@ -201,7 +201,8 @@ class ConversationTest {
 
     /**
      * Told something earlier in a talk, a villager answers a question about it with what it was
-     * told: "i have a dog named rex." ... "what's my dog's name?" "you have a dog named rex."
+     * told: "i have a dog named rex." ... "what's my dog's name?" "you have a dog named rex.";
+     * "i'm sad today." "my cat ran away." ... "why am i sad?" "because your cat ran away."
      */
     @Test
     void villagerRemembersWhatItWasTold() {
@@ -210,7 +211,11 @@ class ConversationTest {
             {"my favourite colour is green.", "what's yours?", "what's my favourite colour?", "green"},
             {"i live in the big house by the river.", "it's very old.", "where do i live?", "river"},
             {"i'm going to the mine tomorrow.", "i need iron.", "where am i going tomorrow?", "mine"},
-            {"i'm sad today.", "my cat ran away.", "why am i sad?", "sad"}};
+            {"i'm sad today.", "my cat ran away.", "why am i sad?", "cat"},
+            {"i'm so tired.", "i worked all night at the forge.", "why am i tired?", "forge"},
+            {"my sister is called anna.", "she lives in the next village.", "what's my sister called?", "anna"},
+            {"i lost my sword in the cave.", "it was made of iron.", "where did i lose my sword?", "cave"},
+            {"i'm building a tower out of stone.", "it will be very tall.", "what am i building?", "tower"}};
         int right = 0;
         for (int i = 0; i < talks.length; i++) {
             Brain b = Brain.create(Genome.defaults(), 500 + i, 1f);
