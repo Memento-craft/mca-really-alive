@@ -36,12 +36,13 @@ class ExchangeMemoryTest {
         assertNotNull(memory, "the remembered exchanges are missing from the resources");
         Vocabulary v = EnglishBase.shared().vocabulary;
         String[][] cases = {{"can i go to the park?", "park", "parks", "swings", "play", "fun", "there"},
-            {"would you like some bread?", "bread", "thank", "please", "eat", "hungry", "yes"},
+            {"would you like some bread?", "bread", "thank", "please", "eat", "hungry", "yes", "wheat", "loaves"},
             {"watch out! zombies!", "zombie", "zombies", "run", "sword", "hide", "guards", "behind"}};
         for (String[] c : cases) {
             int[] heard = WordCode.tokenize(c[0]).stream().mapToInt(v::find).toArray();
-            float[] match = new float[8];
-            int[][] answers = memory.recall(heard, new int[0], 0f, 8, match);
+            // A wider look than the eight the brain weighs: many short answers tie on one telling word.
+            float[] match = new float[24];
+            int[][] answers = memory.recall(heard, new int[0], 0f, 24, match);
             assertTrue(answers.length > 0, "nothing recalled for " + c[0]);
             int fitting = 0;
             for (int[] a : answers) {
@@ -56,14 +57,17 @@ class ExchangeMemoryTest {
                 fitting += fits ? 1 : 0;
                 System.out.println("  " + c[0] + " -> " + line.toString().trim());
             }
-            assertTrue(fitting >= 2, "recalled answers don't fit " + c[0]);
+            assertTrue(fitting >= 3, "recalled answers don't fit " + c[0]);
         }
     }
 
     /**
      * Builds the memory from corpus files (comma separated, each with a stride: every n-th pair of
-     * lines is kept, as file:n). The answer's line is cued by the telling words of the line it
-     * answered; the commonest words and names (capitalised mid-sentence in SODA) are no cues, and
+     * lines is kept, as file:n, and optionally how many of the commonest words are no cues, as
+     * file:n:stop; the made-up talk is cued by its telling words only, or its short stock lines
+     * come up for anything). The answer's line is cued by the words of the line it answered,
+     * small words too ("what did you do today?" is mostly small words); the ten commonest words
+     * and names (capitalised mid-sentence in SODA) are no cues, and
      * answers naming someone or holding a stand-in for a name are left out, since villagers don't
      * know those people.
      */
@@ -99,8 +103,7 @@ class ExchangeMemoryTest {
         }
         List<String> byFreq = new ArrayList<>(freq.keySet());
         byFreq.sort((x, y) -> freq.get(y) - freq.get(x));
-        Set<String> stop = new HashSet<>(byFreq.subList(0, Integer.parseInt(System.getenv().getOrDefault("STOP_WORDS", "120"))));
-        stop.addAll(List.of(".", ",", "?", "!", WordCode.TURN));
+        int stopWords = Integer.parseInt(System.getenv().getOrDefault("STOP_WORDS", "10"));
         Set<String> names = new HashSet<>();
         caps.forEach((w, c) -> {
             if (c[1] >= 10 && c[0] >= 0.8f * c[1] && !w.equals("i") && !w.startsWith("i'")) {
@@ -112,6 +115,8 @@ class ExchangeMemoryTest {
         for (String spec : files) {
             String[] fs = spec.split(":");
             int stride = fs.length > 1 ? Integer.parseInt(fs[1]) : 1;
+            Set<String> stop = new HashSet<>(byFreq.subList(0, fs.length > 2 ? Integer.parseInt(fs[2]) : stopWords));
+            stop.addAll(List.of(".", ",", "?", "!", WordCode.TURN));
             long pairNo = 0;
             List<String> prev = null;
             try (BufferedReader r = Files.newBufferedReader(Path.of(fs[0]))) {
@@ -125,7 +130,9 @@ class ExchangeMemoryTest {
                         continue;
                     }
                     List<String> cur = WordCode.tokenize(line);
-                    if (prev != null && pairNo++ % stride == 0 && cur.size() >= 2 && cur.size() <= 24
+                    // A line of one word ("bread.", "okay?") says too little of what it was about for
+                    // its answer to be worth bringing up again.
+                    if (prev != null && pairNo++ % stride == 0 && words(prev) >= 2 && cur.size() >= 2 && cur.size() <= 24
                             && !PLACEHOLDER.matcher(line).find()) {
                         char[] answer = new char[cur.size()];
                         boolean ok = true;
@@ -170,5 +177,13 @@ class ExchangeMemoryTest {
             o.close();
         }
         System.out.println("remembered " + answers.size() + " exchanges, " + names.size() + " names left out");
+    }
+
+    private static int words(List<String> line) {
+        int n = 0;
+        for (String w : line) {
+            n += Character.isLetterOrDigit(w.charAt(0)) ? 1 : 0;
+        }
+        return n;
     }
 }

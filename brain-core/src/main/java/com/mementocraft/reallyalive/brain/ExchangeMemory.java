@@ -9,8 +9,8 @@ import java.util.zip.GZIPInputStream;
 
 /**
  * Remembered exchanges, like the hippocampus keeps episodes: lines heard in conversations and the
- * answers that followed them. Each remembered answer is linked to the telling words of the line it
- * answered (not the small words heard everywhere), the more strongly the rarer the word. Hearing a
+ * answers that followed them. Each remembered answer is linked to the words of the line it
+ * answered (all but the few heard everywhere), the more strongly the rarer the word. Hearing a
  * line brings up the answers whose cues it shares most, which the frontal part then weighs next to
  * the lines it makes up itself. Shared by all brains, like the English base, and frozen.
  */
@@ -19,6 +19,8 @@ final class ExchangeMemory {
 
     /** How strongly a line must cue (root of summed squared cue weights) to recall at full strength. */
     static final float CLEAR_CUES = 8f;
+    static final int SMALL_WORDS = 120;
+    static final float SMALL_WORD_CUE = Float.parseFloat(System.getProperty("reallyalive.smallCue", "0.5"));
     /** How much of a match is measured against the best match for the same line, rather than outright. */
     static final float RELATIVE = Float.parseFloat(System.getProperty("reallyalive.relative", "0.5"));
 
@@ -46,6 +48,14 @@ final class ExchangeMemory {
         for (int w = 0; w < words; w++) {
             cuedBy[w] = new int[count[w]];
             weight[w] = count[w] == 0 ? 0f : (float) Math.log((double) cues.length / count[w]);
+        }
+        // The small words heard in most lines ("what", "do", "some") cue only faintly: they tell a
+        // question from an answer, the rarer words what it is about.
+        Integer[] byCount = new Integer[words];
+        Arrays.setAll(byCount, i -> i);
+        Arrays.sort(byCount, (x, y) -> count[y] - count[x]);
+        for (int i = 0; i < Math.min(SMALL_WORDS, words); i++) {
+            weight[byCount[i]] *= SMALL_WORD_CUE;
         }
         int[] at = new int[words];
         cueNorm = new float[cues.length];
