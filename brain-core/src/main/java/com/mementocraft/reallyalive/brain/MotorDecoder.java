@@ -20,6 +20,8 @@ public final class MotorDecoder {
     private boolean sprint;
     private boolean attack;
     private boolean use;
+    private boolean inventory;
+    private boolean hotbar;
 
     public MotorCommand decode(float[] poolRates) {
         forward = axis(forward, rate(poolRates, MotorChannel.FORWARD) - rate(poolRates, MotorChannel.BACK));
@@ -29,10 +31,12 @@ public final class MotorDecoder {
         sprint = button(sprint, rate(poolRates, MotorChannel.SPRINT));
         attack = button(attack, rate(poolRates, MotorChannel.ATTACK));
         use = button(use, rate(poolRates, MotorChannel.USE));
+        inventory = button(inventory, rate(poolRates, MotorChannel.INVENTORY));
+        hotbar = button(hotbar, rate(poolRates, MotorChannel.HOTBAR));
         float yaw = look(rate(poolRates, MotorChannel.YAW_RIGHT) - rate(poolRates, MotorChannel.YAW_LEFT));
         float pitch = look(rate(poolRates, MotorChannel.PITCH_DOWN) - rate(poolRates, MotorChannel.PITCH_UP));
         return new MotorCommand(forward, strafe, jump, sneak, sprint,
-                yaw * MAX_YAW_PER_TICK, pitch * MAX_PITCH_PER_TICK, attack, use);
+                yaw * MAX_YAW_PER_TICK, pitch * MAX_PITCH_PER_TICK, attack, use, inventory, hotbar);
     }
 
     private static float rate(float[] rates, MotorChannel c) {
@@ -64,8 +68,13 @@ public final class MotorDecoder {
     }
 
     int[] state() {
-        return new int[] {forward, strafe, jump ? 1 : 0, sneak ? 1 : 0, sprint ? 1 : 0, attack ? 1 : 0, use ? 1 : 0};
+        return new int[] {forward, strafe, jump ? 1 : 0, sneak ? 1 : 0, sprint ? 1 : 0, attack ? 1 : 0, use ? 1 : 0,
+                inventory ? 1 : 0, hotbar ? 1 : 0};
     }
+
+    /** How many numbers {@link #state()} holds; brains saved before version 8 hold 7. */
+    static final int STATE_SIZE = 9;
+    static final int STATE_SIZE_V7 = 7;
 
     void setState(int[] s) {
         forward = s[0];
@@ -75,5 +84,7 @@ public final class MotorDecoder {
         sprint = s[4] != 0;
         attack = s[5] != 0;
         use = s[6] != 0;
+        inventory = s.length > 7 && s[7] != 0;
+        hotbar = s.length > 8 && s[8] != 0;
     }
 }

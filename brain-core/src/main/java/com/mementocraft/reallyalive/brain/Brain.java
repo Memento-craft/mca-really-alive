@@ -186,7 +186,11 @@ public final class Brain {
     static final int IN_SOUND = IN_EMOTION + SenseLayout.EMOTION_RECEPTORS;
     static final int IN_WORDS = IN_SOUND + SoundChannel.COUNT;
     static final int IN_COLOUR = IN_WORDS + SenseLayout.WORD_FEATURES;
-    static final int INPUT_SIZE = IN_COLOUR + SenseLayout.COLOUR_RECEPTORS;
+    static final int IN_FOCUS = IN_COLOUR + SenseLayout.COLOUR_RECEPTORS;
+    static final int IN_HELD = IN_FOCUS + SenseLayout.THING_FEATURES;
+    static final int INPUT_SIZE = IN_HELD + SenseLayout.THING_FEATURES;
+    /** Receptors per feature of the thing in focus and the thing in hand. */
+    static final int THING_PER_FEATURE = 2;
 
     final Genome genome;
     final Rng rng;
@@ -469,12 +473,10 @@ public final class Brain {
             }
         }
         buildColourReceptors();
+        buildThingReceptors();
         // The Motor lobe's sheet: controls in the lower half, the voice in the upper half.
         for (int c = 0; c < MotorChannel.COUNT; c++) {
-            for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
-                motorPools[c][k] = addNeuron(LobeId.MOTOR, ROLE_MOTOR, rng.nextFloat(),
-                        Wiring.Band.KEYS.into(rng.nextFloat()));
-            }
+            buildMotorPool(c);
         }
         for (int w = 0; w < SenseLayout.WORD_FEATURES; w++) {
             for (int k = 0; k < SenseLayout.SPEECH_POOL_SIZE; k++) {
@@ -484,30 +486,101 @@ public final class Brain {
         }
     }
 
+    private void buildMotorPool(int c) {
+        for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
+            motorPools[c][k] = addNeuron(LobeId.MOTOR, ROLE_MOTOR, rng.nextFloat(),
+                    Wiring.Band.KEYS.into(rng.nextFloat()));
+        }
+    }
+
     private void buildColourReceptors() {
         for (int i = 0; i < SenseLayout.COLOUR_RECEPTORS; i++) {
             receptor(LobeId.OCCIPITAL, IN_COLOUR + i);
         }
     }
 
-    /** Brains saved before they had colour vision get their colour receptors. */
+    /**
+     * What the crosshair rests on is seen at the centre of the eye, so it sits at the middle of the
+     * occipital sheet; the thing in hand is felt, in Feely.
+     */
+    private void buildThingReceptors() {
+        for (int c = 0; c < SenseLayout.THING_FEATURES; c++) {
+            for (int k = 0; k < THING_PER_FEATURE; k++) {
+                receptor(LobeId.OCCIPITAL, IN_FOCUS + c);
+                receptor(LobeId.FEELY, IN_HELD + c);
+            }
+        }
+    }
+
+    /**
+     * Brains saved before a sense existed (colour vision, the newer body channels and keys, the
+     * thing in focus and in hand) get its receptors, wired in as if they had always been there.
+     */
     void addMissingReceptors() {
+        boolean[] has = new boolean[INPUT_SIZE];
         for (int i = 0; i < n; i++) {
-            if (role[i] == ROLE_RECEPTOR && inputSlot[i] >= IN_COLOUR) {
-                return;
+            if (role[i] == ROLE_RECEPTOR && inputSlot[i] >= 0 && inputSlot[i] < INPUT_SIZE) {
+                has[inputSlot[i]] = true;
             }
         }
         int first = n;
-        buildColourReceptors();
+        for (int c = 0; c < FeelChannel.COUNT; c++) {
+            for (int k = 0; k < FEELY_PER_CHANNEL && !has[IN_FEEL + c]; k++) {
+                receptor(LobeId.FEELY, IN_FEEL + c);
+            }
+        }
+        for (int c = 0; c < MotorChannel.COUNT; c++) {
+            for (int k = 0; k < FEELY_PER_CHANNEL && !has[IN_EFFERENCE + c]; k++) {
+                receptor(LobeId.FEELY, IN_EFFERENCE + c);
+            }
+        }
+        if (!has[IN_COLOUR]) {
+            buildColourReceptors();
+        }
+        if (!has[IN_FOCUS]) {
+            buildThingReceptors();
+        }
         for (int i = first; i < n; i++) {
             wireOut(i);
+        }
+    }
+
+    /**
+     * Moves the receptors of a brain saved with fewer body channels and keys to where those inputs
+     * are now: the newer channels were added at the end of the body sense and of the efference copy,
+     * so everything after them moved along.
+     */
+    void remapLegacyInputs(int feelCount, int motorCount) {
+        int oldEfference = IN_FEEL + feelCount;
+        int oldSmell = oldEfference + motorCount;
+        int shiftEfference = FeelChannel.COUNT - feelCount;
+        int shiftRest = shiftEfference + MotorChannel.COUNT - motorCount;
+        for (int i = 0; i < n; i++) {
+            int slot = inputSlot[i];
+            if (role[i] != ROLE_RECEPTOR || slot < oldEfference) {
+                continue;
+            }
+            inputSlot[i] = slot < oldSmell ? slot + shiftEfference : slot + shiftRest;
+        }
+    }
+
+    /** Brains saved before a key existed get its motor pool, reached from the cerebellum. */
+    void addMissingMotorPools(int have) {
+        for (int c = have; c < MotorChannel.COUNT; c++) {
+            buildMotorPool(c);
+            for (int i : motorPools[c]) {
+                wireIn(i);
+            }
         }
     }
 
     private int receptor(LobeId l, int slot) {
         float x = rng.nextFloat();
         float y = rng.nextFloat();
-        if (slot >= IN_COLOUR) {
+        if (slot >= IN_FOCUS && slot < IN_HELD) {
+            x = 0.5f + (rng.nextFloat() - 0.5f) * 0.2f;
+            y = 0.5f + (rng.nextFloat() - 0.5f) * 0.2f;
+        } else if (slot >= IN_COLOUR && slot < IN_FOCUS) {
             int cell = (slot - IN_COLOUR) / SenseLayout.COLOUR_CHANNELS;
             x = (cell % SenseLayout.COLOUR_CELLS_W + 0.5f) / SenseLayout.COLOUR_CELLS_W;
             y = (cell / SenseLayout.COLOUR_CELLS_W + 0.5f) / SenseLayout.COLOUR_CELLS_H;
@@ -577,6 +650,8 @@ public final class Brain {
         input[IN_EMOTION + SenseLayout.EMO_CURIOSITY] = SensoryFrame.clamp01(surprise * CURIOSITY_GAIN);
         System.arraycopy(f.sound, 0, input, IN_SOUND, SoundChannel.COUNT);
         System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.WORD_FEATURES);
+        System.arraycopy(f.focus, 0, input, IN_FOCUS, SenseLayout.THING_FEATURES);
+        System.arraycopy(f.held, 0, input, IN_HELD, SenseLayout.THING_FEATURES);
         for (int cy = 0; cy < SenseLayout.COLOUR_CELLS_H; cy++) {
             for (int cx = 0; cx < SenseLayout.COLOUR_CELLS_W; cx++) {
                 for (int c = 0; c < SenseLayout.COLOUR_CHANNELS; c++) {

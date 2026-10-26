@@ -5,7 +5,6 @@ import com.mementocraft.reallyalive.brain.Motives;
 import com.mementocraft.reallyalive.brain.SoundChannel;
 import com.mementocraft.reallyalive.sense.Hearing;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
@@ -22,6 +21,14 @@ import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.item.PotionItem;
+import net.minecraft.world.item.UseAnim;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
@@ -35,12 +42,22 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.EventHooks;
 
 /**
- * A player's two mouse buttons for a brain-driven villager. Attack held on the block in the
- * crosshair digs it at a player's dig speed with the held tool, and progress is lost when the button
- * is released or the crosshair moves to another block; a click on a creature hits it. Use places the
- * held block against the face in the crosshair, repeating every 4 ticks while held. Reach, dig speed,
- * the 5-tick pause after breaking a block and attack cooldown all follow the player rules (the
- * client's MultiPlayerGameMode and Player). What it digs goes to its hand or inventory.
+ * A player's hands for a brain-driven villager: the two mouse buttons, the mouse wheel and the
+ * inventory key. Attack held on the block in the crosshair digs it at a player's dig speed with the
+ * held tool, and progress is lost when the button is released or the crosshair moves to another
+ * block; a click on a creature hits it. Use does what a player's right click does, through a
+ * {@link StandIn} player: work the block in the crosshair (a door, a crafting table, a brewing
+ * stand, any modded block), use the held thing on it (place a block, till with a hoe, plant a seed),
+ * use it on a creature (milk, shear, feed), or use it in the air (fill a bucket); holding use on
+ * food or a potion eats or drinks it. Use repeats every 4 ticks while held. Reach, dig speed, the
+ * 5-tick pause after breaking a block and attack cooldown all follow the player rules (the client's
+ * MultiPlayerGameMode and Player). What it digs, and items it walks over, go to its hand or
+ * inventory.
+ *
+ * <p>While a screen is open (its own inventory with the 2x2 crafting grid, or a block's screen) the
+ * mouse moves a pointer over the screen instead of turning the head, the buttons click slots as a
+ * player's do (shift-click moves a stack across), and the inventory key closes the screen. The
+ * body stands still meanwhile, as a player's does.
  */
 public final class Hands {
     /** A survival player's reach for blocks and for creatures. */
@@ -48,10 +65,24 @@ public final class Hands {
     public static final double ENTITY_REACH = 3.0;
     private static final int BREAK_PAUSE = 5;
     private static final int USE_REPEAT = 4;
+    /** A player picks up items this close (Player.aiStep). */
+    private static final double PICKUP_XZ = 1.0;
+    private static final double PICKUP_Y = 0.5;
+    /** Screen pixels the pointer moves per degree the mouse would have turned the head. */
+    public static final float POINTER_PER_DEGREE = 1f;
 
     private final Villager body;
     private boolean attackWasDown;
     private boolean useWasDown;
+    private boolean inventoryWasDown;
+    private boolean wheelWasDown;
+    private StandIn standIn;
+    /** The open screen, or null. Its own inventory counts as a screen while it is open. */
+    private AbstractContainerMenu screen;
+    private float pointerX;
+    private float pointerY;
+    /** The slot under the pointer, or null. */
+    private Slot pointed;
     private int useDelay;
     private int destroyDelay;
     private BlockPos digging;
@@ -64,12 +95,19 @@ public final class Hands {
     private int carried = -1;
     private boolean dugThisTick;
     private int placedThisTick;
+    private int changedThisTick;
+    private int madeThisTick;
     /** Diagnostics for benchmarks: tries to place, why they failed, and where the last block went. */
     public int placeTries;
     public int placeNoTarget;
     public int placeRefused;
     public int placedTotal;
     public BlockPos lastPlaced;
+    /** Diagnostics: uses that worked a block, changed a block, opened a screen, or made something. */
+    public int usedOnBlock;
+    public int changedTotal;
+    public int screensOpened;
+    public int madeTotal;
 
     public Hands(Villager body) {
         this.body = body;
@@ -92,7 +130,9 @@ public final class Hands {
     /**
      * The inborn pleasure of using the hands since the last call: collecting (anything it carries
      * went up, whether a dig drop or an item picked up off the ground), each tick a block cracked
-     * further, and each block placed. Call once per tick, after the body has moved.
+     * further, each block placed, each block its held thing turned into another, and each thing it
+     * made. Moving things about on a screen is not collecting: what it carries is counted afresh
+     * once the screen closes. Call once per tick, after the body has moved.
      */
     public float motivePleasure() {
         float pleasure = 0f;
@@ -100,7 +140,10 @@ public final class Hands {
         if (carried >= 0 && now > carried) {
             pleasure += Motives.COLLECT;
         }
-        carried = now;
+        carried = screen != null ? -1 : now;
+        pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE;
+        changedThisTick = 0;
+        madeThisTick = 0;
         if (dugThisTick) {
             pleasure += Motives.DIG_PER_TICK;
         }
@@ -124,12 +167,30 @@ public final class Hands {
         return n;
     }
 
-    /** Presses or releases the buttons for this tick. Runs on the server thread before the body moves. */
+    /**
+     * Presses or releases the buttons and keys for this tick. Runs on the server thread before the
+     * body moves.
+     */
     public void tick(MotorCommand keys) {
         sinceSwing++;
         if (useDelay > 0) {
             useDelay--;
         }
+        pickUpNearby();
+        boolean inventoryPressed = keys.inventory() && !inventoryWasDown;
+        inventoryWasDown = keys.inventory();
+        if (screen != null) {
+            workScreen(keys, inventoryPressed);
+            return;
+        }
+        if (inventoryPressed) {
+            openOwnInventory();
+            return;
+        }
+        if (keys.hotbar() && !wheelWasDown) {
+            nextInHand();
+        }
+        wheelWasDown = keys.hotbar();
         target = pick();
 
         boolean attack = keys.attack();
@@ -148,9 +209,14 @@ public final class Hands {
         attackWasDown = attack;
 
         boolean use = keys.use();
-        if (use && (!useWasDown || useDelay == 0)) {
+        if (body.isUsingItem()) {
+            // Eating or drinking goes on while use is held, and stops when it is let go.
+            if (!use) {
+                body.releaseUsingItem();
+            }
+        } else if (use && (!useWasDown || useDelay == 0)) {
             useDelay = USE_REPEAT;
-            place();
+            use();
         }
         useWasDown = use;
     }
@@ -158,8 +224,115 @@ public final class Hands {
     /** Lets go of everything, for when the brain hands the body back. */
     public void release() {
         stopDigging();
+        closeScreen();
+        if (body.isUsingItem()) {
+            body.stopUsingItem();
+        }
         attackWasDown = false;
         useWasDown = false;
+        inventoryWasDown = false;
+        wheelWasDown = false;
+    }
+
+    /** What the crosshair rests on, or null: a block, a creature, or nothing within reach. */
+    public HitResult target() {
+        return targetInReach() ? target : null;
+    }
+
+    /** True while a screen is open. */
+    public boolean screenOpen() {
+        return screen != null;
+    }
+
+    /** The open screen, or null. */
+    public AbstractContainerMenu screen() {
+        return screen;
+    }
+
+    public float pointerX() {
+        return pointerX;
+    }
+
+    public float pointerY() {
+        return pointerY;
+    }
+
+    /** The slot under the mouse pointer, or null. */
+    public Slot pointedSlot() {
+        return pointed;
+    }
+
+    /** The stack hanging on the mouse pointer, or empty. */
+    public ItemStack onPointer() {
+        return screen == null ? ItemStack.EMPTY : screen.getCarried();
+    }
+
+    /** How far eating or drinking has got, 0..1. */
+    public float usingProgress() {
+        if (!body.isUsingItem()) {
+            return 0f;
+        }
+        int total = body.getUseItem().getUseDuration(body);
+        return total <= 0 ? 0f : Math.min(1f, body.getTicksUsingItem() / (float) total);
+    }
+
+    /** Something it made came out of a result slot: crafted, smelted or brewed. */
+    public void made() {
+        madeThisTick++;
+        madeTotal++;
+    }
+
+    // ---------------------------------------------------------------- picking up
+
+    /** Walking over an item picks it up, as it does for a player, once the item may be picked up. */
+    private void pickUpNearby() {
+        if (!(body.level() instanceof ServerLevel level) || !body.isAlive()) {
+            return;
+        }
+        AABB reach = body.getBoundingBox().inflate(PICKUP_XZ, PICKUP_Y, PICKUP_XZ);
+        for (ItemEntity item : level.getEntitiesOfClass(ItemEntity.class, reach, e -> e.isAlive() && !e.hasPickUpDelay())) {
+            ItemStack stack = item.getItem().copy();
+            int before = stack.getCount();
+            take(stack);
+            int taken = before - stack.getCount();
+            if (taken > 0) {
+                body.take(item, taken);
+                if (stack.isEmpty()) {
+                    item.discard();
+                } else {
+                    item.setItem(stack);
+                }
+            }
+        }
+    }
+
+    /** The mouse wheel: the next thing it carries comes into its hand, and what it held goes in its place. */
+    private void nextInHand() {
+        var inventory = body.getInventory();
+        int size = inventory.getContainerSize();
+        for (int k = 0; k < size; k++) {
+            int i = k;
+            ItemStack next = inventory.getItem(i);
+            if (next.isEmpty()) {
+                continue;
+            }
+            ItemStack hand = body.getMainHandItem();
+            // Rotate: the item in hand goes to the end of the line, so turning the wheel goes
+            // through everything it carries in turn.
+            inventory.removeItemNoUpdate(i);
+            for (int j = i; j < size - 1; j++) {
+                inventory.setItem(j, inventory.getItem(j + 1));
+            }
+            inventory.setItem(size - 1, ItemStack.EMPTY);
+            body.setItemSlot(EquipmentSlot.MAINHAND, next);
+            if (!hand.isEmpty()) {
+                ItemStack left = inventory.addItem(hand);
+                if (!left.isEmpty()) {
+                    body.level().addFreshEntity(new ItemEntity(body.level(), body.getX(), body.getY(), body.getZ(), left));
+                }
+            }
+            return;
+        }
     }
 
     // ---------------------------------------------------------------- aiming
@@ -383,28 +556,139 @@ public final class Hands {
 
     // ---------------------------------------------------------------- right button
 
-    /** Places the held block against the face in the crosshair, never inside a creature. */
-    private void place() {
-        ItemStack held = body.getMainHandItem();
-        if (!(held.getItem() instanceof BlockItem blockItem)) {
+    private StandIn standIn() {
+        if (standIn == null || standIn.level() != body.level()) {
+            closeScreen();
+            standIn = StandIn.of(body, this);
+        }
+        return standIn;
+    }
+
+    /**
+     * A player's right click (Minecraft.startUseItem): for each hand in turn, work the creature or
+     * block in the crosshair, else use the held thing in the air; holding food or a potion starts
+     * eating or drinking it. With mob griefing off, the hands are empty for anything that would change
+     * the world, so doors and screens still work.
+     */
+    private void use() {
+        if (!(body.level() instanceof ServerLevel level)) {
             return;
         }
-        placeTries++;
-        if (!(target instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK
-                || !EventHooks.canEntityGrief(body.level(), body)) {
-            placeNoTarget++;
-            return;
+        StandIn p = standIn();
+        p.follow(body);
+        p.takeFrom(body);
+        boolean grief = EventHooks.canEntityGrief(level, body);
+        boolean onBlock = target instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK;
+        if (p.getMainHandItem().getItem() instanceof BlockItem) {
+            placeTries++;
+            placeNoTarget += onBlock && grief ? 0 : 1;
         }
-        VillagerPlaceContext context = new VillagerPlaceContext(body, held, hit);
-        BlockPos at = context.getClickedPos();
-        if (blockItem.place(context).consumesAction()) {
-            body.swing(InteractionHand.MAIN_HAND);
+        try {
+            for (InteractionHand hand : InteractionHand.values()) {
+                ItemStack stack = p.getItemInHand(hand);
+                if (target instanceof EntityHitResult hit) {
+                    if (!grief) {
+                        break;
+                    }
+                    Entity creature = hit.getEntity();
+                    InteractionResult r = creature.interactAt(p, hit.getLocation().subtract(creature.position()), hand);
+                    if (!r.consumesAction()) {
+                        r = p.interactOn(creature, hand);
+                    }
+                    if (r.consumesAction()) {
+                        swing(r, hand);
+                        return;
+                    }
+                } else if (onBlock && useOnBlock(level, p, hand, stack, (BlockHitResult) target, grief)) {
+                    return;
+                }
+                stack = p.getItemInHand(hand);
+                if (stack.isEmpty() || !grief) {
+                    continue;
+                }
+                if (stack.getUseDuration(body) > 0) {
+                    // Eating and drinking are the villager's own: the food and the potion's effects are its.
+                    if (stack.has(DataComponents.FOOD) || stack.getItem() instanceof PotionItem
+                            || stack.getUseAnimation() == UseAnim.DRINK || stack.getUseAnimation() == UseAnim.EAT) {
+                        p.giveBack(body);
+                        body.startUsingItem(hand);
+                        p.takeFrom(body);
+                        return;
+                    }
+                }
+                InteractionResult r = p.gameMode.useItem(p, level, stack, hand);
+                if (p.isUsingItem()) {
+                    // A bow, a shield, a spyglass: things only a player can hold up. Let go of it.
+                    p.stopUsingItem();
+                }
+                if (r.consumesAction()) {
+                    swing(r, hand);
+                    return;
+                }
+            }
+        } finally {
+            p.giveBack(body);
+            if (p.inOtherScreen()) {
+                openScreen(p.containerMenu);
+            }
+        }
+    }
+
+    /**
+     * Uses one hand on the block in the crosshair, as ServerPlayerGameMode.useItemOn does, and notes
+     * what it did: placed a block, turned a block into another, or just worked it.
+     */
+    private boolean useOnBlock(ServerLevel level, StandIn p, InteractionHand hand, ItemStack stack, BlockHitResult hit, boolean grief) {
+        boolean placing = grief && hand == InteractionHand.MAIN_HAND && stack.getItem() instanceof BlockItem;
+        BlockItem blockItem = placing ? (BlockItem) stack.getItem() : null;
+        BlockPos clicked = hit.getBlockPos();
+        BlockPos placeAt = placing ? new BlockPlaceContext(p, hand, stack, hit).getClickedPos() : clicked;
+        BlockState clickedBefore = level.getBlockState(clicked);
+        BlockState placeBefore = level.getBlockState(placeAt);
+
+        ItemStack kept = null;
+        if (!grief && !stack.isEmpty()) {
+            kept = stack;
+            p.setItemInHand(hand, ItemStack.EMPTY);
+        }
+        InteractionResult r;
+        try {
+            r = p.gameMode.useItemOn(p, level, p.getItemInHand(hand), hand, hit);
+        } finally {
+            if (kept != null) {
+                p.setItemInHand(hand, kept);
+            }
+        }
+        if (!r.consumesAction()) {
+            if (placing) {
+                placeRefused++;
+            }
+            return r == InteractionResult.FAIL;
+        }
+        swing(r, hand);
+        usedOnBlock++;
+        boolean placed = placing && placeBefore.getBlock() != blockItem.getBlock()
+                && level.getBlockState(placeAt).getBlock() == blockItem.getBlock();
+        if (placed) {
             placedThisTick++;
             placedTotal++;
-            lastPlaced = at;
+            lastPlaced = placeAt;
+            p.giveBack(body);
             refillHand(blockItem);
-        } else {
+            p.takeFrom(body);
+        } else if (placing) {
             placeRefused++;
+        }
+        if (!placed && !stack.isEmpty() && kept == null && level.getBlockState(clicked).getBlock() != clickedBefore.getBlock()) {
+            changedThisTick++;
+            changedTotal++;
+        }
+        return true;
+    }
+
+    private void swing(InteractionResult r, InteractionHand hand) {
+        if (r.shouldSwing()) {
+            body.swing(hand);
         }
     }
 
@@ -423,56 +707,114 @@ public final class Hands {
         }
     }
 
-    /** A block placement made by a villager: facing and sneaking come from its own look and keys. */
-    private static final class VillagerPlaceContext extends BlockPlaceContext {
-        private final Villager placer;
+    // ---------------------------------------------------------------- screens
 
-        VillagerPlaceContext(Villager placer, ItemStack stack, BlockHitResult hit) {
-            super(placer.level(), null, InteractionHand.MAIN_HAND, stack, hit);
-            this.placer = placer;
+    /** The inventory key with no screen open: its own inventory, with the 2x2 crafting grid. */
+    private void openOwnInventory() {
+        if (!(body.level() instanceof ServerLevel)) {
+            return;
         }
+        StandIn p = standIn();
+        p.follow(body);
+        p.takeFrom(body);
+        openScreen(p.inventoryMenu);
+    }
 
-        @Override
-        public Direction getHorizontalDirection() {
-            return placer.getDirection();
+    private void openScreen(AbstractContainerMenu menu) {
+        stopDigging();
+        screen = menu;
+        screensOpened++;
+        // The pointer starts in the middle of the screen, where a player's mouse appears.
+        float[] b = bounds(menu);
+        pointerX = (b[0] + b[2]) / 2f;
+        pointerY = (b[1] + b[3]) / 2f;
+        pointed = slotAt(menu, pointerX, pointerY);
+        attackWasDown = true;
+        useWasDown = true;
+    }
+
+    /** Closes the open screen. Whatever is on the pointer or left in a crafting grid goes back to it. */
+    private void closeScreen() {
+        if (screen == null) {
+            return;
         }
-
-        @Override
-        public float getRotation() {
-            return placer.getYRot();
-        }
-
-        @Override
-        public boolean isSecondaryUseActive() {
-            return placer.isShiftKeyDown();
-        }
-
-        @Override
-        public Direction getNearestLookingDirection() {
-            return Direction.orderedByNearest(placer)[0];
-        }
-
-        @Override
-        public Direction getNearestLookingVerticalDirection() {
-            return placer.getXRot() < 0f ? Direction.UP : Direction.DOWN;
-        }
-
-        @Override
-        public Direction[] getNearestLookingDirections() {
-            Direction[] order = Direction.orderedByNearest(placer);
-            if (replacingClickedOnBlock()) {
-                return order;
+        StandIn p = standIn;
+        if (p != null) {
+            p.takeFrom(body);
+            if (p.inOtherScreen()) {
+                p.closeContainer();
+            } else {
+                p.doCloseContainer();
             }
-            Direction against = getClickedFace().getOpposite();
-            int i = 0;
-            while (i < order.length && order[i] != against) {
-                i++;
-            }
-            if (i > 0 && i < order.length) {
-                System.arraycopy(order, 0, order, 1, i);
-                order[0] = against;
-            }
-            return order;
+            p.giveBack(body);
         }
+        screen = null;
+        pointed = null;
+        attackWasDown = true;
+        useWasDown = true;
+    }
+
+    /**
+     * One tick with a screen open: the mouse moves the pointer, the left button clicks a slot (with
+     * shift, the stack moves across, as a player's shift-click does), the right button clicks with
+     * the other button (half a stack, or one item put down), and the inventory key closes it.
+     */
+    private void workScreen(MotorCommand keys, boolean inventoryPressed) {
+        StandIn p = standIn;
+        if (p == null || p.level() != body.level()) {
+            screen = null;
+            return;
+        }
+        p.follow(body);
+        p.takeFrom(body);
+        try {
+            if (inventoryPressed || screen != p.containerMenu || !screen.stillValid(p)) {
+                p.giveBack(body);
+                closeScreen();
+                return;
+            }
+            float[] b = bounds(screen);
+            pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0], b[2]);
+            pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1], b[3]);
+            pointed = slotAt(screen, pointerX, pointerY);
+            boolean left = keys.attack() && !attackWasDown;
+            boolean right = keys.use() && !useWasDown;
+            attackWasDown = keys.attack();
+            useWasDown = keys.use();
+            if (pointed != null && (left || right)) {
+                ClickType type = left && keys.sneak() ? ClickType.QUICK_MOVE : ClickType.PICKUP;
+                screen.clicked(pointed.index, left ? 0 : 1, type, p);
+                screen.broadcastChanges();
+            }
+        } finally {
+            if (screen != null) {
+                p.giveBack(body);
+            }
+        }
+    }
+
+    /** Where a screen's slots lie, in its pixels, with a margin: min x, min y, max x, max y. */
+    public static float[] bounds(AbstractContainerMenu menu) {
+        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+        for (Slot s : menu.slots) {
+            x0 = Math.min(x0, s.x);
+            y0 = Math.min(y0, s.y);
+            x1 = Math.max(x1, s.x + 16);
+            y1 = Math.max(y1, s.y + 16);
+        }
+        if (x0 > x1) {
+            return new float[] {0f, 0f, 176f, 166f};
+        }
+        return new float[] {x0 - 8f, y0 - 8f, x1 + 8f, y1 + 8f};
+    }
+
+    /** The slot whose 16x16 square, plus a player's one-pixel slack, holds this point. */
+    public static Slot slotAt(AbstractContainerMenu menu, float x, float y) {
+        for (Slot s : menu.slots) {
+            if (s.isActive() && x >= s.x - 1 && x < s.x + 17 && y >= s.y - 1 && y < s.y + 17) {
+                return s;
+            }
+        }
+        return null;
     }
 }

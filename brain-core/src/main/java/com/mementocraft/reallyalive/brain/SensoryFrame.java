@@ -15,6 +15,10 @@ public final class SensoryFrame {
     public final float[] sound = new float[SoundChannel.COUNT];
     /** Word features heard this tick (others' words and its own), see {@link WordCode}. */
     public final float[] words = new float[SenseLayout.WORD_FEATURES];
+    /** The thing the crosshair, or the mouse pointer on a screen, rests on, see {@link ThingCode}. */
+    public final float[] focus = new float[SenseLayout.THING_FEATURES];
+    /** The thing in hand, or on the mouse pointer while it carries a stack on a screen. */
+    public final float[] held = new float[SenseLayout.THING_FEATURES];
     /** The words heard this tick, in order, and whether each was the villager's own. */
     public final List<String> heardWords = new ArrayList<>();
     public final List<Boolean> heardOwn = new ArrayList<>();
@@ -83,6 +87,8 @@ public final class SensoryFrame {
         Arrays.fill(smell, 0f);
         Arrays.fill(sound, 0f);
         Arrays.fill(words, 0f);
+        Arrays.fill(focus, 0f);
+        Arrays.fill(held, 0f);
         heardWords.clear();
         heardOwn.clear();
         heardFrom.clear();

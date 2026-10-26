@@ -2,6 +2,8 @@ package com.mementocraft.reallyalive;
 
 import com.mementocraft.reallyalive.brain.Genome;
 import com.mementocraft.reallyalive.brain.Rng;
+import com.mementocraft.reallyalive.body.Hands;
+import com.mementocraft.reallyalive.body.StandIn;
 import com.mementocraft.reallyalive.command.BrainCommand;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
@@ -15,6 +17,8 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.PlayLevelSoundEvent;
 import net.neoforged.neoforge.event.ServerChatEvent;
+import net.neoforged.neoforge.event.brewing.PlayerBrewedPotionEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
@@ -166,6 +170,31 @@ public final class BrainEvents {
         if (!e.isCanceled() && BrainManager.get() != null) {
             Speech.playerSays(e.getPlayer().level(), e.getPlayer().getEyePosition(), e.getRawText(),
                     e.getPlayer().getGameProfile().getName());
+        }
+    }
+
+    // ---------------------------------------------------------------- making things
+
+    @SubscribeEvent
+    public static void crafted(PlayerEvent.ItemCraftedEvent e) {
+        made(e.getEntity());
+    }
+
+    @SubscribeEvent
+    public static void smelted(PlayerEvent.ItemSmeltedEvent e) {
+        made(e.getEntity());
+    }
+
+    @SubscribeEvent
+    public static void brewed(PlayerBrewedPotionEvent e) {
+        made(e.getEntity());
+    }
+
+    /** A villager's stand-in took something it made out of a result slot. */
+    private static void made(Object player) {
+        Hands hands = StandIn.owner(player);
+        if (hands != null) {
+            hands.made();
         }
     }
 
