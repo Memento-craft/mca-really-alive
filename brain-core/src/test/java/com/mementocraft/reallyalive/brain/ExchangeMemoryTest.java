@@ -27,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class ExchangeMemoryTest {
     /** Stand-ins SODA left where a name should be ("hi, i'm person's name."), never said back. */
     private static final java.util.regex.Pattern PLACEHOLDER =
-            java.util.regex.Pattern.compile("(?i)person ?[xyz]\\b|person's name|insert name|\\[name\\]");
+            java.util.regex.Pattern.compile("(?i)person ?[xyz]\\b|person's name|insert name|\\[name\\]"
+                    + "|\\b(i'm|i am|name is|call me) (the )?\\w+'s name\\b|\\b(i'm|name is) (name|person)\\b ?[.,!]");
 
     @Test
     void aHeardLineBringsUpAnswersAboutTheSameThing() {

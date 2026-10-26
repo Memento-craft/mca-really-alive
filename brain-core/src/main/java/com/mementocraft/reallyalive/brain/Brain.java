@@ -926,6 +926,13 @@ public final class Brain {
     static final float OWN_MATCH_MIN = 0.5f;
     /** The least likely a word of a line it knows by heart counts as (log). */
     static final float KNOWN_WORD = (float) Math.log(0.02);
+    /**
+     * How much it counts that a remembered answer comes easily. Someone really said it, so it is
+     * good English however unlikely its words; ease counted in full makes short stock lines ("see
+     * you later.") win over the answer that fits ("yeah, he has cancer."). Its own memories are
+     * weighed the same way, so they keep their edge over the shared ones.
+     */
+    static final float RECALL_EASE = 0.5f;
     /** Lines further apart than this (ticks) are not an exchange. */
     static final int EXCHANGE_GAP = 1200;
     /** How strongly a word must fit what is perceived (log of its grounding lift) to be about the moment. */
@@ -980,7 +987,7 @@ public final class Brain {
                 language.hear(language.vocabulary.word(w), false);
                 groundedWord(false);
             }
-            weigh(line, length, ease, meant, turn, strength * match[r], own && match[r] >= SAME_QUESTION);
+            weigh(line, length, RECALL_EASE * ease, meant, turn, strength * match[r], own && match[r] >= SAME_QUESTION);
         }
     }
 
