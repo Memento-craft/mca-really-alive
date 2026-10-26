@@ -54,6 +54,8 @@ public final class Senses {
     private static final int SKY = 0x78A7FF;
     /** People (players, villagers) have no spawn egg colours: a skin and clothes tone. */
     private static final int PERSON = 0xB08A6A;
+    /** How strongly a block that opens a screen catches the eye, against a creature's 1. */
+    private static final float WORKSTATION = 0.8f;
 
     /** Casts the eye rays. Column 0 is the left edge of view, row 0 the top. */
     public static void see(LivingEntity body, double range, float[] vision) {
@@ -111,6 +113,11 @@ public final class Senses {
                     solid = liquid ? 0.4f : 1f;
                     hazard = isHazard(level, block.getBlockPos(), state) ? 1f : 0f;
                     climbable = state.is(BlockTags.CLIMBABLE) || state.is(Blocks.SCAFFOLDING) ? 1f : 0f;
+                    // A block that opens a screen (a crafting table, a brewing stand, a chest, a
+                    // furnace) stands out from the ground and walls around it, as it does to a
+                    // player, and draws the eye the way a creature does. Without this a newborn
+                    // with a brewing stand beside it looked at it 0 ticks in 10000.
+                    creature = state.getMenuProvider(level, block.getBlockPos()) != null ? WORKSTATION : 0f;
                 } else {
                     near = 0f;
                 }

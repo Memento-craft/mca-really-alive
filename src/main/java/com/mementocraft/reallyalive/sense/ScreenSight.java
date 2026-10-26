@@ -49,6 +49,8 @@ public final class ScreenSight {
      * log left in the grid, right under the eye, held the pointer beside the planks it had made.
      */
     private static final float OUTSHONE = 0f;
+    /** How much a thing already put into the thing being worked still catches the eye. */
+    private static final float PUT_IN = 0.3f;
     /**
      * How much finer the middle of the eye sees than its edge. With even cells (22 by 33 pixels,
      * wider than a 16-pixel slot) the orienting reflex stopped once a slot was in the middle cell,
@@ -72,7 +74,7 @@ public final class ScreenSight {
         // Something just made, sitting in a result slot, outshines the things around it.
         boolean made = false;
         for (Slot s : menu.slots) {
-            made |= s instanceof ResultSlot && s.hasItem();
+            made |= isMade(menu, s);
         }
         for (int y = 0; y < SenseLayout.VISION_H; y++) {
             for (int x = 0; x < SenseLayout.VISION_W; x++) {
@@ -108,13 +110,35 @@ public final class ScreenSight {
                 paint(colour, x, y, SLOT);
             } else {
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.95f;
-                float pull = !made || s instanceof ResultSlot ? 1f : OUTSHONE;
+                // With nothing made yet, the hand reaches for its own things to put to work; what
+                // is already in the thing being worked (wart in a brewing stand, a log in the grid)
+                // draws it less, or it kept taking back what it had just put in.
+                float pull = made ? (isMade(menu, s) ? 1f : OUTSHONE)
+                        : s.container instanceof Inventory ? 1f : PUT_IN;
                 if (carried.isEmpty() && pull > 0f) {
                     glow(vision, x, y, SenseLayout.CH_CREATURE, pull);
                 }
                 paint(colour, x, y, colourOf(stack));
             }
         }
+    }
+
+    /**
+     * Whether a slot holds something just made, waiting to be taken: what a result slot shows,
+     * or a potion a brewing stand has brewed (anything in its bottle slots but plain water).
+     */
+    public static boolean isMade(AbstractContainerMenu menu, Slot s) {
+        if (!s.hasItem()) {
+            return false;
+        }
+        if (s instanceof ResultSlot) {
+            return true;
+        }
+        if (menu instanceof net.minecraft.world.inventory.BrewingStandMenu && s.index <= 2) {
+            var contents = s.getItem().get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
+            return contents != null && !contents.is(net.minecraft.world.item.alchemy.Potions.WATER);
+        }
+        return false;
     }
 
     /** How far from the pointer, in pixels, a point at {@code at} cells across the eye is seen. */

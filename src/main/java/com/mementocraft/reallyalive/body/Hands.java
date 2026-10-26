@@ -115,6 +115,7 @@ public final class Hands {
     private int madeThisTick;
     private int formedThisTick;
     private float movedThisTick;
+    private boolean brewingShown;
     /** Clicks that moved something, for tests. */
     public int moves;
     /** How much it has lately been moving things about on screens; halves every minute. */
@@ -921,6 +922,7 @@ public final class Hands {
             // at; only an empty pointer over nothing new gets bored.
             screenIdle = screen.getCarried().isEmpty() && !resultShowing(screen) ? screenIdle + 1 : 0;
             screenOpenFor = resultShowing(screen) ? screenOpenFor : screenOpenFor + 1;
+            noticeBrewing(screen);
             boolean left = keys.attack() && !attackWasDown;
             boolean right = keys.use() && !useWasDown;
             boolean leftUp = !keys.attack() && attackWasDown;
@@ -1026,7 +1028,7 @@ public final class Hands {
 
     private static boolean resultShowing(AbstractContainerMenu menu) {
         for (Slot s : menu.slots) {
-            if (s instanceof ResultSlot && s.hasItem()) {
+            if (com.mementocraft.reallyalive.sense.ScreenSight.isMade(menu, s)) {
                 return true;
             }
         }
@@ -1052,6 +1054,20 @@ public final class Hands {
             formedTotal++;
         }
         resultShown = !shown.isEmpty();
+    }
+
+    /**
+     * A brewing stand that starts bubbling is a brewing stand's way of showing that something is
+     * being made, as planks showing in a crafting result are; it is felt the same way, once per
+     * screen. The potion itself comes twenty seconds later.
+     */
+    private void noticeBrewing(AbstractContainerMenu menu) {
+        boolean bubbling = menu instanceof net.minecraft.world.inventory.BrewingStandMenu b && b.getBrewingTicks() > 0;
+        if (bubbling && !brewingShown && formedOnScreen.add(net.minecraft.world.item.Items.BREWING_STAND)) {
+            formedThisTick++;
+            formedTotal++;
+        }
+        brewingShown = bubbling;
     }
 
     /** Where a screen's slots lie, in its pixels, with a margin: min x, min y, max x, max y. */

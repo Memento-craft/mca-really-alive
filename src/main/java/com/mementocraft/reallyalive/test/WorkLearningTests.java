@@ -40,6 +40,8 @@ public final class WorkLearningTests {
     private static final int CRAFT_TICKS = 150_000;
     /** Tilled ground goes back to dirt this often, so there is always something to till. */
     private static final int REGROW = 200;
+    /** Brewing needs the stand found and opened in the world first, on top of all of crafting's steps. */
+    private static final int BREW_TICKS = 150_000;
 
     private WorkLearningTests() {}
 
@@ -200,12 +202,13 @@ public final class WorkLearningTests {
         return n + v.getInventory().countItem(item);
     }
 
-    /** Takes away whatever was put on the pen's floor. */
-    private static void clearPen(GameTestHelper h) {
+    /** Takes away whatever was put on the pen's floor, except the blocks to keep. */
+    private static void clearPen(GameTestHelper h, BlockPos... keep) {
         for (int x = 1; x <= 9; x++) {
             for (int z = 8; z <= 16; z++) {
                 for (int y = 2; y <= 4; y++) {
-                    if (!h.getBlockState(new BlockPos(x, y, z)).isAir()) {
+                    BlockPos p = new BlockPos(x, y, z);
+                    if (!h.getBlockState(p).isAir() && !java.util.Arrays.asList(keep).contains(p)) {
                         h.setBlock(x, y, z, Blocks.AIR);
                     }
                 }
@@ -421,6 +424,157 @@ public final class WorkLearningTests {
                         handle.hands().madeTotal, CRAFT_TICKS, handle.hands().screensOpened, 100 * screenTicks[0] / CRAFT_TICKS,
                         screenTicks[0] == 0 ? 0 : 100 * pointerHolding[0] / screenTicks[0]);
                 LOG.info("CRAFT newborn {} learning result: {}", which, report);
+                if (handle.hands().madeTotal >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = BREW_TICKS + 400, required = false)
+    public static void newbornBrewsOnItsOwn(GameTestHelper h) {
+        brewBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = BREW_TICKS + 400, required = false)
+    public static void secondNewbornBrewsOnItsOwn(GameTestHelper h) {
+        brewBenchmark(h, "2");
+    }
+
+    /**
+     * A brewing stand in the pen, kept fuelled, and a newborn carrying water bottles and nether
+     * wart. Brewing an awkward potion means finding the stand, opening it with the use key, putting
+     * a bottle and the wart in their slots, waiting twenty seconds and taking the potion out, all
+     * by trial and error; taking a brewed potion is felt as making something.
+     */
+    private static void brewBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "BREW")) {
+            return;
+        }
+        BlockPos stand = new BlockPos(5, 2, 10);
+        Villager v = pen(h, net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+                net.minecraft.world.item.alchemy.Potions.WATER), BREW_TICKS);
+        h.setBlock(stand, Blocks.BREWING_STAND);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] standScreens = {0};
+        int[] standTicks = {0};
+        int[] aimedAtStand = {0};
+        int[] usedOnStand = {0};
+        int[] brews = {0};
+        int[] handBacks = {0};
+        boolean[] wasOpen = {false};
+        boolean[] wasBrewing = {false};
+        int[] carryingBottle = {0};
+        int[] carryingWart = {0};
+        int[] buttonHeld = {0};
+        int[] overSlotOnStand = {0};
+        int[] overThingOnStand = {0};
+        double[] pointerOnStand = {0, 0};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            var be = h.getBlockEntity(stand);
+            if (!(be instanceof net.minecraft.world.level.block.entity.BrewingStandBlockEntity brewing)) {
+                // Something knocked the stand down; put it back.
+                h.setBlock(stand, Blocks.BREWING_STAND);
+                return;
+            }
+            boolean open = handle.hands().screen() instanceof net.minecraft.world.inventory.BrewingStandMenu;
+            standScreens[0] += open && !wasOpen[0] ? 1 : 0;
+            standTicks[0] += open ? 1 : 0;
+            if (open) {
+                ItemStack onPointer = handle.hands().onPointer();
+                carryingBottle[0] += onPointer.is(Items.POTION) ? 1 : 0;
+                carryingWart[0] += onPointer.is(Items.NETHER_WART) ? 1 : 0;
+                buttonHeld[0] += handle.command().attack() ? 1 : 0;
+                var at = handle.hands().pointedSlot();
+                overSlotOnStand[0] += at != null ? 1 : 0;
+                overThingOnStand[0] += at != null && at.hasItem() ? 1 : 0;
+                pointerOnStand[0] += handle.hands().pointerX();
+                pointerOnStand[1] += handle.hands().pointerY();
+                if (onPointer.is(Items.POTION) && carryingBottle[0] <= 6) {
+                    // What pulls the eye with a bottle on the pointer?
+                    float[] vision = new float[com.mementocraft.reallyalive.brain.SenseLayout.VISION_SIZE];
+                    float[] colour = new float[com.mementocraft.reallyalive.brain.SenseLayout.COLOUR_SIZE];
+                    com.mementocraft.reallyalive.sense.ScreenSight.see(handle.hands().screen(), handle.hands().pointerX(),
+                            handle.hands().pointerY(), vision, colour);
+                    StringBuilder seen = new StringBuilder();
+                    for (int y = 0; y < com.mementocraft.reallyalive.brain.SenseLayout.VISION_H; y++) {
+                        seen.append(" |");
+                        for (int x = 0; x < com.mementocraft.reallyalive.brain.SenseLayout.VISION_W; x++) {
+                            float c = vision[com.mementocraft.reallyalive.brain.SenseLayout.visionIndex(x, y,
+                                    com.mementocraft.reallyalive.brain.SenseLayout.CH_CLIMBABLE)];
+                            seen.append(c > 0.9f ? '#' : c > 0.2f ? '+' : c > 0f ? '.' : ' ');
+                        }
+                    }
+                    LOG.info("BREW newborn {} carries a bottle: pointer {},{}; over {}; eyes{}", which, handle.hands().pointerX(),
+                            handle.hands().pointerY(), handle.hands().pointedSlot() == null ? "nothing" : handle.hands().pointedSlot().index, seen);
+                }
+            }
+            wasOpen[0] = open;
+            boolean brewingNow = brewing.getItem(3).is(Items.NETHER_WART) && !brewing.getItem(0).isEmpty();
+            brews[0] += wasBrewing[0] && !brewingNow ? 1 : 0;
+            wasBrewing[0] = brewingNow;
+            if (handle.hands().target() instanceof BlockHitResult hit && hit.getBlockPos().equals(h.absolutePos(stand))) {
+                aimedAtStand[0]++;
+                usedOnStand[0] += handle.command().use() ? 1 : 0;
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                clearPen(h, stand);
+                // Potions it brewed are taken away, so it cannot put one back in and take it out
+                // again, and so are the empty bottles of water it drank.
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    var c = v.getInventory().getItem(i).get(DataComponents.POTION_CONTENTS);
+                    if (c != null && !c.is(net.minecraft.world.item.alchemy.Potions.WATER)
+                            || v.getInventory().getItem(i).is(Items.GLASS_BOTTLE)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+                var inHand = v.getMainHandItem().get(DataComponents.POTION_CONTENTS);
+                if (inHand != null && !inHand.is(net.minecraft.world.item.alchemy.Potions.WATER)) {
+                    v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                }
+                // The stand is kept fuelled, and a villager out of bottles or wart is handed more.
+                if (brewing.getItem(4).isEmpty()) {
+                    brewing.setItem(4, new ItemStack(Items.BLAZE_POWDER, 64));
+                }
+                if (carried(v, Items.POTION) + carried(v, Items.NETHER_WART) < 2) {
+                    v.getInventory().clearContent();
+                    v.setItemSlot(EquipmentSlot.MAINHAND, net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+                            net.minecraft.world.item.alchemy.Potions.WATER));
+                    handBacks[0]++;
+                }
+                if (carried(v, Items.NETHER_WART) == 0) {
+                    v.getInventory().addItem(new ItemStack(Items.NETHER_WART, 16));
+                }
+                if (carried(v, Items.POTION) < 3) {
+                    v.getInventory().addItem(net.minecraft.world.item.alchemy.PotionContents.createItemStack(Items.POTION,
+                            net.minecraft.world.item.alchemy.Potions.WATER));
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("BREW newborn {}: by tick {}: aimed at the stand {} ticks, pressing use {}; opened it {} times, open {} ticks;"
+                                + " stand holds {} | {} | {} , wart {}, fuel {}; brews done {}, made {}; screens opened in all {}, moved things {} times;"
+                                + " handed back {} times; carries {} water bottles, {} wart, {} glass bottles;"
+                                + " on the stand's pointer a bottle {} ticks, wart {}; left button held on it {} ticks,"
+                                + " over a slot {}, over a thing {}, mean pointer {},{}; clicks in all {}", which, tick[0], aimedAtStand[0], usedOnStand[0], standScreens[0], standTicks[0],
+                        brewing.getItem(0), brewing.getItem(1), brewing.getItem(2), brewing.getItem(3), brewing.getItem(4), brews[0],
+                        handle.hands().madeTotal, handle.hands().screensOpened, handle.hands().moves, handBacks[0],
+                        carried(v, Items.POTION), carried(v, Items.NETHER_WART), carried(v, Items.GLASS_BOTTLE),
+                        carryingBottle[0], carryingWart[0], buttonHeld[0], overSlotOnStand[0], overThingOnStand[0],
+                        Math.round(pointerOnStand[0] / Math.max(1, standTicks[0])), Math.round(pointerOnStand[1] / Math.max(1, standTicks[0])),
+                        handle.hands().screenClicks);
+            }
+            if (tick[0] == BREW_TICKS) {
+                String report = String.format("BREW: made %d things in %d ticks; opened the stand %d times, brews done %d",
+                        handle.hands().madeTotal, BREW_TICKS, standScreens[0], brews[0]);
+                LOG.info("BREW newborn {} learning result: {}", which, report);
                 if (handle.hands().madeTotal >= 3) {
                     h.succeed();
                 } else {

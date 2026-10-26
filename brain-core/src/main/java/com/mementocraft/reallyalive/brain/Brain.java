@@ -119,6 +119,12 @@ public final class Brain {
     static final float LEAVE_URGE_FROM = 0.8f;
     /** How hard that urge drives the inventory key's motor pool, as strong as full babbling. */
     static final float LEAVE_URGE = BABBLE_GAIN;
+    /** Ticks a held left button lasts on a screen before it tires and lets go. */
+    static final int BUTTON_TIRES_TICKS = 20;
+    /** How hard a tired left button is held back, enough to override full babbling. */
+    static final float BUTTON_RELEASE = 2f * BABBLE_GAIN;
+    /** How hard an eye-catching thing in reach, right ahead, drives the use key. */
+    static final float POKE_URGE = 0.5f * BABBLE_GAIN;
     /** Curiosity about what it carries -> inventory key, to look it over. */
     static final float CURIOUS_WEIGHT = 0.6f;
     /**
@@ -320,6 +326,8 @@ public final class Brain {
     long ticks;
     long resets;
     MotorCommand lastCommand = MotorCommand.IDLE;
+    /** Ticks the left button has been held down with a screen open. */
+    private int screenButtonHeld;
 
     Brain(Genome genome, long seed, int capacity) {
         this.genome = genome;
@@ -1421,7 +1429,47 @@ public final class Brain {
                 extInput[i] += urge;
             }
         }
+        drivePoke(bored);
+        driveButtonRelease(bored);
         driveSpeechBabble(amp);
+    }
+
+    /**
+     * On a screen, a left button held for a second tires and lets go. A click on a screen is a
+     * press and a release; some brains learned to hold the button down the whole time a screen
+     * was open, which clicks nothing, and never moved a thing again. In the world a held button
+     * digs, so it does not tire there.
+     */
+    private void driveButtonRelease(float screen) {
+        screenButtonHeld = screen > 0f && lastCommand.attack() ? screenButtonHeld + 1 : 0;
+        if (screenButtonHeld > BUTTON_TIRES_TICKS) {
+            for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+                extInput[i] -= BUTTON_RELEASE;
+            }
+        }
+    }
+
+    /**
+     * An eye-catching thing right in the middle of the view and within reach (a creature, a
+     * brewing stand) gets a gentle, inborn urge to press use on it, the way a child pokes at what
+     * it is looking at. Not while a screen is open: there the middle of the view is the pointer.
+     */
+    private void drivePoke(float screen) {
+        if (screen > 0f || input[IN_FEEL + FeelChannel.TARGET_IN_REACH.ordinal()] < 0.5f) {
+            return;
+        }
+        float seen = 0f;
+        for (int y = SenseLayout.VISION_H / 2 - 1; y <= SenseLayout.VISION_H / 2; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 1; x <= SenseLayout.VISION_W / 2; x++) {
+                seen = Math.max(seen, input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)]);
+            }
+        }
+        if (seen <= 0f) {
+            return;
+        }
+        for (int i : motorPools[MotorChannel.USE.ordinal()]) {
+            extInput[i] += POKE_URGE * seen;
+        }
     }
 
     /**
