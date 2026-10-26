@@ -62,7 +62,7 @@ Before answering, the frontal part thinks the reply through: it tries 24 ways of
 each to the end of a line, and keeps the line that comes most naturally as an answer to what was
 said (rather than as something one could say to anything), says what the villager perceives, and
 was not said a moment ago. Villagers also remember exchanges, the way the hippocampus keeps
-episodes (`ExchangeMemory`, 8 MB, about 370,000 exchanges from the same corpora, with names left out):
+episodes (`ExchangeMemory`, 30 MB, about 1.3 million exchanges from the same corpora, with names left out):
 each remembered answer is linked to the telling words of the line it answered, so hearing a line
 brings up answers people gave to lines like it ("watch out! zombies!" brings up "i'll get my
 sword.", "stay behind me."), and those are weighed next to the lines it makes up. Playing one side

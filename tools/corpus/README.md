@@ -20,7 +20,7 @@ CORPUS=train.txt,soda_clean.txt EVAL=soda_eval.txt BITS=24 MIN_COUNT=20 KEEP=96 
 The remembered exchanges (`exchanges.bin.gz`) are built from the same files, every n-th pair of lines:
 
 ```
-CORPUS=soda_clean.txt:12,train.txt:40 EXCHANGES_OUT=brain-core/src/main/resources/reallyalive/exchanges.bin.gz \
+CORPUS=soda_clean.txt:3,train.txt:40 EXCHANGES_OUT=brain-core/src/main/resources/reallyalive/exchanges.bin.gz \
   ./gradlew -p brain-core test --tests '*ExchangeMemoryTest' -i
 ```
 
