@@ -306,6 +306,9 @@ public final class Brain {
     /** Who is saying the line being heard, and whether it is being read rather than heard. */
     private String lineSpeaker;
     private boolean lineRead;
+    private long lastWordTick;
+    /** Silence (ticks) after which unended words are no longer part of the line heard next. */
+    static final int UNENDED_GAP = 60;
     /** It is writing a memory down rather than saying it; and whether it has something to write in. */
     volatile boolean writing;
     private boolean canWrite;
@@ -812,9 +815,11 @@ public final class Brain {
                 }
             }
             if (!w.equals(WordCode.TURN)) {
-                if (!lineSoFar.isEmpty() && lineSoFarOwn != own) {
+                if (!lineSoFar.isEmpty() && (lineSoFarOwn != own || ticks - lastWordTick > UNENDED_GAP)) {
+                    // Words cooed a while ago and never ended were no line, and are not part of this one.
                     lineSoFar.clear();
                 }
+                lastWordTick = ticks;
                 lineSoFarOwn = own;
                 if (!own) {
                     lineSpeaker = i < f.heardFrom.size() ? f.heardFrom.get(i) : null;

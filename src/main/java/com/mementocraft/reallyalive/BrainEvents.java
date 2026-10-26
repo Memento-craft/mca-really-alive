@@ -72,7 +72,9 @@ public final class BrainEvents {
         if (e.getLevel().isClientSide() || !(e.getEntity() instanceof Villager v) || BrainManager.get() == null) {
             return;
         }
-        if (v.isAlive()) {
+        // Unloaded or discarded villagers are no longer alive by the time they leave, but their
+        // brain must still be saved and let go; only a death (handled there) forgets it.
+        if (v.getRemovalReason() != net.minecraft.world.entity.Entity.RemovalReason.KILLED) {
             BrainManager.get().detach(v, true);
         }
     }
