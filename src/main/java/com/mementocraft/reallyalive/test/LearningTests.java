@@ -376,6 +376,9 @@ public final class LearningTests {
     private enum Outcome { REACHED, FELL, TIMED_OUT }
 
     private static void learns(GameTestHelper h, Course c, boolean adult) {
+        if (!WorkLearningTests.selected(h, c.name())) {
+            return;
+        }
         String who = c + (adult ? " adult" : " newborn");
         // Run the server as fast as it can: learning takes many tries. Lockstep keeps the brain
         // stepping once per tick, as it would in real time.

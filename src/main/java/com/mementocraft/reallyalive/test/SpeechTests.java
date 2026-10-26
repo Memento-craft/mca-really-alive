@@ -242,6 +242,9 @@ public final class SpeechTests {
      */
     @GameTest(template = ARENA, timeoutTicks = BABBLE_TICKS + TRIALS * WINDOW + 400, required = false)
     public static void newbornSaysBackWordsItHears(GameTestHelper h) {
+        if (!WorkLearningTests.selected(h, "IMITATE")) {
+            return;
+        }
         BrainManager.get().setLockstep(true);
         h.getLevel().getServer().tickRateManager().requestGameToSprint(BABBLE_TICKS + TRIALS * WINDOW + 400);
         Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
