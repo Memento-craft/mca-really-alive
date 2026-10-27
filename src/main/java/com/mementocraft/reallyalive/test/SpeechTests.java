@@ -475,4 +475,32 @@ public final class SpeechTests {
             }
         });
     }
+
+    /** Given three bread, asked "do you have any bread?", a villager says yes. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "carrying")
+    public static void villagerKnowsWhatItCarries(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BREAD, 3));
+        com.mementocraft.reallyalive.sense.Naming.worldAround(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "do you have any bread?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("carrying benchmark: asked \"do you have any bread?\" with three bread, the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().startsWith("yes")),
+                        "asked \"do you have any bread?\" with three bread it said " + answers);
+                h.succeed();
+            }
+        });
+    }
 }

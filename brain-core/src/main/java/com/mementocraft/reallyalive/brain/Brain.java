@@ -1108,6 +1108,14 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[0];
         }
+        int[] has = possessions(heard);
+        if (has != null) {
+            // "do you have any bread?" "yes , i have three bread ."
+            toldLine = has;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            return new int[0];
+        }
         int[] kin = family(heard);
         if (kin != null) {
             // "who is anna's son?" after "anna is ben's mother .": "ben is anna's son ."
@@ -1579,6 +1587,81 @@ public final class Brain {
         return null;
     }
 
+    /**
+     * The answer to a question about what it holds or carries, from what the game told it: "what
+     * are you holding?" "i'm holding a hoe .", "what do you have?" "i have three bread and a hoe .",
+     * "do you have any bread?" "yes , i have three bread ." or "no , i don't have any bread .". Null
+     * if it is no such question or it was never told.
+     */
+    private int[] possessions(int[] heard) {
+        int n = heard.length;
+        if (!toldCarried || n < 4 || heard[n - 1] != language.vocabulary.find("?")) {
+            return null;
+        }
+        String[] w = new String[n];
+        for (int i = 0; i < n; i++) {
+            w[i] = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
+        }
+        List<String> words = Arrays.asList(w);
+        boolean you = words.contains("you") || words.contains("your");
+        if (!you) {
+            return null;
+        }
+        if (w[0].startsWith("what") && (words.contains("holding") || words.contains("hand"))) {
+            return held == null ? said("i'm not holding anything .") : join(said("i'm holding"), article(held), held, said("."));
+        }
+        if (w[0].startsWith("what") && n <= 8 && (words.contains("carrying") || words.contains("inventory") || words.contains("pockets")
+                || words.contains("bag") || words.contains("have") && words.contains("do"))) {
+            if (carried.isEmpty()) {
+                return said("i don't have anything .");
+            }
+            int[] list = said("i have");
+            for (int i = 0; i < carried.size() && i < 4; i++) {
+                Carried c = carried.get(i);
+                int[] and = i == 0 ? new int[0] : said(i == Math.min(carried.size(), 4) - 1 ? "and" : ",");
+                list = join(list, and, count(c), c.name());
+            }
+            return join(list, said("."));
+        }
+        int from = n >= 5 && w[0].equals("do") && w[1].equals("you") && w[2].equals("have") ? 3
+                : n >= 5 && w[0].equals("have") && w[1].equals("you") && w[2].equals("got") ? 3
+                : n >= 5 && w[0].equals("are") && w[1].equals("you") && w[2].equals("carrying") ? 3 : -1;
+        if (from < 0) {
+            return null;
+        }
+        while (from < n - 1 && Set.of("any", "a", "an", "some", "the").contains(w[from])) {
+            from++;
+        }
+        int[] thing = Arrays.copyOfRange(heard, from, n - 1);
+        if (thing.length == 0 || thing.length > 3 || Arrays.stream(thing).anyMatch(x -> x < 0)) {
+            return null;
+        }
+        String asked = stem(language.vocabulary.word(thing[thing.length - 1]));
+        for (Carried c : carried) {
+            if (stem(language.vocabulary.word(c.name()[c.name().length - 1])).equals(asked)) {
+                return join(said("yes , i have"), count(c), c.name(), said("."));
+            }
+        }
+        if (held != null && stem(language.vocabulary.word(held[held.length - 1])).equals(asked)) {
+            return join(said("yes , i'm holding"), article(held), held, said("."));
+        }
+        // Only what can be carried is said not to be ("do you have a minute?" is no such question).
+        return ITEMS.contains(asked) ? join(said("no , i don't have any"), thing, said(".")) : null;
+    }
+
+    /** The words of a short line it says, each found in its vocabulary. */
+    private int[] said(String line) {
+        return Arrays.stream(line.split(" ")).mapToInt(language.vocabulary::find).toArray();
+    }
+
+    private int[] article(int[] name) {
+        return said("aeiou".indexOf(language.vocabulary.word(name[0]).charAt(0)) >= 0 ? "an" : "a");
+    }
+
+    private int[] count(Carried c) {
+        return c.count() == 1 ? article(c.name()) : new int[] {numberWord(c.count())};
+    }
+
     /** Family words: what each says the one is to the other, and whether a man or a woman. */
     private static final java.util.Map<String, String[]> KIN = kin("mother parent f", "father parent m",
             "parent parent -", "son child m", "daughter child f", "child child -", "brother sibling m", "sister sibling f",
@@ -1597,6 +1680,17 @@ public final class Brain {
 
     /** Its own family, told again by the game now and then; not saved. */
     final List<Kin> kin = new ArrayList<>();
+
+    /** Something it carries: the words of its name ("wheat seeds") and how many. */
+    record Carried(int[] name, int count) {}
+
+    /** What it carries, and what it holds in its hand (null for nothing), as the game tells it; not saved. */
+    final List<Carried> carried = new ArrayList<>();
+    int[] held;
+    /** Whether the game has told it what it carries at all. */
+    boolean toldCarried;
+    /** The plain forms of the last words of things that can be carried at all ("bread", "hoe"), from the game. */
+    static final Set<String> ITEMS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private static java.util.Map<String, String[]> kin(String... rows) {
         java.util.Map<String, String[]> m = new java.util.HashMap<>();

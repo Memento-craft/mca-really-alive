@@ -86,6 +86,33 @@ public final class SelfKnowledge {
         }
     }
 
+    /**
+     * Tells a brain what it holds (an item's name, or null for nothing) and what it carries, each an
+     * item's name and how many ({"bread", 3}), so asked "do you have any bread?" it can say.
+     */
+    public static void carrying(Brain b, String held, List<java.util.Map.Entry<String, Integer>> items) {
+        b.carried.clear();
+        for (java.util.Map.Entry<String, Integer> item : items) {
+            int[] name = ids(b, item.getKey());
+            if (name.length > 0 && item.getValue() > 0) {
+                b.carried.add(new Brain.Carried(name, item.getValue()));
+            }
+        }
+        b.held = held == null ? null : ids(b, held);
+        b.held = b.held != null && b.held.length == 0 ? null : b.held;
+        b.toldCarried = true;
+    }
+
+    /** Tells all brains what things can be carried at all, by name ("wheat seeds"). */
+    public static void items(java.util.Collection<String> names) {
+        for (String name : names) {
+            List<String> words = WordCode.tokenize(name);
+            if (!words.isEmpty()) {
+                Brain.ITEMS.add(Brain.stem(words.get(words.size() - 1)));
+            }
+        }
+    }
+
     private static void know(Brain b, String[] questions, String keys, String answer) {
         know(b, questions, keys, answer, true);
     }

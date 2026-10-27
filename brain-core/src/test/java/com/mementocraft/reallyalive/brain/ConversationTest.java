@@ -412,6 +412,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsWhatItCarries() {
+        // As the game tells it: {question, right word, or a word it must not say after "!"}.
+        String[][] asked = {{"what are you holding?", "hoe"}, {"what do you have?", "bread"}, {"do you have any bread?", "yes"},
+            {"do you have any carrots?", "no"}, {"do you have a minute?", "!no"}};
+        SelfKnowledge.items(List.of("carrot", "bread", "apple", "iron hoe"));
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 870 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            SelfKnowledge.carrying(b, "iron hoe", List.of(java.util.Map.entry("bread", 3), java.util.Map.entry("apple", 1)));
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            String want = asked[i][1];
+            right += want.startsWith("!") ? (said.contains(want.substring(1)) ? 0 : 1) : (said.contains(want) ? 1 : 0);
+        }
+        System.out.printf("knew what it carries %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},

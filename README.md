@@ -145,6 +145,10 @@ Every 10 seconds the game also tells it the time of day, the weather where it st
 it lives in, by biome: "what time is it?" "it's evening .", "is it raining?" "yes , it's raining .",
 "where do you live?" "i live in the snowy taiga .". These answer questions only, not tellings like
 "the weather is nice today.".
+It is told what it holds and carries too: "what are you holding?" "i'm holding an iron hoe .", "what
+do you have?" "i have three bread , twelve wheat seeds and an apple .", "do you have any carrots?"
+"no , i don't have any carrots .". It only says no about things that are game items, so "do you
+have a minute?" is answered as before.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

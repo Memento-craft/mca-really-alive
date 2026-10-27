@@ -84,6 +84,29 @@ public final class Naming {
     /** Tells a villager the time, the weather and the land around it, which change more often. */
     public static void worldAround(Villager v, Brain brain) {
         SelfKnowledge.world(brain, timeOfDay(v.level().getDayTime()), weather(v), land(v));
+        if (!itemsTold) {
+            itemsTold = true;
+            SelfKnowledge.items(BuiltInRegistries.ITEM.keySet().stream().map(Naming::itemName).toList());
+        }
+        // What it holds and carries: "an iron hoe", "three bread".
+        net.minecraft.world.item.ItemStack hand = v.getMainHandItem();
+        java.util.Map<String, Integer> items = new java.util.LinkedHashMap<>();
+        net.minecraft.world.SimpleContainer inventory = v.getInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            net.minecraft.world.item.ItemStack stack = inventory.getItem(i);
+            if (!stack.isEmpty()) {
+                items.merge(itemName(BuiltInRegistries.ITEM.getKey(stack.getItem())), stack.getCount(), Integer::sum);
+            }
+        }
+        SelfKnowledge.carrying(brain, hand.isEmpty() ? null : itemName(BuiltInRegistries.ITEM.getKey(hand.getItem())),
+                new ArrayList<>(items.entrySet()));
+    }
+
+    private static volatile boolean itemsTold;
+
+    /** An item as people say it: "wheat_seeds" is "wheat seeds". */
+    private static String itemName(net.minecraft.resources.ResourceLocation id) {
+        return id.getPath().replace('_', ' ');
     }
 
     /** The time of day as people say it; a Minecraft day starts at six in the morning. */
