@@ -49,6 +49,8 @@ public final class ScreenSight {
      * log left in the grid, right under the eye, held the pointer beside the planks it had made.
      */
     private static final float OUTSHONE = 0f;
+    /** How much a thing already put into the thing being worked still catches the eye. */
+    private static final float PUT_IN = 0.3f;
     /**
      * How much finer the middle of the eye sees than its edge. With even cells (22 by 33 pixels,
      * wider than a 16-pixel slot) the orienting reflex stopped once a slot was in the middle cell,
@@ -60,7 +62,48 @@ public final class ScreenSight {
 
     private ScreenSight() {}
 
+    /**
+     * A recipe remembered from a book, laid on the grid of the screen being worked: which grid
+     * slot (by menu index) the picture showed what in.
+     */
+    public record RecipeHint(java.util.Map<Integer, net.minecraft.world.item.crafting.Ingredient> want) {
+        /** Whether this slot is one the picture showed the carried thing in, still waiting for it. */
+        boolean wants(Slot s, ItemStack carried) {
+            var i = want.get(s.index);
+            return i != null && i.test(carried) && !i.test(s.getItem());
+        }
+
+        /**
+         * Whether this grid slot holds more of a thing than its own place needs while another
+         * place the picture showed still waits for it: some of it belongs over there.
+         */
+        boolean spare(AbstractContainerMenu menu, Slot s) {
+            var mine = want.get(s.index);
+            return mine != null && s.getItem().getCount() > 1 && mine.test(s.getItem()) && needs(menu, s.getItem());
+        }
+
+        /** Whether this thing is one the picture showed and some grid place still waits for. */
+        boolean needs(AbstractContainerMenu menu, ItemStack stack) {
+            for (var e : want.entrySet()) {
+                if (e.getValue().test(stack) && !e.getValue().test(menu.getSlot(e.getKey()).getItem())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * How much the places and things a remembered recipe did not show still catch the eye, against
+     * those it did.
+     */
+    private static final float UNHINTED = 0.3f;
+
     public static void see(AbstractContainerMenu menu, float pointerX, float pointerY, float[] vision, float[] colour) {
+        see(menu, pointerX, pointerY, vision, colour, null);
+    }
+
+    public static void see(AbstractContainerMenu menu, float pointerX, float pointerY, float[] vision, float[] colour, RecipeHint hint) {
         Arrays.fill(vision, 0f);
         Arrays.fill(colour, 0f);
         float[] b = Hands.bounds(menu);
@@ -72,7 +115,7 @@ public final class ScreenSight {
         // Something just made, sitting in a result slot, outshines the things around it.
         boolean made = false;
         for (Slot s : menu.slots) {
-            made |= s instanceof ResultSlot && s.hasItem();
+            made |= isMade(menu, s);
         }
         for (int y = 0; y < SenseLayout.VISION_H; y++) {
             for (int x = 0; x < SenseLayout.VISION_W; x++) {
@@ -102,19 +145,52 @@ public final class ScreenSight {
                 // does on a player's screen, and draws the eye the way a ladder does. Once
                 // something has been made, it is the other way round: the hand looks for a pocket
                 // to put the rest away in, so it is free to take what was made.
-                glow(vision, x, y, SenseLayout.CH_CLIMBABLE, WORK_SLOT);
+                // A recipe remembered from a book: the places its picture showed this thing in
+                // stand out from the rest of the grid.
+                boolean hinted = hint == null || made || hint.wants(s, carried);
+                glow(vision, x, y, SenseLayout.CH_CLIMBABLE, hinted ? WORK_SLOT : WORK_SLOT * UNHINTED);
             }
             if (stack.isEmpty()) {
                 paint(colour, x, y, SLOT);
             } else {
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_NEAR)] = 0.95f;
-                float pull = !made || s instanceof ResultSlot ? 1f : OUTSHONE;
+                // With nothing made yet, the hand reaches for its own things to put to work; what
+                // is already in the thing being worked (wart in a brewing stand, a log in the grid)
+                // draws it less, or it kept taking back what it had just put in.
+                float pull = made ? (isMade(menu, s) ? 1f : OUTSHONE)
+                        : s.container instanceof Inventory ? 1f : PUT_IN;
+                if (hint != null && !made && s.container instanceof Inventory && !hint.needs(menu, stack)) {
+                    pull *= UNHINTED;
+                }
+                if (hint != null && !made && hint.spare(menu, s)) {
+                    // A whole stack put in one place the picture showed, with another place
+                    // still empty: what is there to share out catches the eye again.
+                    pull = 1f;
+                }
                 if (carried.isEmpty() && pull > 0f) {
                     glow(vision, x, y, SenseLayout.CH_CREATURE, pull);
                 }
                 paint(colour, x, y, colourOf(stack));
             }
         }
+    }
+
+    /**
+     * Whether a slot holds something just made, waiting to be taken: what a result slot shows,
+     * or a potion a brewing stand has brewed (anything in its bottle slots but plain water).
+     */
+    public static boolean isMade(AbstractContainerMenu menu, Slot s) {
+        if (!s.hasItem()) {
+            return false;
+        }
+        if (s instanceof ResultSlot) {
+            return true;
+        }
+        if (menu instanceof net.minecraft.world.inventory.BrewingStandMenu && s.index <= 2) {
+            var contents = s.getItem().get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
+            return contents != null && !contents.is(net.minecraft.world.item.alchemy.Potions.WATER);
+        }
+        return false;
     }
 
     /** How far from the pointer, in pixels, a point at {@code at} cells across the eye is seen. */

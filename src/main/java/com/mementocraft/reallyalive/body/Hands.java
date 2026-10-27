@@ -115,6 +115,7 @@ public final class Hands {
     private int madeThisTick;
     private int formedThisTick;
     private float movedThisTick;
+    private boolean brewingShown;
     /** Clicks that moved something, for tests. */
     public int moves;
     /** How much it has lately been moving things about on screens; halves every minute. */
@@ -149,6 +150,41 @@ public final class Hands {
     public int madeTotal;
     /** Diagnostics: clicks on a screen's slots, and results seen forming in a result slot. */
     public int screenClicks;
+    /** Diagnostics: stacks thrown out of a screen. */
+    public int throwsTotal;
+    /** Diagnostics: turns of the mouse wheel. */
+    public int wheelTurns;
+    /** Diagnostics: recipes it has looked at long enough in a recipe book to remember. */
+    public int recipesLearnt;
+    /** Recipes looked at in a book, and when; the page being looked at, and for how long. */
+    private final java.util.LinkedHashMap<net.minecraft.resources.ResourceLocation, RecipeMemory> recipesSeen = new java.util.LinkedHashMap<>();
+    private net.minecraft.resources.ResourceLocation onPage;
+    private int onPageFor;
+    /** Ticks a page must be looked at to be remembered, how long it is remembered, and how many are. */
+    private static final int PAGE_LOOK_TICKS = 20;
+    private static final long RECIPE_REMEMBERED = 24000L;
+    private static final int RECIPES_REMEMBERED = 8;
+    /** Grid places filled as a remembered picture showed, most on this screen and this tick. */
+    private int matchedOnScreen;
+    private int matchedThisTick;
+    /** Diagnostics: places filled as a remembered picture showed. */
+    public int matchedTotal;
+    /** Kinds of things it lately threw out or gave a machine: taking those out of a machine is not making them. */
+    private final java.util.Map<net.minecraft.world.item.Item, Long> givenKinds = new java.util.HashMap<>();
+    private static final long GIVEN_REMEMBERED = 6000L;
+    /** How far past the window the pointer can go, where letting go of a stack throws it out. */
+    private static final float THROW_MARGIN = 24f;
+    /** Diagnostics: machine parts set going (see {@link Motives#SET_GOING}). */
+    public int setGoingTotal;
+    /** Still blocks it placed or worked lately, and when: if one starts turning it was set going. */
+    private final java.util.Map<BlockPos, Long> stillWorked = new java.util.LinkedHashMap<>();
+    /** Ticks a worked block is watched for starting to turn, how many are watched, and how often. */
+    private static final long SET_GOING_WITHIN = 600L;
+    private static final int SET_GOING_WATCHED = 32;
+    private static final int SET_GOING_EVERY = 5;
+    private static final float SET_GOING_HALF_LIFE = 2400f;
+    private int setGoingThisTick;
+    private float setGoingLately;
     public int clicksOnThings;
     /** Ticks since the screen was opened or last clicked on: how long it has gone without doing anything. */
     private int screenIdle;
@@ -200,10 +236,17 @@ public final class Hands {
         pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE + formedThisTick * Motives.FORM
                 + movedThisTick * Motives.MOVE_THINGS
                 + noveltyThisTick * Motives.NEW_SCREEN;
+        if (setGoingThisTick > 0) {
+            pleasure += setGoingThisTick * Motives.SET_GOING / (1f + setGoingLately);
+            setGoingLately += setGoingThisTick;
+        }
+        setGoingThisTick = 0;
         noveltyThisTick = 0f;
         changedThisTick = 0;
         madeThisTick = 0;
         formedThisTick = 0;
+        pleasure += matchedThisTick * Motives.MATCH_PICTURE;
+        matchedThisTick = 0;
         movedThisTick = 0f;
         if (dugThisTick) {
             pleasure += Motives.DIG_PER_TICK;
@@ -235,6 +278,13 @@ public final class Hands {
     public void tick(MotorCommand keys) {
         ticksLived++;
         movedLately *= (float) Math.pow(0.5, 1.0 / MOVED_HALF_LIFE);
+        setGoingLately *= (float) Math.pow(0.5, 1.0 / SET_GOING_HALF_LIFE);
+        if (ticksLived % SET_GOING_EVERY == 0 && !stillWorked.isEmpty()) {
+            watchSetGoing();
+        }
+        if (screen instanceof RecipeBook.Menu book) {
+            lookAtPage(book);
+        }
         if (screen != null) {
             forEachCarried(item -> lookedOver.put(item, ticksLived));
             if (standIn != null) {
@@ -429,6 +479,10 @@ public final class Hands {
             take(stack);
             int taken = before - stack.getCount();
             if (taken > 0) {
+                if (standIn != null && item.getOwner() == standIn) {
+                    // Picking up what it threw itself is not collecting anything new.
+                    carried = -1;
+                }
                 body.take(item, taken);
                 if (stack.isEmpty()) {
                     item.discard();
@@ -441,6 +495,7 @@ public final class Hands {
 
     /** The mouse wheel: the next thing it carries comes into its hand, and what it held goes in its place. */
     private void nextInHand() {
+        wheelTurns++;
         var inventory = body.getInventory();
         int size = inventory.getContainerSize();
         for (int k = 0; k < size; k++) {
@@ -784,6 +839,8 @@ public final class Hands {
             kept = stack;
             p.setItemInHand(hand, ItemStack.EMPTY);
         }
+        boolean machine = Machines.isMachine(level, clicked);
+        java.util.Map<net.minecraft.world.item.Item, Integer> carriedBefore = machine ? countsIn(p.getInventory()) : null;
         InteractionResult r;
         try {
             r = p.gameMode.useItemOn(p, level, p.getItemInHand(hand), hand, hit);
@@ -800,6 +857,11 @@ public final class Hands {
         }
         swing(r, hand);
         usedOnBlock++;
+        noteWorked(level, clicked);
+        noteWorked(level, placeAt);
+        if (carriedBefore != null) {
+            tookFromMachine(carriedBefore, countsIn(p.getInventory()));
+        }
         boolean placed = placing && placeBefore.getBlock() != blockItem.getBlock()
                 && level.getBlockState(placeAt).getBlock() == blockItem.getBlock();
         if (placed) {
@@ -817,6 +879,165 @@ public final class Hands {
             changedTotal++;
         }
         return true;
+    }
+
+    private static java.util.Map<net.minecraft.world.item.Item, Integer> countsIn(net.minecraft.world.entity.player.Inventory inventory) {
+        java.util.Map<net.minecraft.world.item.Item, Integer> n = new java.util.HashMap<>();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            ItemStack s = inventory.getItem(i);
+            if (!s.isEmpty()) {
+                n.merge(s.getItem(), s.getCount(), Integer::sum);
+            }
+        }
+        return n;
+    }
+
+    /**
+     * What a use on a machine moved: things it gave the machine are remembered, and a kind of
+     * thing it took out that it had not given in lately is something the machine made, as flour
+     * from a millstone or a sheet from a press. Taking back only what it put in is not collecting.
+     */
+    private void tookFromMachine(java.util.Map<net.minecraft.world.item.Item, Integer> before, java.util.Map<net.minecraft.world.item.Item, Integer> after) {
+        boolean gained = false;
+        boolean made = false;
+        for (var e : before.entrySet()) {
+            if (after.getOrDefault(e.getKey(), 0) < e.getValue()) {
+                givenKinds.put(e.getKey(), ticksLived);
+            }
+        }
+        for (var e : after.entrySet()) {
+            if (e.getValue() > before.getOrDefault(e.getKey(), 0)) {
+                gained = true;
+                made |= ticksLived - givenKinds.getOrDefault(e.getKey(), Long.MIN_VALUE / 2) > GIVEN_REMEMBERED;
+            }
+        }
+        if (made) {
+            madeThisTick++;
+            madeTotal++;
+        } else if (gained) {
+            carried = -1;
+        }
+    }
+
+    /** A recipe remembered from a book, and when it was last looked at. */
+    private record RecipeMemory(net.minecraft.world.item.crafting.RecipeHolder<?> recipe, long seen) {}
+
+    /** Looking at a page of a recipe book long enough remembers the recipe on it. */
+    private void lookAtPage(RecipeBook.Menu book) {
+        var shown = book.shown().orElse(null);
+        net.minecraft.resources.ResourceLocation id = shown == null ? null : shown.id();
+        onPageFor = java.util.Objects.equals(id, onPage) ? onPageFor + 1 : 0;
+        onPage = id;
+        if (shown != null && onPageFor >= PAGE_LOOK_TICKS) {
+            if (recipesSeen.remove(id) == null) {
+                recipesLearnt++;
+            }
+            recipesSeen.put(id, new RecipeMemory(shown, ticksLived));
+            while (recipesSeen.size() > RECIPES_REMEMBERED) {
+                recipesSeen.remove(recipesSeen.keySet().iterator().next());
+            }
+        }
+    }
+
+    /**
+     * What a remembered recipe suggests on a crafting screen: the most recently seen crafting
+     * recipe that fits the grid and whose ingredients it has to hand. Null when none does. This is
+     * how the picture in the book comes back to mind: the grid places the picture showed, and the
+     * things it showed, catch the eye. It says nothing of how to get them there.
+     */
+    public com.mementocraft.reallyalive.sense.ScreenSight.RecipeHint recipeHint(AbstractContainerMenu menu) {
+        int first;
+        int width;
+        if (menu instanceof net.minecraft.world.inventory.CraftingMenu) {
+            first = 1;
+            width = 3;
+        } else if (menu instanceof net.minecraft.world.inventory.InventoryMenu) {
+            first = 1;
+            width = 2;
+        } else {
+            return null;
+        }
+        java.util.List<RecipeMemory> recent = new java.util.ArrayList<>(recipesSeen.values());
+        java.util.Collections.reverse(recent);
+        for (RecipeMemory m : recent) {
+            if (ticksLived - m.seen() > RECIPE_REMEMBERED || RecipeBook.machineFor(m.recipe()) != null) {
+                continue;
+            }
+            var r = m.recipe().value();
+            var ingredients = r.getIngredients();
+            int w = r instanceof net.minecraft.world.item.crafting.ShapedRecipe sh ? sh.getWidth() : width;
+            int h = r instanceof net.minecraft.world.item.crafting.ShapedRecipe sh ? sh.getHeight() : (ingredients.size() + width - 1) / width;
+            if (w > width || h > width || ingredients.size() > width * width) {
+                continue;
+            }
+            java.util.Map<Integer, net.minecraft.world.item.crafting.Ingredient> want = new java.util.HashMap<>();
+            for (int i = 0; i < ingredients.size(); i++) {
+                if (!ingredients.get(i).isEmpty()) {
+                    want.put(first + (i / w) * width + i % w, ingredients.get(i));
+                }
+            }
+            if (hasToHand(menu, want.values())) {
+                return new com.mementocraft.reallyalive.sense.ScreenSight.RecipeHint(want);
+            }
+        }
+        return null;
+    }
+
+    /** Filling one more grid place as a remembered recipe's picture showed is felt, once per place per screen. */
+    private void noticeMatch(AbstractContainerMenu menu) {
+        var hint = recipeHint(menu);
+        if (hint == null) {
+            return;
+        }
+        int matched = 0;
+        for (var e : hint.want().entrySet()) {
+            matched += e.getValue().test(menu.getSlot(e.getKey()).getItem()) ? 1 : 0;
+        }
+        if (matched > matchedOnScreen) {
+            matchedThisTick += matched - matchedOnScreen;
+            matchedTotal += matched - matchedOnScreen;
+            matchedOnScreen = matched;
+        }
+    }
+
+    /** Whether each ingredient is on the screen somewhere: in a pocket, on the pointer or already in the grid. */
+    private static boolean hasToHand(AbstractContainerMenu menu, java.util.Collection<net.minecraft.world.item.crafting.Ingredient> needed) {
+        for (var i : needed) {
+            boolean found = i.test(menu.getCarried());
+            for (Slot s : menu.slots) {
+                found |= s.hasItem() && i.test(s.getItem());
+            }
+            if (!found) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Watches a block it placed or worked, if it is still, to feel it if it starts turning. */
+    private void noteWorked(ServerLevel level, BlockPos pos) {
+        if (!Machines.present() || Machines.turning(level, pos)) {
+            return;
+        }
+        stillWorked.remove(pos);
+        stillWorked.put(pos.immutable(), ticksLived);
+        if (stillWorked.size() > SET_GOING_WATCHED) {
+            stillWorked.remove(stillWorked.keySet().iterator().next());
+        }
+    }
+
+    private void watchSetGoing() {
+        var it = stillWorked.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            if (ticksLived - e.getValue() > SET_GOING_WITHIN) {
+                it.remove();
+            } else if (Machines.turning(body.level(), e.getKey())) {
+                it.remove();
+                setGoingThisTick++;
+                setGoingTotal++;
+            }
+        }
     }
 
     private void swing(InteractionResult r, InteractionHand hand) {
@@ -862,6 +1083,7 @@ public final class Hands {
         screenOpenFor = 0;
         resultShown = false;
         formedOnScreen.clear();
+        matchedOnScreen = 0;
         // The pointer starts in the middle of the screen, where a player's mouse appears.
         float[] b = bounds(menu);
         pointerX = (b[0] + b[2]) / 2f;
@@ -914,13 +1136,14 @@ public final class Hands {
                 return;
             }
             float[] b = bounds(screen);
-            pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0], b[2]);
-            pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1], b[3]);
+            pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0] - THROW_MARGIN, b[2] + THROW_MARGIN);
+            pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1] - THROW_MARGIN, b[3] + THROW_MARGIN);
             pointed = slotAt(screen, pointerX, pointerY);
             // Carrying a stack about is doing something, and something just made is worth looking
             // at; only an empty pointer over nothing new gets bored.
             screenIdle = screen.getCarried().isEmpty() && !resultShowing(screen) ? screenIdle + 1 : 0;
             screenOpenFor = resultShowing(screen) ? screenOpenFor : screenOpenFor + 1;
+            noticeBrewing(screen);
             boolean left = keys.attack() && !attackWasDown;
             boolean right = keys.use() && !useWasDown;
             boolean leftUp = !keys.attack() && attackWasDown;
@@ -989,6 +1212,12 @@ public final class Hands {
             click(p, -999, AbstractContainerMenu.getQuickcraftMask(2, dragButton), ClickType.QUICK_CRAFT);
         } else if (pointed != null) {
             click(p, pointed.index, dragButton, shift ? ClickType.QUICK_MOVE : ClickType.PICKUP);
+        } else if (outside(screen, pointerX, pointerY)) {
+            // Let go outside the window: the stack (or one of it, with the right button) is
+            // thrown out where the villager looks, as a player throws things out of a screen.
+            givenKinds.put(screen.getCarried().getItem(), ticksLived);
+            click(p, -999, dragButton, ClickType.PICKUP);
+            throwsTotal++;
         }
         dragButton = -1;
         dragSlots.clear();
@@ -1012,6 +1241,7 @@ public final class Hands {
             screenClicks++;
         }
         noticeResult(screen);
+        noticeMatch(screen);
     }
 
     /** A fingerprint of what lies where on a screen and on its pointer. */
@@ -1026,7 +1256,7 @@ public final class Hands {
 
     private static boolean resultShowing(AbstractContainerMenu menu) {
         for (Slot s : menu.slots) {
-            if (s instanceof ResultSlot && s.hasItem()) {
+            if (com.mementocraft.reallyalive.sense.ScreenSight.isMade(menu, s)) {
                 return true;
             }
         }
@@ -1054,6 +1284,20 @@ public final class Hands {
         resultShown = !shown.isEmpty();
     }
 
+    /**
+     * A brewing stand that starts bubbling is a brewing stand's way of showing that something is
+     * being made, as planks showing in a crafting result are; it is felt the same way, once per
+     * screen. The potion itself comes twenty seconds later.
+     */
+    private void noticeBrewing(AbstractContainerMenu menu) {
+        boolean bubbling = menu instanceof net.minecraft.world.inventory.BrewingStandMenu b && b.getBrewingTicks() > 0;
+        if (bubbling && !brewingShown && formedOnScreen.add(net.minecraft.world.item.Items.BREWING_STAND)) {
+            formedThisTick++;
+            formedTotal++;
+        }
+        brewingShown = bubbling;
+    }
+
     /** Where a screen's slots lie, in its pixels, with a margin: min x, min y, max x, max y. */
     public static float[] bounds(AbstractContainerMenu menu) {
         float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
@@ -1067,6 +1311,12 @@ public final class Hands {
             return new float[] {0f, 0f, 176f, 166f};
         }
         return new float[] {x0 - 8f, y0 - 8f, x1 + 8f, y1 + 8f};
+    }
+
+    /** Whether a point lies outside the screen's window, past the margin round its slots. */
+    public static boolean outside(AbstractContainerMenu menu, float x, float y) {
+        float[] b = bounds(menu);
+        return x < b[0] || x > b[2] || y < b[1] || y > b[3];
     }
 
     /** The slot whose 16x16 square, plus a player's one-pixel slack, holds this point. */

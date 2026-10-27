@@ -62,6 +62,14 @@ public final class BrainCommand {
                                 }))
                         .then(Commands.literal("clear")
                                 .executes(c -> forEach(c, v -> setGoal(v, null), "Goal cleared")))))
+                .then(Commands.literal("recipebook").executes(c -> {
+                    // A book of how machine parts are made, to hand to a villager.
+                    ServerPlayer p = c.getSource().getPlayerOrException();
+                    p.getInventory().add(com.mementocraft.reallyalive.body.RecipeBook.machinery(p.level()));
+                    c.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                            "A recipe book of machinery: give it to a villager to look at"), false);
+                    return 1;
+                }))
                 .then(Commands.literal("watch")
                         .then(Commands.argument("villager", EntityArgument.entity()).executes(c -> {
                             ServerPlayer p = c.getSource().getPlayerOrException();

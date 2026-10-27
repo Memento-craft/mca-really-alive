@@ -272,7 +272,10 @@ public final class BrainManager {
         }
         BrainData data = v.getData(Attachments.BRAIN);
         if (!data.hasGenome()) {
-            data.setGenome(Genome.random(new Rng(v.getUUID().getLeastSignificantBits())).toArray());
+            // -Dreallyalive.sameGenes=true gives every new brain the same default genes, so a
+            // benchmark can tell how much of its spread between villagers comes from their genes.
+            data.setGenome((Boolean.getBoolean("reallyalive.sameGenes") ? Genome.defaults()
+                    : Genome.random(new Rng(v.getUUID().getLeastSignificantBits()))).toArray());
         }
         data.setEnabled(true);
         Brain brain = load(v.getUUID());
@@ -512,7 +515,8 @@ public final class BrainManager {
         SensoryFrame f = h.frame;
         f.clear();
         if (h.hands.screenOpen()) {
-            ScreenSight.see(h.hands.screen(), h.hands.pointerX(), h.hands.pointerY(), h.vision, h.colour);
+            ScreenSight.see(h.hands.screen(), h.hands.pointerX(), h.hands.pointerY(), h.vision, h.colour,
+                    h.hands.recipeHint(h.hands.screen()));
             h.sawScreen = true;
         } else if (h.sawScreen || h.age % Config.VISION_INTERVAL.get() == 0) {
             Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour);

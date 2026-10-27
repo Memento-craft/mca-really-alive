@@ -208,12 +208,20 @@ public final class UseTests {
      * button there. Moves are made with the mouse-look keys, like the brain's.
      */
     private static final class MouseScript {
+        private static final String OUTSIDE = "outside";
         private final List<Object> steps = new ArrayList<>();
 
         /** Moves to the first slot matching, pressing a button there: 0 left, 1 right, 2 shift-left. */
         MouseScript click(Predicate<Slot> where, int button) {
             steps.add(where);
             steps.add(button);
+            return this;
+        }
+
+        /** Moves past the left edge of the window and presses and lets go of the left button there. */
+        MouseScript clickOutside() {
+            steps.add(OUTSIDE);
+            steps.add(0);
             return this;
         }
 
@@ -258,10 +266,25 @@ public final class UseTests {
                     }
                     return;
                 }
+                Hands hands = handle.hands();
+                if (OUTSIDE.equals(step)) {
+                    if (phase[0] == 0) {
+                        handle.hold(new MotorCommand(0, 0, false, false, false, -400f / Hands.POINTER_PER_DEGREE, 0f));
+                    } else if (phase[0] == 1) {
+                        h.assertTrue(Hands.outside(hands.screen(), hands.pointerX(), hands.pointerY()), "the pointer did not leave the window");
+                        handle.hold(new MotorCommand(0, 0, false, false, false, 0f, 0f, true, false));
+                    } else {
+                        handle.hold(MotorCommand.IDLE);
+                    }
+                    if (phase[0]++ == 2) {
+                        phase[0] = 0;
+                        at[0] += 2;
+                    }
+                    return;
+                }
                 @SuppressWarnings("unchecked")
                 Predicate<Slot> where = (Predicate<Slot>) step;
                 int button = (Integer) steps.get(at[0] + 1);
-                Hands hands = handle.hands();
                 AbstractContainerMenu menu = hands.screen();
                 h.assertTrue(menu != null, "no screen is open at step " + at[0]);
                 Slot slot = menu.slots.stream().filter(where).findFirst().orElse(null);
@@ -411,6 +434,172 @@ public final class UseTests {
             LOG.info("Create shaft before {} after the wrench {}", before, after);
             h.assertTrue(after.getBlock() == shaft.get() && !after.equals(before), "the wrench did not turn the shaft: " + after);
         });
+    }
+
+    /**
+     * With Create installed, a shaft placed against a turning motor turns, and the villager feels
+     * it set a machine going: the inborn pull towards building machinery.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void feelsAShaftItPlacedStartTurningIfCreateIsInstalled(GameTestHelper h) {
+        var motor = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (motor.isEmpty() || shaft.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos at = new BlockPos(6, 2, 12);
+        h.setBlock(at, motor.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.WEST));
+        useOn(h, new ItemStack(shaft.get(), 4), new Vec3(6.0, 2.5, 12.5), () -> {
+            Villager v = h.getLevel().getEntitiesOfClass(Villager.class, h.getBounds()).get(0);
+            BlockPos placed = at.west();
+            LOG.info("Shaft at {}: {}, turning {}, set going {}", placed, h.getBlockState(placed),
+                    com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(placed)), handle(v).hands().setGoingTotal);
+            h.assertTrue(com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(placed)), "the shaft is not turning");
+            h.assertTrue(handle(v).hands().setGoingTotal == 1, "setting the shaft going was not felt");
+        });
+    }
+
+    /** Letting go of a stack outside the window throws it out, and picking it up again is not collecting. */
+    @GameTest(template = ARENA, timeoutTicks = 200)
+    public static void throwsAStackOutOfItsInventory(GameTestHelper h) {
+        Villager v = worker(h, new ItemStack(Items.WHEAT, 3));
+        BrainManager.Handle handle = handle(v);
+        new MouseScript()
+                .key(INVENTORY)
+                .click(carried(0), 0)
+                .clickOutside()
+                .key(INVENTORY)
+                .play(h, handle, 5, () -> {
+                    var thrown = h.getLevel().getEntitiesOfClass(ItemEntity.class, h.getBounds().inflate(4));
+                    LOG.info("thrown {}, hand {}", thrown, v.getMainHandItem());
+                    h.assertTrue(handle.hands().throwsTotal == 1, "nothing was thrown");
+                    h.assertTrue(thrown.size() == 1 && thrown.get(0).getItem().is(Items.WHEAT) && thrown.get(0).getItem().getCount() == 3,
+                            "the wheat was not thrown out: " + thrown);
+                    h.assertTrue(count(v, Items.WHEAT) == 0, "the villager still carries wheat");
+                });
+    }
+
+    /**
+     * With Create installed: flour taken from a turning millstone with an empty hand is felt as
+     * making something, as a crafted thing taken from a result slot is.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600)
+    public static void takesFlourFromAMillstoneIfCreateIsInstalled(GameTestHelper h) {
+        var motor = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        var millstone = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "millstone"));
+        var flour = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "wheat_flour"));
+        if (motor.isEmpty() || millstone.isEmpty() || flour.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos stone = new BlockPos(6, 3, 12);
+        h.setBlock(stone.below(), motor.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.UP));
+        h.setBlock(stone, millstone.get());
+        Villager v = worker(h, ItemStack.EMPTY);
+        BrainManager.Handle handle = handle(v);
+        h.runAtTickTime(5, () -> {
+            Vec3 top = h.absoluteVec(new Vec3(6.5, 4.1, 12.5));
+            ItemEntity wheat = new ItemEntity(h.getLevel(), top.x, top.y, top.z, new ItemStack(Items.WHEAT));
+            wheat.setDeltaMovement(Vec3.ZERO);
+            h.getLevel().addFreshEntity(wheat);
+        });
+        Vec3 side = new Vec3(6.0, 3.5, 12.5);
+        h.runAtTickTime(400, () -> aim(h, v, side));
+        h.runAtTickTime(402, () -> {
+            aim(h, v, side);
+            handle.hold(USE);
+        });
+        h.runAtTickTime(404, () -> handle.hold(MotorCommand.IDLE));
+        h.runAtTickTime(410, () -> {
+            LOG.info("from the millstone: carries {} flour, made {}", count(v, flour.get()), handle.hands().madeTotal);
+            h.assertTrue(count(v, flour.get()) >= 1, "no flour was taken from the millstone");
+            h.assertTrue(handle.hands().madeTotal == 1, "taking the flour was not felt as making something");
+            h.succeed();
+        });
+    }
+
+    /**
+     * With Create installed: iron put on a depot under a turning press is pressed into a sheet,
+     * and the sheet taken back with an empty hand is felt as making something; the iron itself,
+     * taken back unpressed, would not be.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 800)
+    public static void pressesIronOnADepotIfCreateIsInstalled(GameTestHelper h) {
+        var create = (java.util.function.Function<String, ResourceLocation>) id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var depot = BuiltInRegistries.BLOCK.getOptional(create.apply("depot"));
+        var sheet = BuiltInRegistries.ITEM.getOptional(create.apply("iron_sheet"));
+        if (motor.isEmpty() || press.isEmpty() || depot.isEmpty() || sheet.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos onto = new BlockPos(6, 2, 12);
+        h.setBlock(onto, depot.get());
+        // The press stands two above the depot: its head comes down into the gap between.
+        BlockPos pressAt = onto.above(2);
+        h.setBlock(pressAt, press.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST));
+        h.setBlock(pressAt.east(), motor.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.WEST));
+        Villager v = worker(h, new ItemStack(Items.IRON_INGOT, 2));
+        BrainManager.Handle handle = handle(v);
+        Vec3 side = new Vec3(6.3, 2.8, 12.5);
+        for (int at : new int[] {10, 500}) {
+            h.runAtTickTime(at - 2, () -> aim(h, v, side));
+            h.runAtTickTime(at, () -> {
+                aim(h, v, side);
+                handle.hold(USE);
+            });
+            h.runAtTickTime(at + 2, () -> handle.hold(MotorCommand.IDLE));
+        }
+        h.runAtTickTime(20, () -> LOG.info("onto the depot: hand {}, press turning {}", v.getMainHandItem(),
+                com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pressAt))));
+        h.runAtTickTime(510, () -> {
+            LOG.info("from the depot: carries {} sheets, {} iron, made {}", count(v, sheet.get()), count(v, Items.IRON_INGOT),
+                    handle.hands().madeTotal);
+            h.assertTrue(count(v, sheet.get()) >= 1, "no sheet was taken from the depot");
+            h.assertTrue(handle.hands().madeTotal == 1, "taking the sheet was not felt as making something");
+            h.succeed();
+        });
+    }
+
+    /**
+     * A recipe book opens to pictures of its recipes, a page at a time; a page looked at for a
+     * second is remembered, and a remembered recipe marks where its picture put things on the
+     * crafting grid: planks one above the other for sticks.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 300)
+    public static void readsARecipeBookAndRemembersWhereThingsGo(GameTestHelper h) {
+        // Only sticks: two recipes, from planks and from bamboo.
+        ItemStack book = com.mementocraft.reallyalive.body.RecipeBook.write(h.getLevel(), "Sticks", List.of(Items.STICK));
+        Villager v = worker(h, book);
+        v.getInventory().addItem(new ItemStack(Items.OAK_PLANKS, 4));
+        BrainManager.Handle handle = handle(v);
+        new MouseScript()
+                .key(USE)
+                .waitTicks(26)
+                .click(slot(com.mementocraft.reallyalive.body.RecipeBook.Menu.NEXT), 0)
+                .waitTicks(26)
+                .key(INVENTORY)
+                .waitTicks(2)
+                .key(INVENTORY)
+                .play(h, handle, 5, () -> {
+                    var hint = handle.hands().recipeHint(handle.hands().screen());
+                    LOG.info("recipes learnt {}, screen {}, hint {}", handle.hands().recipesLearnt,
+                            handle.hands().screen() == null ? null : handle.hands().screen().getClass().getSimpleName(),
+                            hint == null ? null : hint.want().keySet());
+                    h.assertTrue(handle.hands().recipesLearnt == 2, "it did not remember the two pages it looked at: " + handle.hands().recipesLearnt);
+                    h.assertTrue(handle.hands().screen() instanceof InventoryMenu, "its own inventory is not open");
+                    h.assertTrue(hint != null && hint.want().keySet().equals(java.util.Set.of(1, 3)),
+                            "the stick recipe did not mark the two grid places one above the other: " + (hint == null ? null : hint.want().keySet()));
+                });
     }
 
     private static int count(Villager v, net.minecraft.world.item.Item item) {

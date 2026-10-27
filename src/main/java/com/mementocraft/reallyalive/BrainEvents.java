@@ -72,8 +72,8 @@ public final class BrainEvents {
         if (e.getLevel().isClientSide() || !(e.getEntity() instanceof Villager v) || BrainManager.get() == null) {
             return;
         }
-        // Unloaded or discarded villagers are no longer alive by the time they leave, but their
-        // brain must still be saved and let go; only a death (handled there) forgets it.
+        // An unloaded or discarded villager is no longer alive when it leaves, so checking isAlive()
+        // leaked its brain (and never saved it); only a killed one has nothing to keep.
         if (v.getRemovalReason() != net.minecraft.world.entity.Entity.RemovalReason.KILLED) {
             BrainManager.get().detach(v, true);
         }
@@ -189,6 +189,13 @@ public final class BrainEvents {
 
     @SubscribeEvent
     public static void brewed(PlayerBrewedPotionEvent e) {
+        // The event fires for any potion taken from a stand's bottle slot, so a water bottle put in
+        // (or an empty bottle) taken straight back out would be felt as brewing; only a brewed
+        // potion counts.
+        var contents = e.getStack().get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
+        if (contents == null || contents.is(net.minecraft.world.item.alchemy.Potions.WATER)) {
+            return;
+        }
         made(e.getEntity());
     }
 

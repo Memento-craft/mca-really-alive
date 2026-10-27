@@ -404,6 +404,7 @@ public final class LearningTests {
         int[] pushingLadder = {0, 0};
         // Ticks in the last tries with a screen open (its own inventory, opened by the inventory key).
         int[] inScreen = {0, 0};
+        java.util.Map<String, Integer> screenKinds = new java.util.TreeMap<>();
         // Ticks holding a block, and of those, pressing use, in the first and the last tries; and
         // blocks placed in the first and the last tries.
         int[] useHeldFirst = {0, 0};
@@ -427,6 +428,7 @@ public final class LearningTests {
                 inScreen[1]++;
                 if (handle.hands().screenOpen()) {
                     inScreen[0]++;
+                    screenKinds.merge(handle.hands().screen().getClass().getSimpleName(), 1, Integer::sum);
                 }
                 if (v.onClimbable()) {
                     onLadder[0]++;
@@ -491,9 +493,9 @@ public final class LearningTests {
             int lastFalls = count(outcomes, c.episodes - WINDOW, Outcome.FELL);
             String report = String.format("%s: reached the goal in %d of the first %d tries and %d of the last %d (%d falls);"
                             + " in the last tries jump was held %d%% of the time in water, %d%% on land,"
-                            + " a screen was open %d%% of the time (%d screens opened in all, carrying %s)%s",
+                            + " a screen was open %d%% of the time (%d screens opened in all, carrying %s; ticks per screen %s)%s",
                     c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry), percent(inScreen),
-                    handle.hands().screensOpened, carriedList(v),
+                    handle.hands().screensOpened, carriedList(v), screenKinds,
                     c == Course.LEDGE ? String.format("; sneaking %d%% of the time near the edge",
                             percent(sneakNearEdge)) : "")
                     + (c == Course.STEP ? String.format("; holding a block, it pressed place %d%% of the time in the first tries"

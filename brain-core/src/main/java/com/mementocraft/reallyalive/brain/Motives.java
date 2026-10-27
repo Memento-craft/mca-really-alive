@@ -46,6 +46,18 @@ public final class Motives {
     public static final float IMITATE = Float.parseFloat(System.getProperty("reallyalive.imitate", "0.2"));
     /** Finishing a line written down for whoever reads it later. */
     public static final float WROTE = 0.2f;
+    /**
+     * Setting a machine going: a block it placed or worked with its hands, still and dead when it
+     * did so, starts turning soon after, as a shaft does once it joins a turning wheel. The joy of
+     * seeing something it built come alive, felt the less the more it has lately been doing so.
+     */
+    public static final float SET_GOING = 1.0f;
+    /**
+     * Putting something where a remembered picture of a recipe showed it: the grid looks a little
+     * more like the page in the book. Felt once for each place filled on a screen, so a recipe
+     * needing two things in two places is not all or nothing.
+     */
+    public static final float MATCH_PICTURE = 0.15f;
 
     private Motives() {}
 }
