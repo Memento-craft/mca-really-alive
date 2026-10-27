@@ -37,6 +37,12 @@ public final class Motives {
      * stripping a log. Opening a door or a chest changes nothing that way, and is not felt.
      */
     public static final float CHANGE = 0.3f;
+    /**
+     * Setting a machine going: a block it placed or worked with its hands, still and dead when it
+     * did so, starts turning soon after, as a shaft does once it joins a turning wheel. The joy of
+     * seeing something it built come alive, felt the less the more it has lately been doing so.
+     */
+    public static final float SET_GOING = 1.0f;
 
     private Motives() {}
 }

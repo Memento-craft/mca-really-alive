@@ -4,6 +4,7 @@ import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.OlfactoryChannel;
 import com.mementocraft.reallyalive.brain.SenseLayout;
 import com.mementocraft.reallyalive.brain.SensoryFrame;
+import com.mementocraft.reallyalive.body.Machines;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.tags.BlockTags;
@@ -56,6 +57,8 @@ public final class Senses {
     private static final int PERSON = 0xB08A6A;
     /** How strongly a block that opens a screen catches the eye, against a creature's 1. */
     private static final float WORKSTATION = 0.8f;
+    /** How strongly a turning machine part catches the eye. */
+    private static final float TURNING = 0.8f;
 
     /** Casts the eye rays. Column 0 is the left edge of view, row 0 the top. */
     public static void see(LivingEntity body, double range, float[] vision) {
@@ -118,6 +121,11 @@ public final class Senses {
                     // player, and draws the eye the way a creature does. Without this a newborn
                     // with a brewing stand beside it looked at it 0 ticks in 10000.
                     creature = state.getMenuProvider(level, block.getBlockPos()) != null ? WORKSTATION : 0f;
+                    // Something turning catches the eye as anything moving does: a newborn with
+                    // shafts beside a turning motor looked at it 15 ticks in 60000.
+                    if (Machines.turning(level, block.getBlockPos())) {
+                        creature = Math.max(creature, TURNING);
+                    }
                 } else {
                     near = 0f;
                 }

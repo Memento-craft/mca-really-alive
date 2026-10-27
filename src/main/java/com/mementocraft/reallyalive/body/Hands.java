@@ -150,6 +150,17 @@ public final class Hands {
     public int madeTotal;
     /** Diagnostics: clicks on a screen's slots, and results seen forming in a result slot. */
     public int screenClicks;
+    /** Diagnostics: machine parts set going (see {@link Motives#SET_GOING}). */
+    public int setGoingTotal;
+    /** Still blocks it placed or worked lately, and when: if one starts turning it was set going. */
+    private final java.util.Map<BlockPos, Long> stillWorked = new java.util.LinkedHashMap<>();
+    /** Ticks a worked block is watched for starting to turn, how many are watched, and how often. */
+    private static final long SET_GOING_WITHIN = 600L;
+    private static final int SET_GOING_WATCHED = 32;
+    private static final int SET_GOING_EVERY = 5;
+    private static final float SET_GOING_HALF_LIFE = 2400f;
+    private int setGoingThisTick;
+    private float setGoingLately;
     public int clicksOnThings;
     /** Ticks since the screen was opened or last clicked on: how long it has gone without doing anything. */
     private int screenIdle;
@@ -201,6 +212,11 @@ public final class Hands {
         pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE + formedThisTick * Motives.FORM
                 + movedThisTick * Motives.MOVE_THINGS
                 + noveltyThisTick * Motives.NEW_SCREEN;
+        if (setGoingThisTick > 0) {
+            pleasure += setGoingThisTick * Motives.SET_GOING / (1f + setGoingLately);
+            setGoingLately += setGoingThisTick;
+        }
+        setGoingThisTick = 0;
         noveltyThisTick = 0f;
         changedThisTick = 0;
         madeThisTick = 0;
@@ -236,6 +252,10 @@ public final class Hands {
     public void tick(MotorCommand keys) {
         ticksLived++;
         movedLately *= (float) Math.pow(0.5, 1.0 / MOVED_HALF_LIFE);
+        setGoingLately *= (float) Math.pow(0.5, 1.0 / SET_GOING_HALF_LIFE);
+        if (ticksLived % SET_GOING_EVERY == 0 && !stillWorked.isEmpty()) {
+            watchSetGoing();
+        }
         if (screen != null) {
             forEachCarried(item -> lookedOver.put(item, ticksLived));
             if (standIn != null) {
@@ -801,6 +821,8 @@ public final class Hands {
         }
         swing(r, hand);
         usedOnBlock++;
+        noteWorked(level, clicked);
+        noteWorked(level, placeAt);
         boolean placed = placing && placeBefore.getBlock() != blockItem.getBlock()
                 && level.getBlockState(placeAt).getBlock() == blockItem.getBlock();
         if (placed) {
@@ -818,6 +840,32 @@ public final class Hands {
             changedTotal++;
         }
         return true;
+    }
+
+    /** Watches a block it placed or worked, if it is still, to feel it if it starts turning. */
+    private void noteWorked(ServerLevel level, BlockPos pos) {
+        if (!Machines.present() || Machines.turning(level, pos)) {
+            return;
+        }
+        stillWorked.remove(pos);
+        stillWorked.put(pos.immutable(), ticksLived);
+        if (stillWorked.size() > SET_GOING_WATCHED) {
+            stillWorked.remove(stillWorked.keySet().iterator().next());
+        }
+    }
+
+    private void watchSetGoing() {
+        var it = stillWorked.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            if (ticksLived - e.getValue() > SET_GOING_WITHIN) {
+                it.remove();
+            } else if (Machines.turning(body.level(), e.getKey())) {
+                it.remove();
+                setGoingThisTick++;
+                setGoingTotal++;
+            }
+        }
     }
 
     private void swing(InteractionResult r, InteractionHand hand) {

@@ -413,6 +413,32 @@ public final class UseTests {
         });
     }
 
+    /**
+     * With Create installed, a shaft placed against a turning motor turns, and the villager feels
+     * it set a machine going: the inborn pull towards building machinery.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void feelsAShaftItPlacedStartTurningIfCreateIsInstalled(GameTestHelper h) {
+        var motor = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (motor.isEmpty() || shaft.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos at = new BlockPos(6, 2, 12);
+        h.setBlock(at, motor.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.WEST));
+        useOn(h, new ItemStack(shaft.get(), 4), new Vec3(6.0, 2.5, 12.5), () -> {
+            Villager v = h.getLevel().getEntitiesOfClass(Villager.class, h.getBounds()).get(0);
+            BlockPos placed = at.west();
+            LOG.info("Shaft at {}: {}, turning {}, set going {}", placed, h.getBlockState(placed),
+                    com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(placed)), handle(v).hands().setGoingTotal);
+            h.assertTrue(com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(placed)), "the shaft is not turning");
+            h.assertTrue(handle(v).hands().setGoingTotal == 1, "setting the shaft going was not felt");
+        });
+    }
+
     private static int count(Villager v, net.minecraft.world.item.Item item) {
         int n = v.getMainHandItem().is(item) ? v.getMainHandItem().getCount() : 0;
         for (int i = 0; i < v.getInventory().getContainerSize(); i++) {

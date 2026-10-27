@@ -4,6 +4,8 @@ import com.mementocraft.reallyalive.BrainManager;
 import com.mementocraft.reallyalive.ReallyAlive;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -582,6 +584,101 @@ public final class WorkLearningTests {
                         handle.hands().madeTotal, BREW_TICKS, standScreens[0], brews[0]);
                 LOG.info("BREW newborn {} learning result: {}", which, report);
                 if (handle.hands().madeTotal >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornSetsAMachineGoing(GameTestHelper h) {
+        spinBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornSetsAMachineGoing(GameTestHelper h) {
+        spinBenchmark(h, "2");
+    }
+
+    /**
+     * With Create installed: a turning motor in the pen and a newborn carrying shafts. A shaft
+     * placed on the motor's turning end, or on the end of a turning shaft, turns too, and that is
+     * felt as setting a machine going; a shaft put anywhere else stays still. Learning shows as
+     * more shafts set going, and a larger share of the shafts placed. The shafts are taken away
+     * now and then so there is always somewhere to start again.
+     */
+    private static void spinBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "SPIN")) {
+            return;
+        }
+        var motor = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (motor.isEmpty() || shaft.isEmpty()) {
+            LOG.info("SPIN: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        BlockPos at = new BlockPos(5, 2, 9);
+        var motorState = motor.get().defaultBlockState().setValue(
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.SOUTH);
+        Villager v = pen(h, new ItemStack(shaft.get(), 64), TICKS);
+        h.setBlock(at, motorState);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] goingPerWindow = new int[TICKS / WINDOW];
+        int[] placedPerWindow = new int[TICKS / WINDOW];
+        int[] start = {0, 0};
+        int[] aimedAtMotor = {0};
+        int[] refusedBefore = {0};
+        java.util.Map<String, Integer> refusedOn = new java.util.TreeMap<>();
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (!h.getBlockState(at).is(motor.get())) {
+                h.setBlock(at, motorState);
+            }
+            if (handle.hands().target() instanceof BlockHitResult hit && hit.getBlockPos().equals(h.absolutePos(at))) {
+                aimedAtMotor[0]++;
+            }
+            if (handle.hands().placeRefused > refusedBefore[0]) {
+                String on = handle.hands().target() instanceof BlockHitResult hit
+                        ? h.getLevel().getBlockState(hit.getBlockPos()).getBlock().getDescriptionId() + " " + hit.getDirection()
+                        : String.valueOf(handle.hands().target().getType());
+                refusedOn.merge(on, 1, Integer::sum);
+            }
+            refusedBefore[0] = handle.hands().placeRefused;
+            if (tick[0] % (REGROW * 6) == 0 && !handle.hands().screenOpen()) {
+                clearPen(h, at);
+                regrow(h, v);
+                if (carried(v, shaft.get()) < 16) {
+                    v.getInventory().clearContent();
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(shaft.get(), 64));
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                int w = tick[0] / WINDOW - 1;
+                goingPerWindow[w] = handle.hands().setGoingTotal - start[0];
+                placedPerWindow[w] = handle.hands().placedTotal - start[1];
+                start[0] = handle.hands().setGoingTotal;
+                start[1] = handle.hands().placedTotal;
+                LOG.info("SPIN newborn {}: ticks {}-{}: {} shafts set going of {} placed; aimed at the motor {} ticks in all;"
+                                + " screens opened {}; mean pitch {}; carries {} shafts, in hand {}; place tries {}, refused {}",
+                        which, tick[0] - WINDOW, tick[0], goingPerWindow[w],
+                        placedPerWindow[w], aimedAtMotor[0], handle.hands().screensOpened, Math.round(v.getXRot()),
+                        carried(v, shaft.get()), v.getMainHandItem(), handle.hands().placeTries, handle.hands().placeRefused);
+                LOG.info("SPIN newborn {}: refused on {}", which, refusedOn);
+            }
+            if (tick[0] == TICKS) {
+                int first = goingPerWindow[0];
+                int last = goingPerWindow[goingPerWindow.length - 1];
+                String report = String.format("SPIN: %d set going of %d placed in the first %d ticks, %d of %d in the last; %d in all",
+                        first, placedPerWindow[0], WINDOW, last, placedPerWindow[placedPerWindow.length - 1], handle.hands().setGoingTotal);
+                LOG.info("SPIN newborn {} learning result: {}", which, report);
+                if (handle.hands().setGoingTotal >= 5 && last > first) {
                     h.succeed();
                 } else {
                     h.fail("not learned yet: " + report);
