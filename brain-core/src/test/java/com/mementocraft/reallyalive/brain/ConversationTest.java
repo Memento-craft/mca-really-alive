@@ -241,6 +241,34 @@ class ConversationTest {
      * man in a purple coat arrived.").
      */
     @Test
+    void villagerDeducesFromTwoThingsItWasTold() {
+        // Neither line alone answers: the answer follows from the two together.
+        String[][] talks = {{"tom is older than sam.", "sam is older than ben.", "is tom older than ben?", "yes"},
+            {"tom is older than sam.", "sam is older than ben.", "is ben older than tom?", "no"},
+            {"all the farmers are tired today.", "pedro is a farmer.", "is pedro tired?", "yes"},
+            {"if it rains, the field floods.", "it rained all night.", "did the field flood?", "yes"},
+            {"the key is in the red box.", "the red box is in the barn.", "is the key in the barn?", "yes"},
+            {"if the baker oversleeps, there is no bread.", "the baker overslept today.", "is there bread?", "no"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 740 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += !said.isEmpty() && said.get(0).equals(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("deduced from two things it was told %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "deduced only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerAnswersYesOrNoFromWhatItWasTold() {
         String[][] talks = {{"the baker is sick today.", "is the baker sick?"},
             {"a fox stole two chickens last night.", "did the fox steal the chickens?"},

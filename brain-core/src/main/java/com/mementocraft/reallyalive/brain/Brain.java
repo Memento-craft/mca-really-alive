@@ -1145,6 +1145,19 @@ public final class Brain {
                 bestK = k;
             }
         }
+        if (!aboutThem && (best == null || !coversAll(heard, bestSeen, memory, tones))) {
+            // No one line says it all, but two that tell of the same thing may: "tom is older than
+            // sam." and "sam is older than ben." answer "is tom older than ben?", "a wolf is at
+            // the gate." and "wolves are dangerous." answer "is the thing at the gate dangerous?".
+            int[][] pair = twoLinesTogether(heard, names, memory, tones);
+            if (pair != null) {
+                best = new int[pair[0].length + pair[1].length];
+                System.arraycopy(pair[0], 0, best, 0, pair[0].length);
+                System.arraycopy(pair[1], 0, best, pair[0].length, pair[1].length);
+                bestSeen = best;
+                bestK = 0;
+            }
+        }
         if (best == null) {
             return new int[0];
         }
@@ -1173,6 +1186,85 @@ public final class Brain {
         // not among the commonest words either.
         return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))
                 && (memory.weight(w) > 0f || tones != null && !tones.common(w))).distinct().toArray();
+    }
+
+    /** Whether a line says every telling word of a question, or one like it. */
+    private boolean coversAll(int[] heard, int[] line, ExchangeMemory memory, ToneLinks tones) {
+        if (rule(line) || sameOrder(heard, line) == 0) {
+            // A rule alone ("if it rains, the field floods.") needs what makes it true told too,
+            // and a comparison has to say how the two asked about compare.
+            return false;
+        }
+        TopicLinks topics = TopicLinks.shared();
+        for (int i = 1; i < heard.length; i++) {
+            int q = heard[i];
+            if (q < 0 || toldWeight(q, memory, tones) < TOLD_TELLING || saidIn(line, q)) {
+                continue;
+            }
+            boolean like = false;
+            for (int w : line) {
+                like |= w >= 0 && topics != null && topics.alike(q, w) >= TOLD_ALIKE;
+            }
+            if (!like) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Two lines told lately, in the order heard, that share a telling word (the thing both tell
+     * of) and together say every telling word of the question, each saying at least one; or null.
+     */
+    private int[][] twoLinesTogether(int[] heard, int[][] names, ExchangeMemory memory, ToneLinks tones) {
+        int ask = language.vocabulary.find("?");
+        int[][] pair = null;
+        int bestShared = Integer.MAX_VALUE;
+        for (int a = TOLD_LINES; a >= 2; a--) {
+            for (int b = a - 1; b >= 2; b--) {
+                if (a > heardLinesNext) {
+                    continue;
+                }
+                int[] first = heardLines[(heardLinesNext - a) % heardLines.length];
+                int[] second = heardLines[(heardLinesNext - b) % heardLines.length];
+                if (first.length == 0 || second.length == 0 || first[first.length - 1] == ask || second[second.length - 1] == ask) {
+                    continue;
+                }
+                int[] x = withWhatTheyName(first, names);
+                int[] y = withWhatTheyName(second, names);
+                if (!sayTheSameThing(x, y, memory, tones) || !saysSome(heard, x, memory, tones) && !saysSome(heard, y, memory, tones)) {
+                    continue;
+                }
+                int[] both = Arrays.copyOf(x, x.length + y.length);
+                System.arraycopy(y, 0, both, x.length, y.length);
+                if (coversAll(heard, both, memory, tones) && a - b < bestShared) {
+                    // The closest two win.
+                    bestShared = a - b;
+                    pair = new int[][] {first, second};
+                }
+            }
+        }
+        return pair;
+    }
+
+    /** Whether two lines share a telling word or name. */
+    private boolean sayTheSameThing(int[] x, int[] y, ExchangeMemory memory, ToneLinks tones) {
+        for (int w : x) {
+            if (w >= 0 && toldWeight(w, memory, tones) >= TOLD_TELLING / 2 && saidIn(y, w)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether a line says at least one telling word of the question. */
+    private boolean saysSome(int[] heard, int[] line, ExchangeMemory memory, ToneLinks tones) {
+        for (int q : heard) {
+            if (q >= 0 && toldWeight(q, memory, tones) >= TOLD_TELLING / 2 && saidIn(line, q)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Whether a line is one of those heard lately. */
@@ -1207,7 +1299,117 @@ public final class Brain {
                 return -1;
             }
         }
-        return language.vocabulary.find("yes");
+        if (rule(told)) {
+            // "if it rains, the field floods." alone doesn't say that it did.
+            return -1;
+        }
+        int order = sameOrder(heard, told);
+        if (order != 0 && negated(told, heard) != negated(heard, heard)) {
+            // "is there bread?" "there is no bread."
+            order = -order;
+        }
+        return order == 0 ? -1 : language.vocabulary.find(order > 0 ? "yes" : "no");
+    }
+
+    /**
+     * For a comparison ("is tom older than ben?"), whether what was told puts the two the same way
+     * round (1: "tom is older than sam . sam is older than ben .") or the other (-1: "ben is older
+     * than tom ."); 0 if they can't be told apart; 1 if it is no comparison.
+     */
+    private int sameOrder(int[] heard, int[] told) {
+        int than = language.vocabulary.find("than");
+        int at = indexOf(heard, than, 0);
+        if (at < 2 || at + 1 >= heard.length || indexOf(told, than, 0) < 0) {
+            return 1;
+        }
+        int first = indexOf(told, than, 0), last = first;
+        for (int i = first + 1; i < told.length; i++) {
+            last = told[i] == than ? i : last;
+        }
+        int askedOne = thingAt(heard, at - 2, -1), askedOther = thingAt(heard, at + 1, 1);
+        int toldOne = thingAt(told, first - 2, -1), toldOther = thingAt(told, last + 1, 1);
+        if (askedOne < 0 || askedOther < 0 || toldOne < 0 || toldOther < 0) {
+            return 0;
+        }
+        if (sameThing(askedOne, toldOne) && sameThing(askedOther, toldOther)) {
+            return 1;
+        }
+        return sameThing(askedOne, toldOther) && sameThing(askedOther, toldOne) ? -1 : 0;
+    }
+
+    /** Small words between a comparison and what it compares ("is", "the"). */
+    private static final Set<String> BETWEEN = Set.of("is", "are", "was", "were", "am", "the", "a", "an", "much", "far", "even", "still");
+
+    /** The word for a thing compared, from an index on, going the given way past small words; -1 if none. */
+    private int thingAt(int[] line, int i, int step) {
+        while (i >= 0 && i < line.length && line[i] >= 0 && BETWEEN.contains(language.vocabulary.word(line[i]))) {
+            i += step;
+        }
+        // Going on, the last word before the line goes on to something else is the thing itself
+        // ("than the north tower ." compares with the tower).
+        while (step > 0 && i + 1 < line.length && line[i + 1] >= 0 && Character.isLetter(language.vocabulary.word(line[i + 1]).charAt(0))
+                && !language.vocabulary.word(line[i + 1]).equals("and")) {
+            i++;
+        }
+        return i >= 0 && i < line.length ? line[i] : -1;
+    }
+
+    private boolean sameThing(int a, int b) {
+        return a == b || a >= 0 && b >= 0 && stem(language.vocabulary.word(a)).equals(stem(language.vocabulary.word(b)));
+    }
+
+    private static final Set<String> NOT = Set.of("no", "not", "never", "isn't", "wasn't", "aren't", "weren't", "don't",
+            "doesn't", "didn't", "can't", "won't", "hasn't", "haven't", "nobody", "nothing");
+
+    /**
+     * Whether what a line says of the question's thing is said not to be so: the part of it (cut
+     * at commas and full stops) that says most of the question's words has a "no" or "not" in it
+     * ("if the baker oversleeps , there is no bread ." of "is there bread?").
+     */
+    private boolean negated(int[] line, int[] heard) {
+        int comma = language.vocabulary.find(","), stop = language.vocabulary.find(".");
+        int best = -1;
+        boolean not = false;
+        for (int from = 0; from < line.length; ) {
+            int to = from;
+            int says = 0;
+            boolean no = false;
+            for (; to < line.length && line[to] != comma && line[to] != stop; to++) {
+                if (line[to] >= 0) {
+                    no |= NOT.contains(language.vocabulary.word(line[to]));
+                    says += saidIn(heard, line[to]) && Character.isLetter(language.vocabulary.word(line[to]).charAt(0)) ? 1 : 0;
+                }
+            }
+            if (says > best) {
+                best = says;
+                not = no;
+            }
+            from = to + 1;
+        }
+        return not;
+    }
+
+    /** Whether a line is a rule alone ("if it rains, the field floods.", "when the bell rings, ..."). */
+    private boolean rule(int[] line) {
+        return (contains(line, language.vocabulary.find("if")) || contains(line, language.vocabulary.find("when")))
+                && countOf(line, language.vocabulary.find(".")) < 2;
+    }
+
+    private static int indexOf(int[] line, int word, int from) {
+        for (int i = from; i < line.length; i++) {
+            if (line[i] == word) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int countOf(int[] line, int word) {
+        int n = 0;
+        for (int w : line) {
+            n += w == word ? 1 : 0;
+        }
+        return n;
     }
 
     /**
@@ -1361,6 +1563,14 @@ public final class Brain {
         }
         if (w.endsWith("'s")) {
             w = w.substring(0, w.length() - 2);
+        }
+        if (w.endsWith("men") && w.length() > 4) {
+            // "fishermen", "fisherman".
+            w = w.substring(0, w.length() - 3) + "man";
+        }
+        if (w.endsWith("ves") && w.length() > 4 && !w.endsWith("oves")) {
+            // "wolves", "wolf"; "knives", "knife".
+            w = w.substring(0, w.length() - 3) + "f";
         }
         for (String end : new String[] {"ing", "ied", "ies", "ed", "es", "s", "d"}) {
             if (w.endsWith(end) && w.length() - end.length() >= (end.startsWith("i") ? 2 : 3)) {
