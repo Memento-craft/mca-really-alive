@@ -87,7 +87,15 @@ public final class Naming {
         if (!itemsTold) {
             itemsTold = true;
             SelfKnowledge.items(BuiltInRegistries.ITEM.keySet().stream().map(Naming::itemName).toList());
+            SelfKnowledge.creatures(BuiltInRegistries.ENTITY_TYPE.keySet().stream().map(Naming::itemName).toList());
         }
+        // The creatures it can see within 16 blocks, by kind: "cow", "iron golem", "player".
+        java.util.Map<String, Integer> seen = new java.util.LinkedHashMap<>();
+        for (LivingEntity e : v.level().getEntitiesOfClass(LivingEntity.class, v.getBoundingBox().inflate(16),
+                e -> e != v && e.isAlive() && !e.isSpectator() && v.hasLineOfSight(e))) {
+            seen.merge(itemName(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType())), 1, Integer::sum);
+        }
+        SelfKnowledge.around(brain, new ArrayList<>(seen.entrySet()));
         // What it holds and carries: "an iron hoe", "three bread".
         net.minecraft.world.item.ItemStack hand = v.getMainHandItem();
         java.util.Map<String, Integer> items = new java.util.LinkedHashMap<>();

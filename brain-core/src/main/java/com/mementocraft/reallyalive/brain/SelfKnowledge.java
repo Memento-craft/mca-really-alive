@@ -103,12 +103,37 @@ public final class SelfKnowledge {
         b.toldCarried = true;
     }
 
+    /**
+     * Tells a brain what creatures it sees around it, each a kind ("cow", "iron golem") and how
+     * many, so asked "how many cows are there?" it can say.
+     */
+    public static void around(Brain b, List<java.util.Map.Entry<String, Integer>> seen) {
+        b.around.clear();
+        for (java.util.Map.Entry<String, Integer> kind : seen) {
+            int[] name = ids(b, kind.getKey());
+            if (name.length > 0 && kind.getValue() > 0) {
+                b.around.add(new Brain.Carried(name, kind.getValue()));
+            }
+        }
+        b.toldAround = true;
+    }
+
+    /** Tells all brains what kinds of creature there are, by name ("iron golem"). */
+    public static void creatures(java.util.Collection<String> names) {
+        for (String name : names) {
+            List<String> words = WordCode.tokenize(name);
+            if (!words.isEmpty()) {
+                Brain.CREATURES.add(words.get(words.size() - 1));
+            }
+        }
+    }
+
     /** Tells all brains what things can be carried at all, by name ("wheat seeds"). */
     public static void items(java.util.Collection<String> names) {
         for (String name : names) {
             List<String> words = WordCode.tokenize(name);
             if (!words.isEmpty()) {
-                Brain.ITEMS.add(Brain.stem(words.get(words.size() - 1)));
+                Brain.ITEMS.add(words.get(words.size() - 1));
             }
         }
     }

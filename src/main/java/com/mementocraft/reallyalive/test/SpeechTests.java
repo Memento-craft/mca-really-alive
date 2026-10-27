@@ -503,4 +503,35 @@ public final class SpeechTests {
             }
         });
     }
+
+    /** With two cows in sight, asked "how many cows are there?", a villager says two. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "around")
+    public static void villagerCountsTheCreaturesItSees(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        for (Vec3 at : new Vec3[] {new Vec3(15.5, 2, 12.5), new Vec3(15.5, 2, 14.5)}) {
+            net.minecraft.world.entity.Mob cow = (net.minecraft.world.entity.Mob) h.spawn(EntityType.COW, at);
+            cow.setNoAi(true);
+        }
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                com.mementocraft.reallyalive.sense.Naming.worldAround(v, handle.brain());
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(-1.5, 0, 0), "how many cows are there?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("around benchmark: asked \"how many cows are there?\" with two cows in sight, the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("two cows")),
+                        "asked \"how many cows are there?\" with two cows in sight it said " + answers);
+                h.succeed();
+            }
+        });
+    }
 }

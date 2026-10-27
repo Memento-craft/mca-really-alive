@@ -149,6 +149,9 @@ It is told what it holds and carries too: "what are you holding?" "i'm holding a
 do you have?" "i have three bread , twelve wheat seeds and an apple .", "do you have any carrots?"
 "no , i don't have any carrots .". It only says no about things that are game items, so "do you
 have a minute?" is answered as before.
+And it is told the creatures it can see within 16 blocks: "what do you see?" "i see two cows , a pig
+and four sheep .", "how many cows are there?" "there are two cows .", "are there any zombies
+around?" "no , i don't see any zombies .".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

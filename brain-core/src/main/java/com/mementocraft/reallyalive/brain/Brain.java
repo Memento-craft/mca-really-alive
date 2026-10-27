@@ -1139,6 +1139,14 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[0];
         }
+        int[] near = aroundHere(heard);
+        if (near != null) {
+            // "how many cows are there?" "there are two cows ."
+            toldLine = near;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            return new int[0];
+        }
         int[] most = mostOf(heard);
         if (most != null) {
             // "who is the oldest?" after "tom is older than sam." "sam is older than ben.":
@@ -1636,17 +1644,128 @@ public final class Brain {
         if (thing.length == 0 || thing.length > 3 || Arrays.stream(thing).anyMatch(x -> x < 0)) {
             return null;
         }
-        String asked = stem(language.vocabulary.word(thing[thing.length - 1]));
+        String asked = language.vocabulary.word(thing[thing.length - 1]);
         for (Carried c : carried) {
-            if (stem(language.vocabulary.word(c.name()[c.name().length - 1])).equals(asked)) {
+            if (sameKind(asked, c.name())) {
                 return join(said("yes , i have"), count(c), c.name(), said("."));
             }
         }
-        if (held != null && stem(language.vocabulary.word(held[held.length - 1])).equals(asked)) {
+        if (held != null && sameKind(asked, held)) {
             return join(said("yes , i'm holding"), article(held), held, said("."));
         }
         // Only what can be carried is said not to be ("do you have a minute?" is no such question).
-        return ITEMS.contains(asked) ? join(said("no , i don't have any"), thing, said(".")) : null;
+        return known(ITEMS, asked) ? join(said("no , i don't have any"), thing, said(".")) : null;
+    }
+
+    /**
+     * The answer to a question about the creatures around it, from what the game told it it sees:
+     * "what do you see?" "i see two cows and a pig .", "how many cows are there?" "there are two
+     * cows .", "are there any zombies around?" "no , i don't see any zombies .". It only says there
+     * are none of a kind of creature. Null if it is no such question or it was never told.
+     */
+    private int[] aroundHere(int[] heard) {
+        int n = heard.length;
+        if (!toldAround || n < 3 || heard[n - 1] != language.vocabulary.find("?")) {
+            return null;
+        }
+        String[] w = new String[n];
+        for (int i = 0; i < n; i++) {
+            w[i] = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
+        }
+        List<String> words = Arrays.asList(w);
+        boolean near = words.contains("see") || words.contains("around") || words.contains("nearby") || words.contains("here")
+                || words.contains("there");
+        if (!near) {
+            return null;
+        }
+        if ((w[0].equals("what") || w[0].equals("who") || w[0].equals("what's") || w[0].equals("who's")) && n <= 6) {
+            if (around.isEmpty()) {
+                return said("i don't see anyone .");
+            }
+            int[] list = said("i see");
+            for (int i = 0; i < around.size() && i < 4; i++) {
+                int[] and = i == 0 ? new int[0] : said(i == Math.min(around.size(), 4) - 1 ? "and" : ",");
+                list = join(list, and, count(around.get(i)), plural(around.get(i)));
+            }
+            return join(list, said("."));
+        }
+        int from;
+        boolean howMany = n >= 5 && w[0].equals("how") && w[1].equals("many");
+        if (howMany) {
+            from = 2;
+        } else if (n >= 5 && (w[0].equals("are") || w[0].equals("is")) && w[1].equals("there")) {
+            from = 2;
+        } else if (n >= 5 && (w[0].equals("do") || w[0].equals("can")) && w[1].equals("you") && w[2].equals("see")) {
+            from = 3;
+        } else {
+            return null;
+        }
+        while (from < n - 1 && Set.of("any", "a", "an", "some", "the").contains(w[from])) {
+            from++;
+        }
+        int to = from;
+        while (to < n - 1 && !Set.of("are", "is", "do", "can", "around", "nearby", "here", "there", "near").contains(w[to])) {
+            to++;
+        }
+        if (to == from || to - from > 2) {
+            return null;
+        }
+        int[] kind = Arrays.copyOfRange(heard, from, to);
+        String asked = w[to - 1];
+        Carried found = null;
+        for (Carried c : around) {
+            if (sameKind(asked, c.name())) {
+                found = c;
+            }
+        }
+        if (found == null) {
+            if (!known(CREATURES, asked)) {
+                return null;
+            }
+            return howMany ? join(said("there are no"), kind, said(".")) : join(said("no , i don't see any"), kind, said("."));
+        }
+        if (howMany) {
+            return join(said(found.count() == 1 ? "there is" : "there are"), count(found), plural(found), said("."));
+        }
+        return join(said("yes , i see"), count(found), plural(found), said("."));
+    }
+
+    /** The forms a word may be one of when it names many ("zombies" may be "zombie"). */
+    private static List<String> singular(String w) {
+        List<String> forms = new ArrayList<>(List.of(w, stem(w)));
+        if (w.endsWith("ies") && w.length() > 4) {
+            forms.add(w.substring(0, w.length() - 3) + "y");
+        }
+        if (w.endsWith("es")) {
+            forms.add(w.substring(0, w.length() - 2));
+        }
+        if (w.endsWith("s")) {
+            forms.add(w.substring(0, w.length() - 1));
+        }
+        return forms;
+    }
+
+    /** Whether an asked word names the same kind as a name's last word ("zombies", "zombie"). */
+    private boolean sameKind(String asked, int[] name) {
+        String last = language.vocabulary.word(name[name.length - 1]);
+        return singular(asked).contains(last) || stem(asked).equals(stem(last));
+    }
+
+    private static boolean known(Set<String> kinds, String asked) {
+        return singular(asked).stream().anyMatch(kinds::contains);
+    }
+
+    /** A name said for how many there are: "cow", "cows". */
+    private int[] plural(Carried c) {
+        int[] name = c.name().clone();
+        if (c.count() > 1) {
+            String last = language.vocabulary.word(name[name.length - 1]);
+            String many = last.endsWith("s") || last.endsWith("sh") || last.endsWith("ch") ? last + "es"
+                    : last.endsWith("y") && last.length() > 2 && "aeiou".indexOf(last.charAt(last.length() - 2)) < 0
+                    ? last.substring(0, last.length() - 1) + "ies" : last.endsWith("sheep") || last.endsWith("fish") ? last : last + "s";
+            name[name.length - 1] = language.vocabulary.id(many);
+        }
+        return name;
     }
 
     /** The words of a short line it says, each found in its vocabulary. */
@@ -1689,8 +1808,13 @@ public final class Brain {
     int[] held;
     /** Whether the game has told it what it carries at all. */
     boolean toldCarried;
-    /** The plain forms of the last words of things that can be carried at all ("bread", "hoe"), from the game. */
+    /** The last words of the names of things that can be carried at all ("bread", "hoe"), from the game. */
     static final Set<String> ITEMS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** The creatures it sees around it, by kind, and how many; as the game tells it, not saved. */
+    final List<Carried> around = new ArrayList<>();
+    boolean toldAround;
+    /** The last words of the names of the kinds of creature there are ("cow", "golem"), from the game. */
+    static final Set<String> CREATURES = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private static java.util.Map<String, String[]> kin(String... rows) {
         java.util.Map<String, String[]> m = new java.util.HashMap<>();

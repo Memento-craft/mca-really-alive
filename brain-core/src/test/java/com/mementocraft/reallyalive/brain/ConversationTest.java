@@ -435,6 +435,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsWhatIsAroundIt() {
+        // As the game tells it: {question, right word, or a word it must not say after "!"}.
+        String[][] asked = {{"what do you see?", "cows"}, {"how many cows are there?", "two"}, {"are there any zombies around?", "no"},
+            {"is there a pig nearby?", "yes"}, {"are there any problems here?", "!no"}};
+        SelfKnowledge.creatures(List.of("cow", "pig", "zombie"));
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 880 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            SelfKnowledge.around(b, List.of(java.util.Map.entry("cow", 2), java.util.Map.entry("pig", 1)));
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            String want = asked[i][1];
+            right += want.startsWith("!") ? (said.contains(want.substring(1)) ? 0 : 1) : (said.contains(want) ? 1 : 0);
+        }
+        System.out.printf("knew what is around it %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},
