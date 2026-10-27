@@ -1,6 +1,8 @@
 package com.mementocraft.reallyalive.brain;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -902,6 +904,16 @@ public final class Brain {
             weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask), match, RECALL_WEIGHT, false, start, turn);
             int[][] mine = talk.recall(heard, before, 0f, RECALLED, match, memory);
             if (toldLine != null) {
+                // The told line that answers the question was picked from all told lately; the
+                // others are not brought up again by their words alone.
+                int kept = 0;
+                for (int r = 0; r < mine.length; r++) {
+                    if (!toldLately(mine[r]) || Arrays.equals(mine[r], toldLineAsHeard)) {
+                        match[kept] = match[r];
+                        mine[kept++] = mine[r];
+                    }
+                }
+                mine = Arrays.copyOf(mine, kept);
                 // Asked about themselves, what someone said in the first person ("my cat ran
                 // away.") was said by them, and is said back to them the other way round.
                 for (int r = 0; r < mine.length; r++) {
@@ -954,6 +966,8 @@ public final class Brain {
     private int heardLinesNext;
     private int[] recalledFocus = new int[0];
     private int[] toldLine;
+    /** The told line as it was heard, before any "yes ," or "because" was put in front. */
+    private int[] toldLineAsHeard;
 
     /**
      * Weighs a line thought through to here, with the language area just after its last word, and
@@ -1063,18 +1077,27 @@ public final class Brain {
         int name = language.vocabulary.find("name");
         boolean askingName = contains(heard, name);
         int[] best = null;
+        int[] bestSeen = null;
         int bestK = 0;
         float bestCue = TOLD_CUE;
+        int[][] names = namesGiven();
         // The latest line is the question itself; only what the speaker told about themselves
         // lately, not other questions, is recalled.
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
             int[] told = heardLines[(heardLinesNext - k) % heardLines.length];
-            if (told.length == 0 || told[told.length - 1] == ask || aboutThem && !aboutSpeaker(told)) {
+            if (told.length == 0 || told[told.length - 1] == ask || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names)) {
                 continue;
             }
+            if (!askingName && !contains(heard, language.vocabulary.find("called")) && namesIn(told, new ArrayList<>())) {
+                // Giving a name answers what something is called, not what it did.
+                continue;
+            }
+            // A thing called by its name is still the thing ("rex is sick." after "my dog is
+            // called rex." tells of the dog).
+            int[] seen = withWhatTheyName(told, names);
             float cue = 0f;
             boolean named = false;
-            for (int w : told) {
+            for (int w : seen) {
                 if (w >= 0 && saidIn(heard, w)) {
                     cue += toldWeight(w, memory, tones);
                 }
@@ -1092,7 +1115,7 @@ public final class Brain {
                 if (q < 0 || toldWeight(q, memory, tones) == 0f) {
                     continue;
                 }
-                if (saidIn(told, q)) {
+                if (saidIn(seen, q)) {
                     telling = Math.max(telling, toldWeight(q, memory, tones));
                 } else if (topics != null) {
                     // A word of the question the line did not say, but one that goes with a word
@@ -1118,6 +1141,7 @@ public final class Brain {
             if (cue > bestCue) {
                 bestCue = cue;
                 best = told;
+                bestSeen = seen;
                 bestK = k;
             }
         }
@@ -1125,11 +1149,21 @@ public final class Brain {
             return new int[0];
         }
         toldLine = best;
+        toldLineAsHeard = best;
+        int answer = yesOrNo(heard, bestSeen, memory, tones);
+        if (answer >= 0) {
+            // "is the baker sick?" asks yes or no: "yes , the baker is sick today ."
+            toldLine = new int[best.length + 2];
+            toldLine[0] = answer;
+            toldLine[1] = language.vocabulary.find(",");
+            System.arraycopy(best, 0, toldLine, 2, best.length);
+        }
         if (aboutThem && contains(heard, language.vocabulary.find("why")) && bestK > 2) {
             // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away.").
             int[] next = heardLines[(heardLinesNext - bestK + 1) % heardLines.length];
             if (next.length > 0 && next[next.length - 1] != ask && aboutSpeaker(next)) {
                 best = next;
+                toldLineAsHeard = next;
                 toldLine = new int[next.length + 1];
                 toldLine[0] = language.vocabulary.find("because");
                 System.arraycopy(next, 0, toldLine, 1, next.length);
@@ -1139,6 +1173,92 @@ public final class Brain {
         // not among the commonest words either.
         return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))
                 && (memory.weight(w) > 0f || tones != null && !tones.common(w))).distinct().toArray();
+    }
+
+    /** Whether a line is one of those heard lately. */
+    private boolean toldLately(int[] line) {
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            if (Arrays.equals(line, heardLines[(heardLinesNext - k) % heardLines.length])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The words a yes or no question starts with. */
+    private static final Set<String> ASKS_YES_OR_NO = Set.of("is", "are", "was", "were", "am", "did", "does", "do", "can",
+            "has", "have", "will", "isn't", "aren't", "didn't", "doesn't");
+
+    /**
+     * The answer to a yes or no question from the told line that answers it: yes if the line says
+     * everything the question asks ("is the baker sick?" "the baker is sick today."), else -1 (not
+     * such a question, or the line said something else, and the line itself is the answer: "is the
+     * gate open?" "the gate is closed."). A word that goes with one the line said can mean the same
+     * ("ill", "sick") or the opposite ("open", "closed"), so it is never taken for a no.
+     */
+    private int yesOrNo(int[] heard, int[] told, ExchangeMemory memory, ToneLinks tones) {
+        if (heard.length == 0 || heard[0] < 0 || !ASKS_YES_OR_NO.contains(language.vocabulary.word(heard[0]))) {
+            return -1;
+        }
+        for (int i = 1; i < heard.length; i++) {
+            int q = heard[i];
+            // Small words ("my", "the") don't make it a different question.
+            if (q >= 0 && toldWeight(q, memory, tones) >= TOLD_TELLING / 2 && !saidIn(told, q)) {
+                return -1;
+            }
+        }
+        return language.vocabulary.find("yes");
+    }
+
+    /**
+     * What things were given names lately ("my dog is called rex.", "the dog's name is rex."), as
+     * the name, the word for the thing, and 1 if it is the speaker's own ("my dog").
+     */
+    private int[][] namesGiven() {
+        List<int[]> names = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            namesIn(heardLines[(heardLinesNext - k) % heardLines.length], names);
+        }
+        return names.toArray(new int[0][]);
+    }
+
+    /** Adds the names a line gives to the list; true if it gives any. */
+    private boolean namesIn(int[] line, List<int[]> names) {
+        int found = names.size();
+        for (int i = 0; i + 1 < line.length; i++) {
+            String w = line[i] < 0 ? "" : language.vocabulary.word(line[i]);
+            String before = i > 0 && line[i - 1] >= 0 ? language.vocabulary.word(line[i - 1]) : "";
+            if ((w.equals("called") || w.equals("named")) && (before.equals("is") || before.equals("was")) && i >= 2) {
+                names.add(new int[] {line[i + 1], line[i - 2], aboutSpeaker(line) ? 1 : 0});
+            } else if (w.equals("name") && i + 2 < line.length && line[i + 1] >= 0
+                    && language.vocabulary.word(line[i + 1]).equals("is") && before.endsWith("'s")) {
+                names.add(new int[] {line[i + 2], language.vocabulary.find(before.substring(0, before.length() - 2)),
+                    aboutSpeaker(line) ? 1 : 0});
+            }
+        }
+        return names.size() > found;
+    }
+
+    /** Whether a line names something of the speaker's own ("rex is sick." after "my dog is called rex."). */
+    private static boolean namesTheirs(int[] line, int[][] names) {
+        for (int[] n : names) {
+            if (n[2] == 1 && contains(line, n[0])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A told line with the words for what the names in it name added. */
+    private static int[] withWhatTheyName(int[] line, int[][] names) {
+        int[] out = line;
+        for (int[] n : names) {
+            if (n[1] >= 0 && contains(line, n[0]) && !contains(out, n[1])) {
+                out = Arrays.copyOf(out, out.length + 1);
+                out[out.length - 1] = n[1];
+            }
+        }
+        return out;
     }
 
     /**
@@ -1204,7 +1324,41 @@ public final class Brain {
      * A word without its ending, so forms of it match: "dried" and "dry", "escaped" and "escape",
      * "keeps" and "keep", "mayor's" and "mayor".
      */
+    /** The past forms of common verbs that don't end in -ed, after their plain form. */
+    private static final java.util.Map<String, String> IRREGULAR = irregular(
+            "be was were been", "begin began begun", "break broke broken", "bring brought", "build built",
+            "buy bought", "catch caught", "choose chose chosen", "come came", "cut cut", "dig dug",
+            "do did done", "draw drew drawn", "drink drank drunk", "drive drove driven", "eat ate eaten",
+            "fall fell fallen", "feed fed", "feel felt", "fight fought", "find found", "fly flew flown",
+            "forget forgot forgotten", "freeze froze frozen", "get got gotten", "give gave given",
+            "go went gone", "grow grew grown", "hang hung", "have had has", "hear heard", "hide hid hidden",
+            "hit hit", "hold held", "hurt hurt", "keep kept", "know knew known", "lay laid", "lead led",
+            "leave left", "lend lent", "light lit", "lose lost", "make made", "mean meant",
+            "meet met", "pay paid", "put put", "read read", "ride rode ridden", "ring rang rung",
+            "rise rose risen", "run ran", "say said", "see saw seen", "sell sold", "send sent", "set set",
+            "shake shook shaken", "shine shone", "shoot shot", "show showed shown", "shut shut",
+            "sing sang sung", "sink sank sunk", "sit sat", "sleep slept", "slide slid", "speak spoke spoken",
+            "spend spent", "stand stood", "steal stole stolen", "stick stuck", "sting stung",
+            "strike struck", "swim swam swum", "swing swung", "take took taken", "teach taught",
+            "tear tore torn", "tell told", "think thought", "throw threw thrown", "wake woke woken",
+            "wear wore worn", "win won", "write wrote written");
+
+    private static java.util.Map<String, String> irregular(String... verbs) {
+        java.util.Map<String, String> plain = new java.util.HashMap<>();
+        for (String v : verbs) {
+            String[] forms = v.split(" ");
+            for (int i = 1; i < forms.length; i++) {
+                plain.putIfAbsent(forms[i], forms[0]);
+            }
+        }
+        return plain;
+    }
+
     static String stem(String w) {
+        String plain = IRREGULAR.get(w);
+        if (plain != null) {
+            w = plain;
+        }
         if (w.endsWith("'s")) {
             w = w.substring(0, w.length() - 2);
         }

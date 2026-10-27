@@ -241,6 +241,33 @@ class ConversationTest {
      * man in a purple coat arrived.").
      */
     @Test
+    void villagerAnswersYesOrNoFromWhatItWasTold() {
+        String[][] talks = {{"the baker is sick today.", "is the baker sick?"},
+            {"a fox stole two chickens last night.", "did the fox steal the chickens?"},
+            {"my dog is called rex.", "rex is sick today.", "is my dog sick?"},
+            {"the river froze last night.", "did the river freeze?"},
+            {"my cat's name is tibbs.", "tibbs caught a mouse.", "did my cat catch a mouse?"},
+            {"my brother broke his leg.", "did my brother break his leg?"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 720 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (String line : talks[i]) {
+                said = talk(b, line, onScript);
+                System.out.println("  player: " + line + "\n  villager: " + String.join(" ", said));
+            }
+            right += !said.isEmpty() && said.get(0).equals("yes") ? 1 : 0;
+        }
+        System.out.printf("answered yes or no from what it was told %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "answered yes or no only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerUnderstandsWhatItIsToldAboutOthers() {
         String[][] talks = {{"the red key is under the bed.", "the weather is nice today.", "where is the key?", "bed"},
             {"a fox stole two chickens from the farm last night.", "i had soup for lunch.", "what did the fox steal?", "chickens"},
