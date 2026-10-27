@@ -150,6 +150,13 @@ public final class Hands {
     public int madeTotal;
     /** Diagnostics: clicks on a screen's slots, and results seen forming in a result slot. */
     public int screenClicks;
+    /** Diagnostics: stacks thrown out of a screen. */
+    public int throwsTotal;
+    /** Kinds of things it lately threw out or gave a machine: taking those out of a machine is not making them. */
+    private final java.util.Map<net.minecraft.world.item.Item, Long> givenKinds = new java.util.HashMap<>();
+    private static final long GIVEN_REMEMBERED = 6000L;
+    /** How far past the window the pointer can go, where letting go of a stack throws it out. */
+    private static final float THROW_MARGIN = 24f;
     /** Diagnostics: machine parts set going (see {@link Motives#SET_GOING}). */
     public int setGoingTotal;
     /** Still blocks it placed or worked lately, and when: if one starts turning it was set going. */
@@ -450,6 +457,10 @@ public final class Hands {
             take(stack);
             int taken = before - stack.getCount();
             if (taken > 0) {
+                if (standIn != null && item.getOwner() == standIn) {
+                    // Picking up what it threw itself is not collecting anything new.
+                    carried = -1;
+                }
                 body.take(item, taken);
                 if (stack.isEmpty()) {
                     item.discard();
@@ -805,6 +816,8 @@ public final class Hands {
             kept = stack;
             p.setItemInHand(hand, ItemStack.EMPTY);
         }
+        boolean machine = Machines.isMachine(level, clicked);
+        java.util.Map<net.minecraft.world.item.Item, Integer> carriedBefore = machine ? countsIn(p.getInventory()) : null;
         InteractionResult r;
         try {
             r = p.gameMode.useItemOn(p, level, p.getItemInHand(hand), hand, hit);
@@ -823,6 +836,9 @@ public final class Hands {
         usedOnBlock++;
         noteWorked(level, clicked);
         noteWorked(level, placeAt);
+        if (carriedBefore != null) {
+            tookFromMachine(carriedBefore, countsIn(p.getInventory()));
+        }
         boolean placed = placing && placeBefore.getBlock() != blockItem.getBlock()
                 && level.getBlockState(placeAt).getBlock() == blockItem.getBlock();
         if (placed) {
@@ -840,6 +856,44 @@ public final class Hands {
             changedTotal++;
         }
         return true;
+    }
+
+    private static java.util.Map<net.minecraft.world.item.Item, Integer> countsIn(net.minecraft.world.entity.player.Inventory inventory) {
+        java.util.Map<net.minecraft.world.item.Item, Integer> n = new java.util.HashMap<>();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            ItemStack s = inventory.getItem(i);
+            if (!s.isEmpty()) {
+                n.merge(s.getItem(), s.getCount(), Integer::sum);
+            }
+        }
+        return n;
+    }
+
+    /**
+     * What a use on a machine moved: things it gave the machine are remembered, and a kind of
+     * thing it took out that it had not given in lately is something the machine made, as flour
+     * from a millstone or a sheet from a press. Taking back only what it put in is not collecting.
+     */
+    private void tookFromMachine(java.util.Map<net.minecraft.world.item.Item, Integer> before, java.util.Map<net.minecraft.world.item.Item, Integer> after) {
+        boolean gained = false;
+        boolean made = false;
+        for (var e : before.entrySet()) {
+            if (after.getOrDefault(e.getKey(), 0) < e.getValue()) {
+                givenKinds.put(e.getKey(), ticksLived);
+            }
+        }
+        for (var e : after.entrySet()) {
+            if (e.getValue() > before.getOrDefault(e.getKey(), 0)) {
+                gained = true;
+                made |= ticksLived - givenKinds.getOrDefault(e.getKey(), Long.MIN_VALUE / 2) > GIVEN_REMEMBERED;
+            }
+        }
+        if (made) {
+            madeThisTick++;
+            madeTotal++;
+        } else if (gained) {
+            carried = -1;
+        }
     }
 
     /** Watches a block it placed or worked, if it is still, to feel it if it starts turning. */
@@ -963,8 +1017,8 @@ public final class Hands {
                 return;
             }
             float[] b = bounds(screen);
-            pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0], b[2]);
-            pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1], b[3]);
+            pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0] - THROW_MARGIN, b[2] + THROW_MARGIN);
+            pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1] - THROW_MARGIN, b[3] + THROW_MARGIN);
             pointed = slotAt(screen, pointerX, pointerY);
             // Carrying a stack about is doing something, and something just made is worth looking
             // at; only an empty pointer over nothing new gets bored.
@@ -1039,6 +1093,12 @@ public final class Hands {
             click(p, -999, AbstractContainerMenu.getQuickcraftMask(2, dragButton), ClickType.QUICK_CRAFT);
         } else if (pointed != null) {
             click(p, pointed.index, dragButton, shift ? ClickType.QUICK_MOVE : ClickType.PICKUP);
+        } else if (outside(screen, pointerX, pointerY)) {
+            // Let go outside the window: the stack (or one of it, with the right button) is
+            // thrown out where the villager looks, as a player throws things out of a screen.
+            givenKinds.put(screen.getCarried().getItem(), ticksLived);
+            click(p, -999, dragButton, ClickType.PICKUP);
+            throwsTotal++;
         }
         dragButton = -1;
         dragSlots.clear();
@@ -1131,6 +1191,12 @@ public final class Hands {
             return new float[] {0f, 0f, 176f, 166f};
         }
         return new float[] {x0 - 8f, y0 - 8f, x1 + 8f, y1 + 8f};
+    }
+
+    /** Whether a point lies outside the screen's window, past the margin round its slots. */
+    public static boolean outside(AbstractContainerMenu menu, float x, float y) {
+        float[] b = bounds(menu);
+        return x < b[0] || x > b[2] || y < b[1] || y > b[3];
     }
 
     /** The slot whose 16x16 square, plus a player's one-pixel slack, holds this point. */

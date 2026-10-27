@@ -412,13 +412,13 @@ public final class WorkLearningTests {
                                 + " in screens {} ticks, left button {}, inventory key {}, over a slot {}, over a thing {}, mean pointer {},{}; carries {} logs, {} planks;"
                                 + " logs handed back {} times; a stack on the pointer {} ticks, over the grid {}, over the result {};"
                                 + " a result showing {} ticks, with the pointer free {}, over it {};"
-                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times; brain {} neurons, {} synapses", tick[0],
+                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; brain {} neurons, {} synapses", tick[0],
                         handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().clicksOnThings, handle.hands().formedTotal, handle.hands().madeTotal,
                         screenTicks[0], attackTicks[0], keyTicks[0], overSlot[0], overThing[0],
                         Math.round(pointerSum[0] / Math.max(1, screenTicks[0])), Math.round(pointerSum[1] / Math.max(1, screenTicks[0])), carried(v, Items.OAK_LOG), carried(v, Items.OAK_PLANKS),
                         handBacks[0], pointerHolding[0], holdingOverGrid[0], holdingOverResult[0],
                         resultTicks[0], resultFree[0], resultOver[0], keyDownOutside[0], keyPressesOutside[0], curiousTicks[0], handle.hands().moves,
-                        handle.brain().neuronCount(), handle.brain().synapseCount());
+                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.brain().neuronCount(), handle.brain().synapseCount());
             }
             if (tick[0] == CRAFT_TICKS) {
                 String report = String.format("CRAFT: made %d things in %d ticks; opened its inventory %d times, open %d%% of the time,"
@@ -682,6 +682,124 @@ public final class WorkLearningTests {
                         placedPerWindow[n - 2] + placedPerWindow[n - 1], handle.hands().setGoingTotal);
                 LOG.info("SPIN newborn {} learning result: {}", which, report);
                 if (handle.hands().setGoingTotal >= 5 && last > first) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornRunsAPress(GameTestHelper h) {
+        pressBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornRunsAPress(GameTestHelper h) {
+        pressBenchmark(h, "2");
+    }
+
+    /**
+     * With Create installed: a turning press over a depot, and a newborn carrying iron. Iron put
+     * on the depot (the use key on it) is pressed into sheets, and taking the sheets back with an
+     * empty hand is felt as making something. Taking back unpressed iron is not. The sheets it
+     * carries are taken away now and then, and it is given more iron when it has none left.
+     */
+    private static void pressBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "PRESS")) {
+            return;
+        }
+        java.util.function.Function<String, ResourceLocation> create = id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var depot = BuiltInRegistries.BLOCK.getOptional(create.apply("depot"));
+        var sheet = BuiltInRegistries.ITEM.getOptional(create.apply("iron_sheet"));
+        if (motor.isEmpty() || press.isEmpty() || depot.isEmpty() || sheet.isEmpty()) {
+            LOG.info("PRESS: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        BlockPos onto = new BlockPos(5, 2, 9);
+        BlockPos pressAt = onto.above(2);
+        BlockPos motorAt = pressAt.east();
+        var pressState = press.get().defaultBlockState().setValue(
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST);
+        var motorState = motor.get().defaultBlockState().setValue(
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.WEST);
+        Villager v = pen(h, new ItemStack(Items.IRON_INGOT, 16), TICKS);
+        h.setBlock(onto, depot.get());
+        h.setBlock(pressAt, pressState);
+        h.setBlock(motorAt, motorState);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] madePerWindow = new int[TICKS / WINDOW];
+        int[] start = {0};
+        int[] aimedAtDepot = {0};
+        int[] usedOnDepot = {0};
+        int[] handBacks = {0};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (!h.getBlockState(onto).is(depot.get())) {
+                h.setBlock(onto, depot.get());
+            }
+            if (!h.getBlockState(pressAt).is(press.get())) {
+                h.setBlock(pressAt, pressState);
+            }
+            if (!h.getBlockState(motorAt).is(motor.get())) {
+                h.setBlock(motorAt, motorState);
+            }
+            if (handle.hands().target() instanceof BlockHitResult hit && hit.getBlockPos().equals(h.absolutePos(onto))) {
+                aimedAtDepot[0]++;
+                usedOnDepot[0] += handle.command().use() ? 1 : 0;
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                clearPen(h, onto, pressAt, motorAt);
+                regrow(h, v);
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    if (v.getInventory().getItem(i).is(sheet.get())) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+                if (v.getMainHandItem().is(sheet.get())) {
+                    v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                }
+                boolean onDepot = false;
+                var be = h.getBlockEntity(onto);
+                if (be != null) {
+                    var items = h.getLevel().getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                            h.absolutePos(onto), null);
+                    if (items != null) {
+                        for (int i = 0; i < items.getSlots(); i++) {
+                            onDepot |= !items.getStackInSlot(i).isEmpty();
+                        }
+                    }
+                }
+                if (carried(v, Items.IRON_INGOT) == 0 && !onDepot) {
+                    v.getInventory().addItem(new ItemStack(Items.IRON_INGOT, 16));
+                    handBacks[0]++;
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                int w = tick[0] / WINDOW - 1;
+                madePerWindow[w] = handle.hands().madeTotal - start[0];
+                start[0] = handle.hands().madeTotal;
+                LOG.info("PRESS newborn {}: ticks {}-{}: took sheets {} times; aimed at the depot {} ticks, pressing use {}; iron handed back {} times;"
+                                + " carries {} iron, in hand {}; screens opened {}, thrown {}", which, tick[0] - WINDOW, tick[0], madePerWindow[w],
+                        aimedAtDepot[0], usedOnDepot[0], handBacks[0], carried(v, Items.IRON_INGOT), v.getMainHandItem(),
+                        handle.hands().screensOpened, handle.hands().throwsTotal);
+            }
+            if (tick[0] == TICKS) {
+                int n = madePerWindow.length;
+                int first = madePerWindow[0] + madePerWindow[1];
+                int last = madePerWindow[n - 2] + madePerWindow[n - 1];
+                String report = String.format("PRESS: took sheets %d times in the first %d ticks, %d in the last; %d in all; iron handed back %d times",
+                        first, 2 * WINDOW, last, handle.hands().madeTotal, handBacks[0]);
+                LOG.info("PRESS newborn {} learning result: {}", which, report);
+                if (handle.hands().madeTotal >= 5 && last > first) {
                     h.succeed();
                 } else {
                     h.fail("not learned yet: " + report);

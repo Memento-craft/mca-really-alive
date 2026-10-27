@@ -125,6 +125,9 @@ public final class Senses {
                     // shafts beside a turning motor looked at it 15 ticks in 60000.
                     if (Machines.turning(level, block.getBlockPos())) {
                         creature = Math.max(creature, TURNING);
+                    } else if (Machines.holdsThings(level, block.getBlockPos())) {
+                        // Machinery that holds things (a depot, a millstone) is a workstation too.
+                        creature = Math.max(creature, WORKSTATION);
                     }
                 } else {
                     near = 0f;

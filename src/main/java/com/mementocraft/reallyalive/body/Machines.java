@@ -34,6 +34,24 @@ public final class Machines {
         return KINETIC != null;
     }
 
+    /**
+     * Whether the block at a position is part of a machine, turning or not: a Create block that
+     * holds something, such as a millstone, a press or the depot under it.
+     */
+    public static boolean isMachine(Level level, BlockPos pos) {
+        if (KINETIC == null || !level.isLoaded(pos)) {
+            return false;
+        }
+        BlockEntity be = level.getBlockEntity(pos);
+        return be != null && "create".equals(net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                .getKey(be.getBlockState().getBlock()).getNamespace());
+    }
+
+    /** Whether the block at a position is a machine that things can be put in, as a depot or a millstone. */
+    public static boolean holdsThings(Level level, BlockPos pos) {
+        return isMachine(level, pos) && level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK, pos, null) != null;
+    }
+
     /** Whether the block at a position is a machine part with rotation in it. */
     public static boolean turning(Level level, BlockPos pos) {
         if (KINETIC == null || !level.isLoaded(pos)) {
