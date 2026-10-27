@@ -384,6 +384,13 @@ class ConversationTest {
             System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
             right += said.contains(asked[i][1]) ? 1 : 0;
         }
+        // Asked one after another in the same talk: the first question is no telling of a tie.
+        Brain b = Brain.create(Genome.defaults(), 857, 1f);
+        b.setBabbleScale(1f);
+        SelfKnowledge.tell(b, "Pedro", "farmer", false, List.of(new String[] {"mother", "Rosa"}, new String[] {"father", "Juan"}));
+        int[] onScript = {0, 0};
+        talk(b, "who is your mother?", onScript);
+        right += talk(b, "who is your father?", onScript).contains("juan") ? 0 : -1;
         System.out.printf("knew its own family %d of %d%n", right, asked.length);
         assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
     }

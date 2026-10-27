@@ -387,7 +387,20 @@ public final class BrainManager {
             Naming.worldAround(v, h.brain);
         }
         Brain brain = h.brain;
-        h.pending = CompletableFuture.supplyAsync(() -> brain.step(f), workers);
+        h.pending = CompletableFuture.supplyAsync(() -> stepSafely(brain, f, v), workers);
+    }
+
+    /**
+     * One step of a brain; a fault in it (a bug) is logged and the villager stands idle for that
+     * tick, rather than the fault reaching the server thread.
+     */
+    private static MotorCommand stepSafely(Brain brain, SensoryFrame f, Villager v) {
+        try {
+            return brain.step(f);
+        } catch (RuntimeException e) {
+            LOG.error("Brain of villager {} failed a step", v.getUUID(), e);
+            return MotorCommand.IDLE;
+        }
     }
 
     /**

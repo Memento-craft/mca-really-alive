@@ -1878,7 +1878,9 @@ public final class Brain {
             while (end > 0 && line[end] >= 0 && !Character.isLetter(language.vocabulary.word(line[end]).charAt(0))) {
                 end--;
             }
-            if (at < 1 || end < at + 2 || line[end] < 0 || !KIN.containsKey(language.vocabulary.word(line[end]))) {
+            if (at < 1 || end < at + 2 || line[end] < 0 || !KIN.containsKey(language.vocabulary.word(line[end]))
+                    || line[line.length - 1] == language.vocabulary.find("?")) {
+                // Not a telling of a tie ("who is your mother?" asks one).
                 continue;
             }
             String one = kinName(line, 0, at), other = kinName(line, at + 1, end);
@@ -1892,10 +1894,10 @@ public final class Brain {
                 genders.put(one, k[1]);
             }
             said.putIfAbsent(one, Arrays.copyOfRange(line, 0, at));
-            if (!other.equals(SPEAKER)) {
+            int[] whose = Arrays.copyOfRange(line, at + 1, end);
+            String last = language.vocabulary.word(whose[whose.length - 1]);
+            if (!other.equals(SPEAKER) && !other.equals(SELF) && last.indexOf('\'') > 0) {
                 // "ben's" is said "ben".
-                int[] whose = Arrays.copyOfRange(line, at + 1, end);
-                String last = language.vocabulary.word(whose[whose.length - 1]);
                 whose[whose.length - 1] = language.vocabulary.find(last.substring(0, last.lastIndexOf('\'')));
                 if (whose[whose.length - 1] >= 0) {
                     said.putIfAbsent(other, whose);
