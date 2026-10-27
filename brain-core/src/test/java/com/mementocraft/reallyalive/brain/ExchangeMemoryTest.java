@@ -42,7 +42,7 @@ class ExchangeMemoryTest {
             int[] heard = WordCode.tokenize(c[0]).stream().mapToInt(v::find).toArray();
             // A wider look than the eight the brain weighs: many short answers tie on one telling word.
             float[] match = new float[24];
-            int[][] answers = memory.recall(heard, new int[0], 0f, 24, match);
+            int[][] answers = memory.recall(heard, new int[0], 0f, 24, match, v.find("?"));
             assertTrue(answers.length > 0, "nothing recalled for " + c[0]);
             int fitting = 0;
             for (int[] a : answers) {
@@ -112,6 +112,7 @@ class ExchangeMemoryTest {
         });
         List<char[]> answers = new ArrayList<>();
         List<char[]> cues = new ArrayList<>();
+        List<Boolean> asked = new ArrayList<>();
         for (String spec : files) {
             String[] fs = spec.split(":");
             int stride = fs.length > 1 ? Integer.parseInt(fs[1]) : 1;
@@ -156,6 +157,7 @@ class ExchangeMemoryTest {
                             }
                             answers.add(answer);
                             cues.add(c);
+                            asked.add(prev.get(prev.size() - 1).equals("?"));
                         }
                     }
                     prev = cur;
@@ -168,7 +170,7 @@ class ExchangeMemoryTest {
             o.writeInt(answers.size());
             for (int p = 0; p < answers.size(); p++) {
                 for (char[] l : new char[][] {answers.get(p), cues.get(p)}) {
-                    o.writeByte(l.length);
+                    o.writeByte(l.length | (l == answers.get(p) && asked.get(p) ? ExchangeMemory.ANSWERED_QUESTION : 0));
                     for (char c : l) {
                         o.writeChar(c);
                     }

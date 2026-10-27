@@ -88,10 +88,14 @@ It works the same for what anyone says about anything, in sentences it never hea
 told "a strange man in a purple coat arrived at the inn." and then something else, and asked
 "what was the man wearing?", it answers "a strange man in a purple coat arrived at the inn.". The
 question has to be mostly about what the line said, counting word forms ("dried", "dry") and
-words that go together across a turn by the topic links ("wearing", "coat"), and to share at least
-one telling word with it, so ordinary chat doesn't bring old lines back. On 20 new sentences each
-asked about after other talk it answers 19 (3 before), and 18 of 20 on a second set written
-afterwards.
+words that go together across a turn by the topic links ("wearing", "coat"), words that stand
+for like things because they bring up the same answers ("wedding" for "married"), and names
+("who did pedro marry?"), and to share at least one telling word with it, so ordinary chat
+doesn't bring old lines back. On 20 new sentences each asked about after other talk it answers
+19 (3 before), and 20 of 20 on each of two more sets written afterwards; asked the same
+questions without being told, it makes up an answer that happens to be right once in 60.
+Remembered answers also keep track of whether they answered a question or a telling, so news
+("the bridge fell down yesterday.") is no longer answered as "what is a bridge?" was.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

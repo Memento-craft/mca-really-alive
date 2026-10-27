@@ -161,7 +161,11 @@ public final class Brain {
     /** How many lines back a told line can be. */
     static final int TOLD_LINES = 8;
     static final float TOLD_LINK = 2f;
+    /** How alike two words must be for one to stand for the other in a question. */
+    static final float TOLD_ALIKE = Float.parseFloat(System.getProperty("reallyalive.toldAlike", "0.4"));
     static final float TOLD_TELLING = 5f;
+    /** How telling a name is in a question about something told. */
+    static final float TOLD_NAME = 8f;
     static final float TOLD_COVER = 0.5f;
     static final int TOLD_QUESTION_WORDS = 10;
     static final float TOLD_WEIGHT = Float.parseFloat(System.getProperty("reallyalive.toldWeight", "3"));
@@ -894,8 +898,8 @@ public final class Brain {
             float[] match = new float[RECALLED];
             int[] heard = language.heardLine();
             int[] before = language.earlierLine();
-            weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match), match, RECALL_WEIGHT, false, start, turn);
             talk.ask = language.vocabulary.find("?");
+            weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask), match, RECALL_WEIGHT, false, start, turn);
             int[][] mine = talk.recall(heard, before, 0f, RECALLED, match, memory);
             if (toldLine != null) {
                 // Asked about themselves, what someone said in the first person ("my cat ran
@@ -1051,11 +1055,11 @@ public final class Brain {
             return new int[0];
         }
         boolean aboutThem = aboutSpeaker(heard);
+        ToneLinks tones = ToneLinks.shared();
         float asked = 0f;
         for (int w : heard) {
-            asked += w >= 0 ? memory.weight(w) : 0f;
+            asked += toldWeight(w, memory, tones);
         }
-        ToneLinks tones = ToneLinks.shared();
         int name = language.vocabulary.find("name");
         boolean askingName = contains(heard, name);
         int[] best = null;
@@ -1072,7 +1076,7 @@ public final class Brain {
             boolean named = false;
             for (int w : told) {
                 if (w >= 0 && saidIn(heard, w)) {
-                    cue += memory.weight(w);
+                    cue += toldWeight(w, memory, tones);
                 }
                 named |= w >= 0 && memory.weight(w) == 0f && tones != null && !tones.common(w)
                         && Character.isLetter(language.vocabulary.word(w).charAt(0));
@@ -1085,19 +1089,25 @@ public final class Brain {
             float linked = 0f;
             TopicLinks topics = TopicLinks.shared();
             for (int q : heard) {
-                if (q < 0 || memory.weight(q) == 0f) {
+                if (q < 0 || toldWeight(q, memory, tones) == 0f) {
                     continue;
                 }
                 if (saidIn(told, q)) {
-                    telling = Math.max(telling, memory.weight(q));
+                    telling = Math.max(telling, toldWeight(q, memory, tones));
                 } else if (topics != null) {
                     // A word of the question the line did not say, but one that goes with a word
                     // it did ("what was he wearing?" "a purple coat.").
-                    float link = 0f;
+                    // Or a word that stands for a like thing ("wedding" for "married").
+                    boolean goes = false, same = false;
                     for (int w : told) {
-                        link = Math.max(link, topics.link(q, w));
+                        same |= w >= 0 && topics.alike(q, w) >= TOLD_ALIKE;
+                        goes |= w >= 0 && topics.link(q, w) >= TOLD_LINK;
                     }
-                    linked += link >= TOLD_LINK ? memory.weight(q) : 0f;
+                    linked += goes || same ? toldWeight(q, memory, tones) : 0f;
+                    if (same) {
+                        telling = Math.max(telling, toldWeight(q, memory, tones));
+                        cue += toldWeight(q, memory, tones);
+                    }
                 }
             }
             if (!aboutThem && (cue + linked < TOLD_COVER * asked || telling < TOLD_TELLING)) {
@@ -1115,7 +1125,7 @@ public final class Brain {
             return new int[0];
         }
         toldLine = best;
-        if (contains(heard, language.vocabulary.find("why")) && bestK > 2) {
+        if (aboutThem && contains(heard, language.vocabulary.find("why")) && bestK > 2) {
             // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away.").
             int[] next = heardLines[(heardLinesNext - bestK + 1) % heardLines.length];
             if (next.length > 0 && next[next.length - 1] != ask && aboutSpeaker(next)) {
@@ -1129,6 +1139,19 @@ public final class Brain {
         // not among the commonest words either.
         return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))
                 && (memory.weight(w) > 0f || tones != null && !tones.common(w))).distinct().toArray();
+    }
+
+    /**
+     * How telling a word is in a question about something told: as a cue to remembered exchanges,
+     * and a name ("lena", "pedro"), which never cues one, as a rare word.
+     */
+    private float toldWeight(int w, ExchangeMemory memory, ToneLinks tones) {
+        if (w < 0) {
+            return 0f;
+        }
+        float weight = memory.weight(w);
+        return weight > 0f || tones == null || tones.common(w) || !Character.isLetter(language.vocabulary.word(w).charAt(0))
+                ? weight : TOLD_NAME;
     }
 
     /** Whether a line is the speaker talking about themselves ("i", "my", "me"). */

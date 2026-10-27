@@ -249,7 +249,9 @@ class ConversationTest {
             {"a strange man in a purple coat arrived at the inn.", "the weather is nice today.", "what was the man wearing?", "coat"},
             {"the twins are seven years old.", "i had soup for lunch.", "how old are the twins?", "seven"},
             {"the cows escaped through a hole in the fence.", "the market was busy.", "how did the cows escape?", "hole"},
-            {"the festival starts at sunset on friday.", "my feet hurt from walking.", "when does the festival start?", "sunset"}};
+            {"the festival starts at sunset on friday.", "my feet hurt from walking.", "when does the festival start?", "sunset"},
+            {"pedro married the tailor's daughter last summer.", "the market was busy.", "who did pedro marry?", "tailor's"},
+            {"the mayor's daughter is getting married in june.", "the weather is nice today.", "when is the wedding?", "june"}};
         int right = 0;
         for (int i = 0; i < talks.length; i++) {
             Brain b = Brain.create(Genome.defaults(), 700 + i, 1f);

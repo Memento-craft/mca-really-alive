@@ -23,20 +23,30 @@ final class ExchangeMemory {
     static final float SMALL_WORD_CUE = Float.parseFloat(System.getProperty("reallyalive.smallCue", "0.5"));
     /** How much of a match is measured against the best match for the same line, rather than outright. */
     static final float RELATIVE = Float.parseFloat(System.getProperty("reallyalive.relative", "0.5"));
+    /**
+     * How much an answer counts that answered the other kind of line: a telling ("the bridge fell
+     * down.") is not answered as the question "what is a bridge?" was, nor a question as a telling.
+     */
+    static final float OTHER_KIND = Float.parseFloat(System.getProperty("reallyalive.otherKind", "0.75"));
+    /** Set on an answer line's stored length when the line it answered was a question. */
+    static final int ANSWERED_QUESTION = 0x80;
 
     private static ExchangeMemory shared;
     private static boolean tried;
 
     /** Remembered answers, as word ids of the English base. */
     private final char[][] answers;
+    /** Whether each answer answered a question. */
+    private final boolean[] answeredQuestion;
     /** How many cues each answer has, for weighing a match by how much of its line it covers. */
     private final float[] cueNorm;
     /** For each word, the answers it is a cue for, and how telling it is. */
     private final int[][] cuedBy;
     private final float[] weight;
 
-    private ExchangeMemory(char[][] answers, char[][] cues, int words) {
+    private ExchangeMemory(char[][] answers, boolean[] answeredQuestion, char[][] cues, int words) {
         this.answers = answers;
+        this.answeredQuestion = answeredQuestion;
         int[] count = new int[words];
         for (char[] c : cues) {
             for (char w : c) {
@@ -89,16 +99,19 @@ final class ExchangeMemory {
         int words = d.readInt();
         int n = d.readInt();
         char[][] answers = new char[n][];
+        boolean[] answeredQuestion = new boolean[n];
         char[][] cues = new char[n][];
         for (int p = 0; p < n; p++) {
-            answers[p] = readLine(d);
-            cues[p] = readLine(d);
+            int length = d.readUnsignedByte();
+            answeredQuestion[p] = (length & ANSWERED_QUESTION) != 0;
+            answers[p] = readLine(d, length & ~ANSWERED_QUESTION);
+            cues[p] = readLine(d, d.readUnsignedByte());
         }
-        return new ExchangeMemory(answers, cues, words);
+        return new ExchangeMemory(answers, answeredQuestion, cues, words);
     }
 
-    private static char[] readLine(DataInputStream d) throws IOException {
-        char[] line = new char[d.readUnsignedByte()];
+    private static char[] readLine(DataInputStream d, int length) throws IOException {
+        char[] line = new char[length];
         for (int i = 0; i < line.length; i++) {
             line[i] = d.readChar();
         }
@@ -108,9 +121,11 @@ final class ExchangeMemory {
     /**
      * The answers best cued by a heard line (word ids), best first, with how well each matched
      * (0..1). The line before it cues too, by the given share, so the talk keeps to its topic.
-     * Words the memory has no cue for count for nothing.
+     * Words the memory has no cue for count for nothing. The heard line asks something if it ends
+     * with the word ask ("?"); answers to the other kind of line count less.
      */
-    int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match) {
+    int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, int ask) {
+        boolean asking = heard.length > 0 && heard[heard.length - 1] == ask;
         float[] score = new float[answers.length];
         int[] seen = new int[heard.length + before.length];
         int distinct = 0;
@@ -149,7 +164,7 @@ final class ExchangeMemory {
             if (score[p] == 0f) {
                 continue;
             }
-            float v = score[p] / (cueNorm[p] * heardNorm);
+            float v = score[p] / (cueNorm[p] * heardNorm) * (answeredQuestion[p] == asking ? 1f : OTHER_KIND);
             if (found == k && v <= topScore[found - 1]) {
                 continue;
             }

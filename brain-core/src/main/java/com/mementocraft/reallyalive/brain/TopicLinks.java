@@ -94,6 +94,35 @@ final class TopicLinks {
         return Math.max(one(a, b), one(b, a));
     }
 
+    /**
+     * How alike two words are in what they lead to: words that bring up the same answers ("wolf"
+     * and "coyote" both bring up "scary", "bite", "forest") stand for like things. The cosine of
+     * their links, 0..1.
+     */
+    float alike(int a, int b) {
+        if (a < 0 || b < 0 || a >= to.length || b >= to.length || to[a].length == 0 || to[b].length == 0) {
+            return 0f;
+        }
+        char[] x = to[a], y = to[b];
+        float dot = 0f, xx = 0f, yy = 0f;
+        for (float s : strength[a]) xx += s * s;
+        for (float s : strength[b]) yy += s * s;
+        for (int i = 0, j = 0; i < x.length && j < y.length; ) {
+            if (x[i] == y[j]) {
+                dot += strength[a][i++] * strength[b][j++];
+            } else if (x[i] < y[j]) {
+                i++;
+            } else {
+                j++;
+            }
+        }
+        return dot / (float) Math.sqrt(xx * yy);
+    }
+
+    int words() {
+        return to.length;
+    }
+
     private float one(int q, int w) {
         if (q < 0 || q >= to.length || w < 0 || w >= 65536) {
             return 0f;
