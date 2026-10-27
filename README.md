@@ -141,6 +141,10 @@ partner, children, siblings, by name), so asked "who is your mother?" it says "r
 .", asked "who is lena's husband?" it says "i am lena's husband .", and it works out more from
 what it is told ("ana is rosa's mother." "who is your grandmother?" "ana is my grandmother ."). MCA
 is reached by reflection, so without it a villager just has no family to tell of.
+Every 10 seconds the game also tells it the time of day, the weather where it stands and the land
+it lives in, by biome: "what time is it?" "it's evening .", "is it raining?" "yes , it's raining .",
+"where do you live?" "i live in the snowy taiga .". These answer questions only, not tellings like
+"the weather is nice today.".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

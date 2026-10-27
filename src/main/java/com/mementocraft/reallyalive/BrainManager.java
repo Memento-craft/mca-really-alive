@@ -382,6 +382,9 @@ public final class BrainManager {
         if (h.age % 1200 == 0) {
             // Its name or work may have changed since it was last told.
             Naming.whoItIs(v, h.brain);
+        } else if (h.age % 200 == 0) {
+            // The time and the weather change more often.
+            Naming.worldAround(v, h.brain);
         }
         Brain brain = h.brain;
         h.pending = CompletableFuture.supplyAsync(() -> brain.step(f), workers);

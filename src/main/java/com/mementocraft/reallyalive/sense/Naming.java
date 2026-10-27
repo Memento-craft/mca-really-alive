@@ -66,8 +66,9 @@ public final class Naming {
 
     /**
      * Tells a villager who it is: its name (MCA names every villager), its work and whether it is
-     * still a child, and its family as MCA knows it, so it answers "what's your name?", "what do
-     * you do?" and "who is your mother?" truthfully.
+     * still a child, its family as MCA knows it, and the time, weather and land around it, so it
+     * answers "what's your name?", "what do you do?", "who is your mother?" and "is it raining?"
+     * truthfully.
      */
     public static void whoItIs(Villager v, Brain brain) {
         String name = v.hasCustomName() ? v.getCustomName().getString() : null;
@@ -77,6 +78,40 @@ public final class Naming {
             work = null;
         }
         SelfKnowledge.tell(brain, name, work, v.isBaby(), McaFamily.of(v));
+        worldAround(v, brain);
+    }
+
+    /** Tells a villager the time, the weather and the land around it, which change more often. */
+    public static void worldAround(Villager v, Brain brain) {
+        SelfKnowledge.world(brain, timeOfDay(v.level().getDayTime()), weather(v), land(v));
+    }
+
+    /** The time of day as people say it; a Minecraft day starts at six in the morning. */
+    static String timeOfDay(long dayTime) {
+        long t = Math.floorMod(dayTime, 24000L);
+        return t < 6000 ? "morning" : t < 12000 ? "afternoon" : t < 13800 ? "evening" : t < 22500 ? "night" : "early morning";
+    }
+
+    /** The weather where a villager stands: "sunny" (or "clear" at night), "raining", "snowing" or "stormy". */
+    private static String weather(Villager v) {
+        net.minecraft.core.BlockPos at = v.blockPosition();
+        if (v.level().isRaining()) {
+            net.minecraft.world.level.biome.Biome.Precipitation fall = v.level().getBiome(at).value().getPrecipitationAt(at);
+            if (fall == net.minecraft.world.level.biome.Biome.Precipitation.SNOW) {
+                return "snowing";
+            }
+            if (fall == net.minecraft.world.level.biome.Biome.Precipitation.RAIN) {
+                return v.level().isThundering() ? "stormy" : "raining";
+            }
+        }
+        return v.level().isDay() ? "sunny" : "clear";
+    }
+
+    /** The land it is in, by its biome: "plains", "snowy taiga". */
+    private static String land(Villager v) {
+        return v.level().getBiome(v.blockPosition()).unwrapKey()
+                .map(k -> k.location().getPath().replace('_', ' '))
+                .orElse(null);
     }
 
     /** Whether a player or another villager is close enough to talk to. */

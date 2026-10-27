@@ -445,4 +445,34 @@ public final class SpeechTests {
             }
         });
     }
+
+    /** Asked "what time is it?" in the evening, a villager says it's evening. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "time_of_day")
+    public static void villagerKnowsTheTimeOfDay(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        long before = h.getLevel().getDayTime();
+        h.getLevel().setDayTime(before - Math.floorMod(before, 24000L) + 12500);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        com.mementocraft.reallyalive.sense.Naming.whoItIs(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "what time is it?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("time benchmark: asked \"what time is it?\" in the evening, the villager answered {}", answers);
+                h.getLevel().setDayTime(before);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("evening")),
+                        "asked \"what time is it?\" in the evening it said " + answers);
+                h.succeed();
+            }
+        });
+    }
 }

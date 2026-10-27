@@ -389,6 +389,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsTheWorldAroundIt() {
+        // As the game tells it; a telling about the weather is not taken for a question.
+        String[][] asked = {{"what time is it?", "evening"}, {"how's the weather?", "raining"}, {"is it raining?", "yes"},
+            {"where do you live?", "taiga"}, {"where are we?", "taiga"}, {"the weather is nice today.", "!raining"}};
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 860 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            SelfKnowledge.tell(b, "Pedro", "farmer", false, List.of());
+            SelfKnowledge.world(b, "evening", "raining", "snowy taiga");
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            String want = asked[i][1];
+            right += want.startsWith("!") ? (said.contains(want.substring(1)) ? 0 : 1) : (said.contains(want) ? 1 : 0);
+        }
+        System.out.printf("knew the world around it %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},

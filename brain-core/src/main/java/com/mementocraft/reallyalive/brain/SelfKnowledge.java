@@ -18,7 +18,36 @@ public final class SelfKnowledge {
     private static final String AGE_KEYS = "old age kid grown";
     private static final String[] ASK_AGE = {"how old are you?", "are you a kid?", "are you a grown up?"};
 
+    private static final String[] ASK_TIME = {"what time is it?", "what time of day is it?", "is it day or night?"};
+    private static final String[] ASK_WEATHER = {"how's the weather?", "what's the weather like?", "how is the weather today?",
+        "what's the weather like outside?"};
+    private static final String[] ASK_RAIN = {"is it raining?", "is it raining outside?", "is it going to rain?"};
+    private static final String[] ASK_HOME = {"where do you live?", "where is your home?", "where are you from?"};
+    private static final String[] ASK_HERE = {"where are we?", "where is this?", "what is this place?"};
+
     private SelfKnowledge() {}
+
+    /**
+     * Tells a brain what the world around it is like now, after {@link #tell}: the time of day
+     * ("morning"), the weather ("sunny", "raining", "snowing" or "stormy") and the land it lives in
+     * ("plains"), any of them null if not known. The game tells it again as they change; what it
+     * was told of them before is forgotten.
+     */
+    public static void world(Brain b, String time, String weather, String land) {
+        b.talk.forgetAround();
+        if (time != null) {
+            know(b, ASK_TIME, "time day night", "it's " + time + ".", false);
+        }
+        if (weather != null) {
+            know(b, ASK_WEATHER, "weather", weather.equals("stormy") ? "there's a storm." : "it's " + weather + ".", false);
+            know(b, ASK_RAIN, "rain raining", weather.equals("raining") || weather.equals("stormy") ? "yes, it's raining."
+                    : weather.equals("snowing") ? "no, it's snowing." : "no, it's not raining.", false);
+        }
+        if (land != null) {
+            know(b, ASK_HOME, "live home from", "i live in the " + land + ".");
+            know(b, ASK_HERE, "we this place", "we're in the " + land + ".", false);
+        }
+    }
 
     /**
      * Tells a brain who it is. The name may be null; work is a profession word ("farmer",
@@ -58,10 +87,14 @@ public final class SelfKnowledge {
     }
 
     private static void know(Brain b, String[] questions, String keys, String answer) {
+        know(b, questions, keys, answer, true);
+    }
+
+    private static void know(Brain b, String[] questions, String keys, String answer, boolean ofItself) {
         int[] said = ids(b, answer);
         int[] keyIds = ids(b, keys);
         for (String q : questions) {
-            b.talk.knowSelf(ids(b, q), keyIds, said);
+            b.talk.knowSelf(ids(b, q), keyIds, said, ofItself);
         }
     }
 

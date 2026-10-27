@@ -222,16 +222,41 @@ final class ExchangeMemory {
         private int next;
         private int selfCount;
         private final int[][] selfKeys = new int[SELF_CAPACITY][];
+        private final boolean[] selfOfItself = new boolean[SELF_CAPACITY];
 
         /** Forgets what it knew about itself, before being told again. */
         void forgetSelf() {
             selfCount = 0;
         }
 
+        /** Forgets only what it knew of what is so around it, before being told again. */
+        void forgetAround() {
+            int kept = 0;
+            for (int i = 0; i < selfCount; i++) {
+                if (selfOfItself[i]) {
+                    cues[CAPACITY + kept] = cues[CAPACITY + i];
+                    answers[CAPACITY + kept] = answers[CAPACITY + i];
+                    selfKeys[kept] = selfKeys[i];
+                    selfOfItself[kept] = true;
+                    kept++;
+                }
+            }
+            selfCount = kept;
+        }
+
         /** Knows that asked this line, the answer about itself is that one; keys must be in what is asked. */
         void knowSelf(int[] line, int[] keys, int[] answer) {
+            knowSelf(line, keys, answer, true);
+        }
+
+        /**
+         * As above; ofItself false for what is so around it ("what time is it?"), which is asked
+         * without "you".
+         */
+        void knowSelf(int[] line, int[] keys, int[] answer, boolean ofItself) {
             if (selfCount < SELF_CAPACITY && line.length > 0 && answer.length > 0) {
                 cues[CAPACITY + selfCount] = cuesOf(line, null);
+                selfOfItself[selfCount] = ofItself;
                 selfKeys[selfCount] = Arrays.stream(keys).sorted().toArray();
                 answers[CAPACITY + selfCount] = answer.clone();
                 selfCount++;
@@ -316,14 +341,15 @@ final class ExchangeMemory {
          * question's key words ("name", "job") and asks it of the villager ("your name", not
          * "her name"; "how old are you", not "are you okay").
          */
-        private boolean askedOfIt(int slot, int[] heard) {
+        private boolean askedOfIt(int slot, int[] heard, boolean asking) {
             int[] keys = selfKeys[slot - CAPACITY];
             boolean key = false, asked = false;
             for (int h : heard) {
                 key |= Arrays.binarySearch(keys, h) >= 0;
                 asked |= Arrays.binarySearch(you, h) >= 0;
             }
-            return key && asked;
+            // What is so around it answers a question about it, not a telling ("the weather is nice.").
+            return key && (selfOfItself[slot - CAPACITY] ? asked : asking);
         }
 
         /** The words that ask something of the villager itself ("you", "your"), sorted ids. */
@@ -385,7 +411,7 @@ final class ExchangeMemory {
                 // other memories need the lines to match as wholes.
                 double lean = slots[p] >= CAPACITY ? 0.9 : 0.5;
                 v[p] = (float) (Math.pow(covered, lean) * Math.pow(heardCovered, 1 - lean));
-                if (slots[p] >= CAPACITY ? !askedOfIt(slots[p], heard)
+                if (slots[p] >= CAPACITY ? !askedOfIt(slots[p], heard, asking)
                         : asking != (Arrays.binarySearch(cues[slots[p]], ask) >= 0)) {
                     // A question is not answered as the telling it asks about was: told "my
                     // favourite colour is green." and asked "what's my favourite colour?", the
