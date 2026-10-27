@@ -807,4 +807,111 @@ public final class WorkLearningTests {
             }
         });
     }
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornPowersAndRunsAPress(GameTestHelper h) {
+        chainBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornPowersAndRunsAPress(GameTestHelper h) {
+        chainBenchmark(h, "2");
+    }
+
+    /**
+     * With Create installed: the PRESS pen, but with a one-block gap between the motor and the
+     * press, and a newborn carrying shafts as well as iron. The press only works once a shaft is
+     * put in the gap, so making sheets takes building the drive first. The gap is opened again now
+     * and then.
+     */
+    private static void chainBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "CHAIN")) {
+            return;
+        }
+        java.util.function.Function<String, ResourceLocation> create = id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var depot = BuiltInRegistries.BLOCK.getOptional(create.apply("depot"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(create.apply("shaft"));
+        if (motor.isEmpty() || press.isEmpty() || depot.isEmpty() || shaft.isEmpty()) {
+            LOG.info("CHAIN: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        BlockPos onto = new BlockPos(5, 2, 9);
+        BlockPos pressAt = onto.above(2);
+        BlockPos gap = pressAt.east();
+        BlockPos motorAt = gap.east();
+        var pressState = press.get().defaultBlockState().setValue(
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST);
+        var motorState = motor.get().defaultBlockState().setValue(
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.WEST);
+        Villager v = pen(h, new ItemStack(shaft.get(), 16), TICKS);
+        v.getInventory().addItem(new ItemStack(Items.IRON_INGOT, 16));
+        h.setBlock(onto, depot.get());
+        h.setBlock(pressAt, pressState);
+        h.setBlock(motorAt, motorState);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] madePerWindow = new int[TICKS / WINDOW];
+        int[] start = {0};
+        int[] powered = {0};
+        int[] pressTurning = {0};
+        boolean[] wasTurning = {false};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (!h.getBlockState(onto).is(depot.get())) {
+                h.setBlock(onto, depot.get());
+            }
+            if (!h.getBlockState(pressAt).is(press.get())) {
+                h.setBlock(pressAt, pressState);
+            }
+            if (!h.getBlockState(motorAt).is(motor.get())) {
+                h.setBlock(motorAt, motorState);
+            }
+            boolean turning = com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pressAt));
+            powered[0] += turning && !wasTurning[0] ? 1 : 0;
+            pressTurning[0] += turning ? 1 : 0;
+            wasTurning[0] = turning;
+            if (tick[0] % (REGROW * 12) == 0 && !handle.hands().screenOpen()) {
+                // The drive comes apart again, so there is always building to do.
+                h.setBlock(gap, Blocks.AIR);
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                clearPen(h, onto, pressAt, motorAt, gap);
+                regrow(h, v);
+                if (carried(v, shaft.get()) < 4) {
+                    v.getInventory().addItem(new ItemStack(shaft.get(), 16));
+                }
+                if (carried(v, Items.IRON_INGOT) == 0) {
+                    v.getInventory().addItem(new ItemStack(Items.IRON_INGOT, 16));
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    if (!v.getInventory().getItem(i).is(shaft.get()) && !v.getInventory().getItem(i).is(Items.IRON_INGOT)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                int w = tick[0] / WINDOW - 1;
+                madePerWindow[w] = handle.hands().madeTotal - start[0];
+                start[0] = handle.hands().madeTotal;
+                LOG.info("CHAIN newborn {}: ticks {}-{}: took sheets {} times; press powered {} times, turning {} ticks; set going {}, placed {};"
+                                + " in hand {}", which, tick[0] - WINDOW, tick[0], madePerWindow[w], powered[0], pressTurning[0],
+                        handle.hands().setGoingTotal, handle.hands().placedTotal, v.getMainHandItem());
+            }
+            if (tick[0] == TICKS) {
+                String report = String.format("CHAIN: took sheets %d times, powered the press %d times", handle.hands().madeTotal, powered[0]);
+                LOG.info("CHAIN newborn {} learning result: {}", which, report);
+                if (handle.hands().madeTotal >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
 }
