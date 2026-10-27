@@ -152,6 +152,9 @@ have a minute?" is answered as before.
 And it is told the creatures it can see within 16 blocks: "what do you see?" "i see two cows , a pig
 and four sheep .", "how many cows are there?" "there are two cows .", "are there any zombies
 around?" "no , i don't see any zombies .".
+It knows how things are made, from the game's own crafting and smelting recipes: "how do i make
+bread?" "to make bread , you need three wheat .", "how can i get iron ingots?" "to get iron ingots ,
+smelt raw iron in a furnace .".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

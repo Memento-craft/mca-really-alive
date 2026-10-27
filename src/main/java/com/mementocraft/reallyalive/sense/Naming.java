@@ -88,6 +88,7 @@ public final class Naming {
             itemsTold = true;
             SelfKnowledge.items(BuiltInRegistries.ITEM.keySet().stream().map(Naming::itemName).toList());
             SelfKnowledge.creatures(BuiltInRegistries.ENTITY_TYPE.keySet().stream().map(Naming::itemName).toList());
+            SelfKnowledge.recipes(recipes(v.level()));
         }
         // The creatures it can see within 16 blocks, by kind: "cow", "iron golem", "player".
         java.util.Map<String, Integer> seen = new java.util.LinkedHashMap<>();
@@ -111,6 +112,54 @@ public final class Naming {
     }
 
     private static volatile boolean itemsTold;
+
+    /**
+     * How each thing is made, from the game's crafting and smelting recipes, as said to someone
+     * asking: "bread": "you need three wheat", "iron ingot": "smelt raw iron in a furnace".
+     */
+    private static java.util.Map<String, String> recipes(net.minecraft.world.level.Level level) {
+        java.util.Map<String, String> how = new java.util.HashMap<>();
+        for (net.minecraft.world.item.crafting.RecipeHolder<?> holder : level.getRecipeManager().getRecipes()) {
+            net.minecraft.world.item.crafting.Recipe<?> recipe = holder.value();
+            net.minecraft.world.item.ItemStack made = recipe.getResultItem(level.registryAccess());
+            if (made.isEmpty()) {
+                continue;
+            }
+            String name = itemName(BuiltInRegistries.ITEM.getKey(made.getItem()));
+            if (recipe.getType() == net.minecraft.world.item.crafting.RecipeType.SMELTING && !recipe.getIngredients().isEmpty()) {
+                net.minecraft.world.item.ItemStack[] from = recipe.getIngredients().get(0).getItems();
+                if (from.length > 0) {
+                    how.putIfAbsent(name, "smelt " + itemName(BuiltInRegistries.ITEM.getKey(from[0].getItem())) + " in a furnace");
+                }
+            } else if (recipe.getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING) {
+                java.util.Map<String, Integer> parts = new java.util.LinkedHashMap<>();
+                for (net.minecraft.world.item.crafting.Ingredient part : recipe.getIngredients()) {
+                    net.minecraft.world.item.ItemStack[] items = part.getItems();
+                    if (items.length > 0) {
+                        parts.merge(itemName(BuiltInRegistries.ITEM.getKey(items[0].getItem())), 1, Integer::sum);
+                    }
+                }
+                if (!parts.isEmpty()) {
+                    // Crafting comes first: it is how most things are made.
+                    how.put(name, "you need " + saidList(parts));
+                }
+            }
+        }
+        return how;
+    }
+
+    private static final String[] COUNTS = {"zero", "a", "two", "three", "four", "five", "six", "seven", "eight", "nine"};
+
+    /** "three wheat", "a coal and a stick", "three iron ingots , two sticks and ...". */
+    private static String saidList(java.util.Map<String, Integer> parts) {
+        List<String> said = new ArrayList<>();
+        parts.forEach((part, n) -> said.add((n == 1 && "aeiou".indexOf(part.charAt(0)) >= 0 ? "an" : COUNTS[Math.min(n, 9)])
+                + " " + (n > 1 && !part.endsWith("s") && !part.equals("wheat") && !part.endsWith("sugar") ? part + "s" : part)));
+        if (said.size() == 1) {
+            return said.get(0);
+        }
+        return String.join(" , ", said.subList(0, said.size() - 1)) + " and " + said.get(said.size() - 1);
+    }
 
     /** An item as people say it: "wheat_seeds" is "wheat seeds". */
     private static String itemName(net.minecraft.resources.ResourceLocation id) {

@@ -128,6 +128,14 @@ public final class SelfKnowledge {
         }
     }
 
+    /**
+     * Tells all brains how things are made: each a thing's name and what it takes, said to the
+     * one asking ("bread": "you need three wheat"). The first told for a thing is kept.
+     */
+    public static void recipes(java.util.Map<String, String> howEachIsMade) {
+        howEachIsMade.forEach(Brain.RECIPES::putIfAbsent);
+    }
+
     /** Tells all brains what things can be carried at all, by name ("wheat seeds"). */
     public static void items(java.util.Collection<String> names) {
         for (String name : names) {

@@ -465,6 +465,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsHowThingsAreMade() {
+        // From the game's recipes: {question, right word, or a word it must not say after "!"}.
+        SelfKnowledge.recipes(java.util.Map.of("bread", "you need three wheat", "torch", "you need a coal and a stick",
+            "iron ingot", "smelt raw iron in a furnace"));
+        String[][] asked = {{"how do i make bread?", "wheat"}, {"how do you make a torch?", "coal"},
+            {"how can i get iron ingots?", "furnace"}, {"how do i make friends?", "!need"}};
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 890 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            String want = asked[i][1];
+            right += want.startsWith("!") ? (said.contains(want.substring(1)) ? 0 : 1) : (said.contains(want) ? 1 : 0);
+        }
+        System.out.printf("knew how things are made %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},

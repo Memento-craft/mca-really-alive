@@ -534,4 +534,31 @@ public final class SpeechTests {
             }
         });
     }
+
+    /** Asked "how do i make bread?", a villager says it takes wheat, from the game's recipes. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "recipes")
+    public static void villagerKnowsHowThingsAreMade(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        com.mementocraft.reallyalive.sense.Naming.worldAround(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "how do i make bread?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("recipe benchmark: asked \"how do i make bread?\", the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("three wheat")),
+                        "asked \"how do i make bread?\" it said " + answers);
+                h.succeed();
+            }
+        });
+    }
 }

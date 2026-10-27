@@ -1108,6 +1108,14 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[0];
         }
+        int[] how = howToMake(heard);
+        if (how != null) {
+            // "how do i make bread?" "to make bread , you need three wheat ."
+            toldLine = how;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            return new int[0];
+        }
         int[] has = possessions(heard);
         if (has != null) {
             // "do you have any bread?" "yes , i have three bread ."
@@ -1768,6 +1776,52 @@ public final class Brain {
         return name;
     }
 
+    /**
+     * The answer to "how do i make bread?" (or craft, cook, smelt) from the game's recipes: "to
+     * make bread , you need three wheat .". Null if it is no such question or nothing is known to
+     * be made so.
+     */
+    private int[] howToMake(int[] heard) {
+        int n = heard.length;
+        if (RECIPES.isEmpty() || n < 4 || heard[n - 1] != language.vocabulary.find("?")) {
+            return null;
+        }
+        String[] w = new String[n];
+        for (int i = 0; i < n; i++) {
+            w[i] = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
+        }
+        if (!w[0].equals("how") && !(w[0].equals("what") && Arrays.asList(w).contains("need"))) {
+            return null;
+        }
+        int at = -1;
+        for (int i = 1; i < n - 1 && at < 0; i++) {
+            at = Set.of("make", "craft", "cook", "bake", "smelt", "build", "brew", "get").contains(w[i]) ? i : -1;
+        }
+        if (at < 0) {
+            return null;
+        }
+        int from = at + 1;
+        while (from < n - 1 && Set.of("a", "an", "the", "some", "any").contains(w[from])) {
+            from++;
+        }
+        if (from >= n - 1 || n - 1 - from > 3) {
+            return null;
+        }
+        List<String> thing = Arrays.asList(w).subList(from, n - 1);
+        String recipe = null;
+        for (String last : singular(thing.get(thing.size() - 1))) {
+            List<String> name = new ArrayList<>(thing.subList(0, thing.size() - 1));
+            name.add(last);
+            recipe = recipe != null ? recipe : RECIPES.get(String.join(" ", name));
+        }
+        if (recipe == null) {
+            return null;
+        }
+        // Said as it was asked: "to make a torch".
+        String said = "to " + w[at] + " " + String.join(" ", Arrays.asList(w).subList(at + 1, n - 1)) + " , " + recipe + " .";
+        return Arrays.stream(said.split(" ")).mapToInt(language.vocabulary::id).toArray();
+    }
+
     /** The words of a short line it says, each found in its vocabulary. */
     private int[] said(String line) {
         return Arrays.stream(line.split(" ")).mapToInt(language.vocabulary::find).toArray();
@@ -1810,6 +1864,8 @@ public final class Brain {
     boolean toldCarried;
     /** The last words of the names of things that can be carried at all ("bread", "hoe"), from the game. */
     static final Set<String> ITEMS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** How each thing is made, by its name ("bread": "you need three wheat"), from the game's recipes. */
+    static final java.util.Map<String, String> RECIPES = new java.util.concurrent.ConcurrentHashMap<>();
     /** The creatures it sees around it, by kind, and how many; as the game tells it, not saved. */
     final List<Carried> around = new ArrayList<>();
     boolean toldAround;
