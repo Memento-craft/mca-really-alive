@@ -1094,7 +1094,18 @@ public final class Brain {
         toldInOwnWords = false;
         // A short, plain question about the speaker ("where do i live?"), not a long outburst
         // that ends in one.
-        int[] heard = withoutAddress(heardLine);
+        int[] plain = withoutAddress(heardLine);
+        if (plain.length > 3 && plain[plain.length - 2] == language.vocabulary.find("now")) {
+            // "where is the cat now?" asks where it is: what happened last tells.
+            plain = withoutAt(plain, plain.length - 2);
+        }
+        // "and john?" after "where is mary?": "where is john?"
+        int[] meant = plain.length == 0 ? null : followedUp(plain, 2);
+        if (meant == null && plain.length > 0) {
+            // "where is it now?" after "where was the cat?" asks of the cat.
+            meant = ofTheSame(plain);
+        }
+        int[] heard = meant != null ? meant : plain;
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
@@ -1175,6 +1186,7 @@ public final class Brain {
         int[] bestSeen = null;
         int bestK = 0;
         float bestCue = TOLD_CUE;
+        float bestExact = 0f;
         int[][] names = namesGiven();
         // The latest line is the question itself; only what the speaker told about themselves
         // lately, not other questions, is recalled.
@@ -1209,6 +1221,12 @@ public final class Brain {
             // A thing called by its name is still the thing ("rex is sick." after "my dog is
             // called rex." tells of the dog).
             int[] seen = withWhatTheyName(told, names);
+            if (t + 1 < recent && saysAny(told, AGAIN) && saysSome(heard, told, memory, tones)) {
+                // "he keeps it in the stable ." after "ivan owns a horse ." tells of ivan and the
+                // horse, when it says something the question asks itself ("keep"); "then she ate
+                // a big meal ." says nothing of being hungry.
+                seen = withThingsOf(seen, toldLines.get(t + 1));
+            }
             float cue = 0f;
             boolean named = false;
             for (int w : seen) {
@@ -1222,6 +1240,7 @@ public final class Brain {
                 // "what's my name?" asks for a name, and "hi, i'm josh." gave one.
                 cue += memory.weight(name);
             }
+            float exact = cue;
             float telling = 0f;
             float linked = 0f;
             TopicLinks topics = TopicLinks.shared();
@@ -1254,8 +1273,11 @@ public final class Brain {
                 // does a line told long ago, maybe by someone else.
                 continue;
             }
-            if (cue > bestCue) {
+            if (cue > bestCue + 1e-4f || cue > bestCue - 1e-4f && exact > bestExact) {
+                // A line that says the word itself goes before one that says a like word ("my
+                // brother" before "my sister").
                 bestCue = cue;
+                bestExact = exact;
                 best = told;
                 bestSeen = seen;
                 // Lines from longer ago are not among those heard lately.
@@ -1289,6 +1311,13 @@ public final class Brain {
             best = later;
             bestSeen = later;
         }
+        int[] there = placeOf(heard, best, toldLines);
+        if (there != null) {
+            // "is max in the library?" is about max, though "lisa is in the library ." says more
+            // of the question: "max is at the market ." answers it.
+            best = there;
+            bestSeen = there;
+        }
         toldLine = best;
         toldLineAsHeard = best;
         int answer = yesOrNo(heard, bestSeen, memory, tones);
@@ -1303,7 +1332,7 @@ public final class Brain {
             while (end > 0 && best[end] >= 0 && !Character.isLetter(language.vocabulary.word(best[end]).charAt(0))) {
                 end--;
             }
-            answer = state < 0 ? -1 : saysOpposite(best, state) ? language.vocabulary.find("no")
+            answer = state < 0 ? placeAnswer(heard, best) : saysOpposite(best, state) ? language.vocabulary.find("no")
                     : (changed ? saidIn(best, state) : best[end] == state) ? language.vocabulary.find("yes") : -1;
         }
         if (answer >= 0) {
@@ -1312,6 +1341,10 @@ public final class Brain {
             toldLine[0] = answer;
             toldLine[1] = language.vocabulary.find(",");
             System.arraycopy(best, 0, toldLine, 2, best.length);
+            if (there != null) {
+                // Not "max is at the market ." bare, which says nothing of the library.
+                toldLineAsHeard = null;
+            }
         }
         if (contains(heard, language.vocabulary.find("why")) && bestK > 2 && !contains(best, language.vocabulary.find("because"))) {
             // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away."),
@@ -2458,6 +2491,190 @@ public final class Brain {
             }
         }
         return -1;
+    }
+
+    /**
+     * A short follow-up that leans on the question before it ("and john?", "what about the
+     * dog?") as the whole question it means: the earlier question with the new thing in place of
+     * the one it asked about ("where is mary?" then "and john?": "where is john?"). Which word
+     * gives way is found in what was told: the one that stands where the new thing stands in a
+     * line told alike ("mary is in the kitchen ." "john is in the garden ."), else the earlier
+     * question's last word. Returns null if the line is no such follow-up; k is how far back the
+     * line before it was heard.
+     */
+    private int[] followedUp(int[] heard, int k) {
+        Vocabulary v = language.vocabulary;
+        int ask = v.find("?");
+        int from = heard.length > 1 && heard[0] == v.find("and") ? 1
+            : heard.length > 2 && heard[1] == v.find("about") && (heard[0] == v.find("what") || heard[0] == v.find("how")) ? 2 : -1;
+        int end = heard.length - 1;
+        if (from < 0 || heard[end] != ask || end - from < 1 || end - from > 4 || k > heardLinesNext || k > 4
+                || ASKING_WORDS.contains(v.word(heard[from])) || saysAny(heard, AGAIN)) {
+            return null;
+        }
+        int[] before = heardLines[(heardLinesNext - k) % heardLines.length];
+        if (before == null || before.length < 3 || before[before.length - 1] != ask) {
+            return null;
+        }
+        int[] earlier = followedUp(before, k + 1);
+        before = earlier != null ? earlier : withoutAddress(before);
+        if (before.length < 3) {
+            return null;
+        }
+        // "the blue one": the word that tells it apart.
+        int head = heard[end - 1];
+        if ((v.word(head).equals("one") || v.word(head).equals("ones")) && end - from > 1) {
+            head = heard[end - 2];
+        }
+        if (head < 0 || !thingWord(head) || AGAIN.contains(v.word(head))) {
+            // "and then?", "and you?" ask nothing new of a thing.
+            return null;
+        }
+        int swap = -1;
+        for (int j = 2; j <= TOLD_LINES && j <= heardLinesNext && swap < 0; j++) {
+            int[] told = heardLines[(heardLinesNext - j) % heardLines.length];
+            int at = told == null || told[told.length - 1] == ask ? -1 : indexOf(told, head, 0);
+            for (int i = 2; at >= 0 && i <= TOLD_LINES && i <= heardLinesNext && swap < 0; i++) {
+                int[] other = heardLines[(heardLinesNext - i) % heardLines.length];
+                if (i == j || other == null || other.length <= at || other[at] == head || other[other.length - 1] == ask
+                        || !contains(before, other[at]) || ASKING_WORDS.contains(v.word(other[at]))) {
+                    continue;
+                }
+                int alike = 0;
+                for (int w = 0; w < Math.min(told.length, other.length); w++) {
+                    alike += w != at && told[w] == other[w] && Character.isLetter(v.word(told[w]).charAt(0)) ? 1 : 0;
+                }
+                swap = alike > 0 ? other[at] : -1;
+            }
+        }
+        if (swap < 0) {
+            swap = before[before.length - 2];
+            Set<String> the = Set.of("a", "an", "the", "my", "your", "some", "his", "her", "their");
+            if (end - from > 1 && heard[from] >= 0 && the.contains(v.word(heard[from])) && before[before.length - 3] >= 0
+                    && !the.contains(v.word(before[before.length - 3])) && swap != head) {
+                // "how do i make bread?" then "and a torch?": "how do i make a torch?"
+                int[] meant = Arrays.copyOf(before, before.length - 2 + end - from + 1);
+                System.arraycopy(heard, from, meant, before.length - 2, end - from);
+                meant[meant.length - 1] = ask;
+                return meant;
+            }
+        }
+        if (swap == head || ASKING_WORDS.contains(v.word(swap))) {
+            return null;
+        }
+        int[] meant = before.clone();
+        for (int i = 0; i < meant.length; i++) {
+            meant[i] = meant[i] == swap ? head : meant[i];
+        }
+        return meant;
+    }
+
+    /**
+     * A question that says "he", "she" or "it" right after another question, with the things that
+     * question asked of added at its end ("what does ivan own?" then "where does he keep it?"
+     * asks of ivan too). Null if it says none or no question came just before.
+     */
+    private int[] ofTheSame(int[] heard) {
+        int ask = language.vocabulary.find("?");
+        if (heard[heard.length - 1] != ask || !saysAny(heard, AGAIN) || heardLinesNext < 2) {
+            return null;
+        }
+        int[] before = heardLines[(heardLinesNext - 2) % heardLines.length];
+        if (before == null || before.length < 3 || before[before.length - 1] != ask) {
+            return null;
+        }
+        int[] meant = withThingsOf(Arrays.copyOf(heard, heard.length - 1), withoutAddress(before));
+        if (meant.length == heard.length - 1) {
+            return null;
+        }
+        meant = Arrays.copyOf(meant, meant.length + 1);
+        meant[meant.length - 1] = ask;
+        return meant;
+    }
+
+    private static int[] withoutAt(int[] line, int at) {
+        int[] out = new int[line.length - 1];
+        System.arraycopy(line, 0, out, 0, at);
+        System.arraycopy(line, at + 1, out, at, line.length - at - 1);
+        return out;
+    }
+
+    /** A line with the thing words of another line that it lacks added at its end. */
+    private int[] withThingsOf(int[] line, int[] other) {
+        int[] out = line;
+        for (int w : other) {
+            if (w >= 0 && thingWord(w) && !ASKING_WORDS.contains(language.vocabulary.word(w)) && !AGAIN.contains(language.vocabulary.word(w))
+                    && !PLACE.contains(language.vocabulary.word(w)) && !contains(out, w)) {
+                out = Arrays.copyOf(out, out.length + 1);
+                out[out.length - 1] = w;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * For "is max in the library?", when the best line does not say max, the line that tells
+     * where max is, if one does. Null otherwise.
+     */
+    private int[] placeOf(int[] heard, int[] best, List<int[]> toldLines) {
+        Vocabulary v = language.vocabulary;
+        int at = placeAsked(heard);
+        if (at < 0) {
+            return null;
+        }
+        List<Integer> subject = new ArrayList<>();
+        for (int i = 1; i < at; i++) {
+            if (heard[i] >= 0 && thingWord(heard[i])) {
+                subject.add(heard[i]);
+            }
+        }
+        if (subject.isEmpty() || subject.stream().allMatch(w -> saidIn(best, w))) {
+            return null;
+        }
+        for (int[] told : toldLines) {
+            if (told.length > 0 && told[told.length - 1] != v.find("?") && told.length <= TOLD_LONGEST
+                    && subject.stream().allMatch(w -> saidIn(told, w)) && placeAt(told) >= 0) {
+                return told;
+            }
+        }
+        return null;
+    }
+
+    /** Where "is X in/at/by ...?" names its place: the index of the place word, or -1. */
+    private int placeAsked(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 5 || heard[0] < 0 || !Set.of("is", "are", "was", "were").contains(v.word(heard[0]))) {
+            return -1;
+        }
+        for (int i = 2; i < heard.length - 2; i++) {
+            if (heard[i] >= 0 && (PLACE.contains(v.word(heard[i])) || v.word(heard[i]).equals("by"))) {
+                return heard[heard.length - 2] >= 0 && thingWord(heard[heard.length - 2]) ? i : -1;
+            }
+        }
+        return -1;
+    }
+
+    /** The first word in a line that puts something at a place ("in", "at", "by"), or -1. */
+    private int placeAt(int[] told) {
+        for (int i = 0; i + 1 < told.length; i++) {
+            String w = told[i] < 0 ? "" : language.vocabulary.word(told[i]);
+            if ((PLACE.contains(w) || w.equals("by")) && !w.equals("to")) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * "is john in the kitchen?" after "john is in the garden .": no, the line puts it somewhere
+     * else; yes if it puts it there. -1 if the question asks of no place or the line tells of none.
+     */
+    private int placeAnswer(int[] heard, int[] told) {
+        if (placeAsked(heard) < 0) {
+            return -1;
+        }
+        return saidIn(told, heard[heard.length - 2]) ? language.vocabulary.find("yes")
+            : placeAt(told) >= 0 ? language.vocabulary.find("no") : -1;
     }
 
     private boolean saysAny(int[] line, Set<String> words) {

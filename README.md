@@ -159,6 +159,10 @@ It answers why and what-if from what it was told: told "if it rains, the field f
 "what happens if it rains?" with "the field floods .", and told also "it rained all night." it
 answers "why did the field flood?" with "because it rained all night .". A cause told on the next
 line counts too ("the road is closed." "a tree fell on it." gives "because a tree fell on it .").
+It follows a short question that leans on the one before, as people do: after "where is mary?",
+"and john?" is answered with "john is in the garden .", after "is mary in the kitchen?" with "no ,
+john is in the garden .", and after "what does ivan own?", "where does he keep it?" with "he keeps
+it in the stable .".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

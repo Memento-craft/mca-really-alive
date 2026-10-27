@@ -298,6 +298,35 @@ class ConversationTest {
     }
 
     @Test
+    void villagerFollowsUpOnTheQuestionBefore() {
+        // A short follow-up leans on the question before it: {told, told, asked, follow-up, right, wrong}.
+        String[][] talks = {{"mary is in the kitchen.", "john is in the garden.", "where is mary?", "and john?", "garden", "kitchen"},
+            {"tom has the key.", "anna has the map.", "who has the key?", "what about the map?", "anna", "tom"},
+            {"mary is in the kitchen.", "john is in the garden.", "is mary in the kitchen?", "and john?", "no", "yes"},
+            {"ivan owns a horse.", "he keeps it in the stable.", "what does ivan own?", "where does he keep it?", "stable", "-"},
+            {"the cat was on the roof.", "then it jumped onto the wall.", "where was the cat?", "where is it now?", "wall", "-"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 910 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 4; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            String want = talks[i][4];
+            boolean yesNo = want.equals("yes") || want.equals("no");
+            right += (yesNo ? !said.isEmpty() && said.get(0).equals(want) : said.contains(want)) && !said.contains(talks[i][5]) ? 1 : 0;
+        }
+        System.out.printf("followed up on the question before %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "followed up only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},
