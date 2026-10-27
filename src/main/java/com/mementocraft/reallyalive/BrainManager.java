@@ -125,6 +125,9 @@ public final class BrainManager {
         /** Names of people seen dying, and crops it harvested, since the brain last sensed. */
         final List<String> deathsSeen = new ArrayList<>();
         final List<String> harvested = new ArrayList<>();
+        /** Deeds done since the brain last sensed ("broke wheat", "placed dirt"), and blocks placed so far. */
+        final List<String> did = new ArrayList<>();
+        int placedSeen;
         /** The line it is writing down, its own written words to feel, and how many lines it wrote. */
         final List<String> writtenLine = new ArrayList<>();
         final List<String> wroteWords = new ArrayList<>();
@@ -370,6 +373,14 @@ public final class BrainManager {
         }
     }
 
+    /** A brain villager broke a block, with its hands or otherwise. */
+    public void broke(Villager v, String block) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.did.add("broke " + block);
+        }
+    }
+
     /** Before the villager ticks: take the brain's latest keys and put them on the body. */
     public void beforeTick(Villager v) {
         Handle h = handles.get(v.getUUID());
@@ -436,6 +447,12 @@ public final class BrainManager {
 
     /** Ticks between looks at what someone in view is doing with their hands and feet. */
     private static final int WATCH_INTERVAL = 4;
+    /** Ticks between looks at what it carries. */
+    private static final int CARRIED_INTERVAL = 10;
+
+    private static String blockName(net.minecraft.world.level.block.state.BlockState state) {
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().replace('_', ' ');
+    }
     private static final double WATCH_RANGE = 8.0;
 
     /**
@@ -536,6 +553,18 @@ public final class BrainManager {
         h.deathsSeen.clear();
         f.harvested.addAll(h.harvested);
         h.harvested.clear();
+        if (h.hands.placedTotal > h.placedSeen) {
+            h.placedSeen = h.hands.placedTotal;
+            h.did.add("placed " + blockName(v.level().getBlockState(h.hands.lastPlaced)));
+        }
+        f.did.addAll(h.did);
+        h.did.clear();
+        if (h.hands.digging() != null) {
+            f.doing.add("broke " + blockName(v.level().getBlockState(h.hands.digging())));
+        }
+        if (h.age % CARRIED_INTERVAL == 0) {
+            f.carried = h.hands.carried();
+        }
         f.canWrite = Books.canWriteIn(v.getMainHandItem());
         if (h.age % WATCH_INTERVAL == 0) {
             watch(v, h.watched);

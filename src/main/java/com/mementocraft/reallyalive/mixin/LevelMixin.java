@@ -14,8 +14,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Lets a brain villager know it harvested a ripe crop, however it broke it: with its own hands or
- * by the vanilla or MCA farming it does when its brain is off. Changes nothing about the breaking.
+ * Lets a brain villager know what it broke, and that it harvested a ripe crop, however it broke it:
+ * with its own hands or by the vanilla or MCA farming it does when its brain is off. Changes
+ * nothing about the breaking.
  */
 @Mixin(Level.class)
 public abstract class LevelMixin {
@@ -26,6 +27,9 @@ public abstract class LevelMixin {
             return;
         }
         BlockState state = level.getBlockState(pos);
+        if (!state.isAir()) {
+            BrainManager.get().broke(v, BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().replace('_', ' '));
+        }
         if (state.getBlock() instanceof CropBlock crop && crop.isMaxAge(state)) {
             BrainManager.get().harvested(v, BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().replace('_', ' '));
         }

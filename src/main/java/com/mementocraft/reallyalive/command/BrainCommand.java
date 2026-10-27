@@ -5,6 +5,7 @@ import com.mementocraft.reallyalive.brain.Brain;
 import com.mementocraft.reallyalive.brain.LobeId;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.FloatArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.commands.CommandSourceStack;
@@ -53,6 +54,13 @@ public final class BrainCommand {
                                             float scale = FloatArgumentType.getFloat(c, "scale");
                                             return forEach(c, v -> withBrain(v, b -> b.setBabbleScale(scale)),
                                                     "Babbling set to " + scale);
+                                        }))))
+                        // Sets villagers on getting a thing or doing a deed, as asking them would.
+                        .then(Commands.literal("want").then(Commands.argument("villagers", EntityArgument.entities())
+                                .then(Commands.argument("thing", StringArgumentType.greedyString())
+                                        .executes(c -> {
+                                            String thing = StringArgumentType.getString(c, "thing");
+                                            return forEach(c, v -> withBrain(v, b -> b.want(thing)), "Now after " + thing);
                                         })))))
                 .then(Commands.literal("goal").then(Commands.argument("villagers", EntityArgument.entities())
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
@@ -141,6 +149,13 @@ public final class BrainCommand {
         Brain b = BrainManager.get().handle(v).brain();
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("harvested %s, finds telling worth %.2f", b.deeds(), b.tellValue()));
+        java.util.List<String> plan = b.plan();
+        if (!plan.isEmpty()) {
+            sb.append("\nafter ").append(plan.get(plan.size() - 1)).append(", next step first: ").append(plan);
+            for (String step : plan) {
+                sb.append("\n  ").append(step).append(" needs ").append(b.needsOf(step));
+            }
+        }
         for (String person : b.peopleRemembered()) {
             sb.append("\n").append(person).append(':');
             for (String line : b.recollectionsOf(person)) {

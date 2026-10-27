@@ -293,6 +293,15 @@ public final class Brain {
     ConceptLinks links = new ConceptLinks();
     /** Exchanges this villager heard or took part in. */
     ExchangeMemory.Own talk = new ExchangeMemory.Own();
+    /** What it is after, the steps it still lacks, and what it knows each thing needs. */
+    Goals goals = new Goals();
+    private String planSaid = "";
+    /** What it is after now, next step first, for whoever asks from outside the brain's thread. */
+    private volatile java.util.List<String> planNow = java.util.List.of();
+    /** Something it was set on from outside, taken up on its next step. */
+    private volatile String wantAsked;
+    /** The pleasure of getting closer to what it is after, felt next tick. */
+    float goalJoy;
     /** What it remembers of people, the dead among them, and of its own deeds. */
     Recollections people = new Recollections();
     /** Its own first name, lower case, as it was last told who it is; null if it has none. */
@@ -745,7 +754,7 @@ public final class Brain {
         System.arraycopy(f.feel, 0, input, IN_FEEL, FeelChannel.COUNT);
         System.arraycopy(poolRates, 0, input, IN_EFFERENCE, MotorChannel.COUNT);
         System.arraycopy(f.smell, 0, input, IN_SMELL, OlfactoryChannel.COUNT);
-        input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure + heardJoy + copyJoy);
+        input[IN_EMOTION + SenseLayout.EMO_PLEASURE] = SensoryFrame.clamp01(f.pleasure + heardJoy + copyJoy + goalJoy);
         input[IN_EMOTION + SenseLayout.EMO_PAIN] = SensoryFrame.clamp01(f.pain + grief);
         grief *= GRIEF_KEEP;
         heardJoy *= 0.9f;
@@ -796,6 +805,19 @@ public final class Brain {
         company = f.company;
         youngCompany = f.youngCompany;
         System.arraycopy(f.watched, 0, watched, 0, MotorChannel.COUNT);
+        String asked = wantAsked;
+        if (asked != null) {
+            wantAsked = null;
+            goals.want(asked, ticks);
+        }
+        goalJoy = Motives.GOAL * goals.sense(f.carried, f.did, f.doing, ticks);
+        String steps = String.join("<", goals.stack);
+        if (!steps.equals(planSaid)) {
+            // What it is after changed: so does what it says when asked.
+            planSaid = steps;
+            planNow = java.util.List.copyOf(goals.stack);
+            SelfKnowledge.tell(this, selfFullName, selfWork, selfChild);
+        }
         canWrite = f.canWrite;
         for (String d : f.died) {
             sawDie(d);
@@ -903,6 +925,7 @@ public final class Brain {
             talk.remember(lastLine, line, memory);
         }
         heardAboutPeople(line, own);
+        heardAboutGoals(line, own);
         lastLine = line;
         lastLineOwn = own;
         if (!own) {
@@ -1143,6 +1166,48 @@ public final class Brain {
             return;
         }
     }
+
+    /**
+     * Talk about getting things: "you need wheat to make bread.", "bread is made from wheat." and
+     * "you get wheat by breaking wheat." teach what a thing needs; "can you make some bread?",
+     * "bring me bread.", "we need bread." ask for it, and it takes that up as what it is after.
+     */
+    private void heardAboutGoals(int[] line, boolean own) {
+        if (own) {
+            return;
+        }
+        java.util.List<String> w = new java.util.ArrayList<>();
+        for (int id : line) {
+            w.add(id >= 0 ? language.vocabulary.word(id) : "");
+        }
+        String s = " " + String.join(" ", w) + " ";
+        java.util.regex.Matcher m;
+        if ((m = NEED_TO_MAKE.matcher(s)).find()) {
+            goals.told(m.group(2), m.group(1));
+        } else if ((m = TO_MAKE_NEED.matcher(s)).find()) {
+            goals.told(m.group(1), m.group(2));
+        } else if ((m = MADE_FROM.matcher(s)).find()) {
+            goals.told(m.group(1), m.group(2));
+        } else if ((m = GET_BY_DOING.matcher(s)).find()) {
+            goals.told(m.group(1), (m.group(2).startsWith("break") ? "broke " : "placed ") + m.group(3));
+        }
+        if (!lineRead && (m = ASKED_FOR.matcher(s)).find()) {
+            goals.want(m.group(1), ticks);
+        }
+    }
+
+    private static final String THING = "(?:an? |some |the |any |more )?([a-z][a-z' ]{1,30}?)";
+    private static final java.util.regex.Pattern NEED_TO_MAKE = java.util.regex.Pattern.compile(
+            " (?:you|we|i) need " + THING + " to (?:make|get|bake|craft|build) " + THING + " [.!,]");
+    private static final java.util.regex.Pattern TO_MAKE_NEED = java.util.regex.Pattern.compile(
+            " to (?:make|get|bake|craft|build) " + THING + " ,? (?:you|we|i) need " + THING + " [.!,]");
+    private static final java.util.regex.Pattern MADE_FROM = java.util.regex.Pattern.compile(
+            " " + THING + " (?:is|are) made (?:from|of|with|out of) " + THING + " [.!,]");
+    private static final java.util.regex.Pattern GET_BY_DOING = java.util.regex.Pattern.compile(
+            " (?:you|we|i) get " + THING + " (?:by|from) (breaking|placing) " + THING + " [.!,]");
+    private static final java.util.regex.Pattern ASKED_FOR = java.util.regex.Pattern.compile(
+            " (?:can you |could you |please |will you )?(?:make|bake|craft|bring|get|fetch) (?:me |us )?" + THING
+            + " (?:please |for me )?[.!?]");
 
     /**
      * Whether the word at k is someone's name: a person it remembers, or a word the shared English
@@ -2575,6 +2640,25 @@ public final class Brain {
     /** What it did itself and counted: crops harvested by kind. */
     public java.util.Map<String, Integer> deeds() {
         return java.util.Collections.unmodifiableMap(deeds);
+    }
+
+    /** Sets it on getting a thing ("bread") or doing a deed ("placed dirt"), as if asked to. */
+    public void want(String thing) {
+        wantAsked = thing;
+    }
+
+    /** What it is after, next step first, the goal last; empty when it is after nothing. */
+    public java.util.List<String> plan() {
+        return planNow;
+    }
+
+    /** What it knows getting a thing needs, surest first. */
+    public java.util.List<String> needsOf(String thing) {
+        try {
+            return goals.needsOf(thing);
+        } catch (java.util.ConcurrentModificationException e) {
+            return java.util.List.of(); // the brain was learning it just then
+        }
     }
 
     /** Whether it is writing a line down right now (its words go onto the page, not into the air). */

@@ -31,6 +31,12 @@ public final class SensoryFrame {
      * view digging, placing or walking, as one sees another's hands and feet move.
      */
     public final float[] watched = new float[MotorChannel.COUNT];
+    /** What it carries, by thing ("wheat" to 3), when it looked this tick; null when it did not. */
+    public java.util.Map<String, Integer> carried;
+    /** Deeds done this tick, as a verb and a thing: "broke wheat", "placed dirt". */
+    public final List<String> did = new ArrayList<>();
+    /** Deeds under way this tick, named as they will be when done: a block cracking is "broke dirt". */
+    public final List<String> doing = new ArrayList<>();
     /** It holds something to write in (a book and quill with room left). */
     public boolean canWrite;
     /** People the villager saw die this tick, by name. */
@@ -114,6 +120,9 @@ public final class SensoryFrame {
         heardFrom.clear();
         heardRead.clear();
         canWrite = false;
+        carried = null;
+        did.clear();
+        doing.clear();
         Arrays.fill(watched, 0f);
         died.clear();
         harvested.clear();

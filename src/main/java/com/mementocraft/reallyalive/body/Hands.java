@@ -205,6 +205,32 @@ public final class Hands {
         this.body = body;
     }
 
+    /** The block its hands are digging into, or null. */
+    public BlockPos digging() {
+        return digging;
+    }
+
+    /** What it carries in its hands and inventory, by name ("wheat" to 3). */
+    public java.util.Map<String, Integer> carried() {
+        java.util.Map<String, Integer> out = new java.util.HashMap<>();
+        java.util.function.Consumer<ItemStack> count = st -> {
+            if (!st.isEmpty()) {
+                out.merge(nameOf(st.getItem()), st.getCount(), Integer::sum);
+            }
+        };
+        count.accept(body.getMainHandItem());
+        count.accept(body.getOffhandItem());
+        for (int i = 0; i < body.getInventory().getContainerSize(); i++) {
+            count.accept(body.getInventory().getItem(i));
+        }
+        return out;
+    }
+
+    /** A thing's name in words, as the brain knows it: "oak log". */
+    public static String nameOf(net.minecraft.world.item.Item item) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).getPath().replace('_', ' ');
+    }
+
     /** How far digging the current block has got, 0..1. */
     public float digProgress() {
         return digging == null ? 0f : Math.min(1f, digProgress);

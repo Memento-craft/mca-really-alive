@@ -18,6 +18,9 @@ public final class SelfKnowledge {
     private static final String[] ASK_AGE = {"how old are you?", "are you a kid?", "are you a grown up?"};
     private static final String[] ASK_HARVEST = {"how much have you harvested?", "how many crops have you harvested?",
         "how much wheat have you grown?", "what do you grow?", "how is the harvest?", "what crops do you farm?"};
+    private static final String[] ASK_PLAN = {"what are you doing?", "what do you want?", "what are you up to?",
+        "what are you trying to do?", "what do you need?", "what's your plan?"};
+    private static final String PLAN_KEYS = "doing want up trying need plan";
     private static final String HARVEST_KEYS = "harvest harvested crops crop grow grown farm wheat carrots potatoes beetroots";
 
     private SelfKnowledge() {}
@@ -48,6 +51,10 @@ public final class SelfKnowledge {
                 mine(b, "work", "i'm " + article(work) + " " + work + ".", 0f);
             }
         }
+        String plan = plan(b);
+        if (plan != null) {
+            know(b, ASK_PLAN, PLAN_KEYS, plan);
+        }
         String harvest = harvest(b);
         if (harvest != null) {
             know(b, ASK_HARVEST, HARVEST_KEYS, harvest);
@@ -55,6 +62,32 @@ public final class SelfKnowledge {
             // The more it has done, the prouder it is of it, and the more it comes to mind to tell.
             mine(b, "harvest", harvest, Math.min(1f, total / 200f));
         }
+    }
+
+    /** What it is after and what it needs first: "i want some bread . first i need some wheat .". */
+    static String plan(Brain b) {
+        String goal = b.goals.goal();
+        if (goal == null) {
+            return null;
+        }
+        String line = (goal.startsWith("broke ") || goal.startsWith("placed ") ? "i want to " : "i want ") + thing(goal) + " .";
+        String step = b.goals.nextStep();
+        if (step != null && !step.equals(goal)) {
+            line += step.startsWith("broke ") || step.startsWith("placed ") ? " first i need to " + thing(step) + " ."
+                    : " first i need " + thing(step) + " .";
+        }
+        return line;
+    }
+
+    /** A thing or deed as said: "some bread", "break some wheat", "to place some dirt". */
+    private static String thing(String t) {
+        if (t.startsWith("broke ")) {
+            return "break some " + t.substring(6);
+        }
+        if (t.startsWith("placed ")) {
+            return "place some " + t.substring(7);
+        }
+        return "some " + t;
     }
 
     /** What it harvested, counted, the most first: "i've harvested 212 wheat and 40 carrots.". */

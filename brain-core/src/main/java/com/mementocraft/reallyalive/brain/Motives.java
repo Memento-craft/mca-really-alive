@@ -44,6 +44,8 @@ public final class Motives {
     public static final float PASSED_ON = 0.2f;
     /** Per tick, doing what it sees someone else do: the pull to imitate that apprenticeship rests on. */
     public static final float IMITATE = Float.parseFloat(System.getProperty("reallyalive.imitate", "0.2"));
+    /** Getting what it set out to get; a step that serves it is felt at half this. */
+    public static final float GOAL = Float.parseFloat(System.getProperty("reallyalive.goal", "1.0"));
     /** Finishing a line written down for whoever reads it later. */
     public static final float WROTE = 0.2f;
     /**

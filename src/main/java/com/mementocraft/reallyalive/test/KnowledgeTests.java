@@ -72,6 +72,54 @@ public final class KnowledgeTests {
     }
 
     /**
+     * Told what bread takes and asked for some, a villager holds bread as its goal with the steps
+     * under it, and works down them as it does each: breaking the wheat, carrying it, having bread.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "knowledge_goal")
+    public static void villagerWorksThroughAPlan(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        BrainManager.Handle handle = attach(h, v);
+        BlockPos crop = new BlockPos(6, 2, 7);
+        Vec3 player = v.getEyePosition().add(1.5, 0, 0);
+        List<String> answers = new ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            List<String> plan = handle.brain().plan();
+            if (t == 10) {
+                Speech.playerSays(h.getLevel(), player, "you need wheat to make bread.", "Steve");
+            } else if (t == 60) {
+                Speech.playerSays(h.getLevel(), player, "you get wheat by breaking wheat.", "Steve");
+            } else if (t == 110) {
+                Speech.playerSays(h.getLevel(), player, "can you make some bread?", "Steve");
+            } else if (t == 160) {
+                Speech.playerSays(h.getLevel(), player, "what are you doing?", "Steve");
+            } else if (t == 260) {
+                LOG.info("plan: asked for bread, it is after {} and said {}", plan, answers);
+                h.assertTrue(plan.equals(List.of("broke wheat", "wheat", "bread")), "asked for bread, it is after " + plan);
+                h.setBlock(crop.below(), Blocks.FARMLAND);
+                h.setBlock(crop, ((CropBlock) Blocks.WHEAT).getStateForAge(7));
+                h.getLevel().destroyBlock(h.absolutePos(crop), false, v);
+            } else if (t == 300) {
+                h.assertTrue(plan.equals(List.of("wheat", "bread")), "having broken the wheat, it is after " + plan);
+                v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT, 3));
+            } else if (t == 340) {
+                h.assertTrue(plan.equals(List.of("bread")), "carrying wheat, it is after " + plan);
+                v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BREAD, 1));
+            } else if (t == 380) {
+                h.assertTrue(plan.isEmpty(), "with bread, it is still after " + plan);
+                LOG.info("plan: worked through it, and knows bread needs {}", handle.brain().needsOf("bread"));
+                h.succeed();
+            }
+            if (t > 160 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+        });
+    }
+
+    /**
      * A villager that sees another die remembers the death and the dead by name; asked "what
      * happened to misu?" it says so. Runs in its own batch, away from other tests' chatter.
      */

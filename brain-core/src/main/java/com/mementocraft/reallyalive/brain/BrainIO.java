@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 10;
+    private static final int VERSION = 11;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -101,6 +101,7 @@ public final class BrainIO {
         b.links.write(out, b.n);
         writeTalk(b, out);
         writePeople(b, out);
+        b.goals.write(out);
     }
 
     public static Brain read(DataInput in) throws IOException {
@@ -249,6 +250,9 @@ public final class BrainIO {
         b.addMissingMotorPools(motorCount);
         if (version >= 10) {
             readPeople(b, in);
+        }
+        if (version >= 11) {
+            b.goals.read(in);
         }
         b.addMissingReceptors();
         return b;
