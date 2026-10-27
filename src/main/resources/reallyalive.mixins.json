@@ -7,7 +7,8 @@
     "BehaviorMixin",
     "EntityMixin",
     "LivingEntityMixin",
-    "MobAccessor"
+    "MobAccessor",
+    "MobMixin"
   ],
   "injectors": {
     "defaultRequire": 1

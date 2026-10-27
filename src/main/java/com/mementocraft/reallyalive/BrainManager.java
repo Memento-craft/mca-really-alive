@@ -6,6 +6,7 @@ import com.mementocraft.reallyalive.body.BrainLookControl;
 import com.mementocraft.reallyalive.body.Hands;
 import com.mementocraft.reallyalive.body.PlayerInputMoveControl;
 import com.mementocraft.reallyalive.body.PlayerMovement;
+import com.mementocraft.reallyalive.body.StandIn;
 import com.mementocraft.reallyalive.brain.Brain;
 import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.BrainIO;
@@ -366,7 +367,8 @@ public final class BrainManager {
                     h.hands.recipeHint(h.hands.screen()));
             h.sawScreen = true;
         } else if (h.sawScreen || h.age % Config.VISION_INTERVAL.get() == 0) {
-            Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour);
+            long now = v.level().getGameTime();
+            Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour, e -> h.hands.threats.isThreat(e, now));
             h.sawScreen = false;
         }
         System.arraycopy(h.vision, 0, f.vision, 0, h.vision.length);
@@ -381,6 +383,7 @@ public final class BrainManager {
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
         f.set(FeelChannel.USING_ITEM, h.hands.usingProgress());
         f.set(FeelChannel.CURIOUS, h.hands.curiosity());
+        feelFight(v, h, f);
         if (h.hands.screenOpen()) {
             // The screen is felt the more the longer nothing is done on it, which drives the urge to
             // leave it. The head does not move while a screen is open, so its tilt is not felt as
@@ -420,6 +423,60 @@ public final class BrainManager {
         }
         Brain brain = h.brain;
         h.pending = CompletableFuture.supplyAsync(() -> brain.step(f), workers);
+    }
+
+    private final float[] blowSides = new float[4];
+
+    /**
+     * The senses of a fight: which side the last blow came from, how far the attack has recharged,
+     * and whether a threat is in the crosshair within reach.
+     */
+    private void feelFight(Villager v, Handle h, SensoryFrame f) {
+        long now = v.level().getGameTime();
+        h.hands.threats.blowFelt(v, now, blowSides);
+        f.set(FeelChannel.HURT_FRONT, blowSides[0]);
+        f.set(FeelChannel.HURT_BACK, blowSides[1]);
+        f.set(FeelChannel.HURT_LEFT, blowSides[2]);
+        f.set(FeelChannel.HURT_RIGHT, blowSides[3]);
+        f.set(FeelChannel.ATTACK_READY, h.hands.attackRecharge());
+        f.set(FeelChannel.THREAT_IN_REACH, !h.hands.screenOpen() && h.hands.threatInReach() ? 1f : 0f);
+        if (h.age % 1200 == 0) {
+            h.hands.threats.forgetOld(now);
+        }
+    }
+
+    /**
+     * A brain villager was hurt: whoever did it (the owner of an arrow, the villager behind a
+     * stand-in) becomes a threat, and the blow is felt from where it came.
+     */
+    public void hurt(Villager v, net.minecraft.world.damagesource.DamageSource source) {
+        Handle h = handles.get(v.getUUID());
+        if (h == null) {
+            return;
+        }
+        net.minecraft.world.entity.Entity attacker = source.getEntity();
+        Hands behind = StandIn.owner(attacker);
+        if (behind != null) {
+            attacker = behind.body();
+        }
+        if (attacker == v) {
+            return;
+        }
+        Vec3 from = source.getSourcePosition();
+        if (from == null && attacker != null) {
+            from = attacker.position();
+        }
+        h.hands.threats.hurtBy(attacker, from, v.level().getGameTime());
+    }
+
+    /** A creature died: each brain villager that hurt it lately while it was a threat has won a fight. */
+    public void died(net.minecraft.world.entity.LivingEntity victim) {
+        long now = victim.level().getGameTime();
+        for (Handle h : handles.values()) {
+            if (h.hands.threats.died(victim, now)) {
+                h.hands.defeated();
+            }
+        }
     }
 
     /**

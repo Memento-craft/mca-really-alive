@@ -214,9 +214,28 @@ public final class Hands {
     /** Drags let go over more than one slot, sharing a stack out; and single right clicks putting one thing into a workstation. */
     public int sharedOutTotal;
     public int dealtOneTotal;
+    /** Who it counts as a threat, and the blows it has felt. */
+    public final Threats threats = new Threats();
+    /** Blows landed on threats this tick, each as a share of a fully recharged blow; and threats defeated. */
+    private float hitThisTick;
+    private int defeatedThisTick;
+    /** Diagnostics for benchmarks: swings at creatures, blows landed on threats, their summed share, wins. */
+    public int swingsAtCreatures;
+    public int hitsOnThreats;
+    public float hitShareTotal;
+    public float damageDealt;
+    public int defeatedTotal;
+    /** Diagnostics: arrows and tridents let loose, and ticks a shield was held up. */
+    public int shotsTotal;
+    public int blockingTicks;
 
     public Hands(Villager body) {
         this.body = body;
+    }
+
+    /** The villager these hands belong to. */
+    public Villager body() {
+        return body;
     }
 
     /** How far digging the current block has got, 0..1. */
@@ -266,9 +285,31 @@ public final class Hands {
             pleasure += Motives.DIG_PER_TICK;
         }
         pleasure += placedThisTick * Motives.PLACE;
+        pleasure += hitThisTick * Motives.HIT + defeatedThisTick * Motives.DEFEAT;
+        hitThisTick = 0f;
+        defeatedThisTick = 0;
         dugThisTick = false;
         placedThisTick = 0;
         return pleasure;
+    }
+
+    /**
+     * How far the attack has recharged since the last swing, 0..1, by the held weapon's attack
+     * speed: what a player's crosshair attack indicator shows.
+     */
+    public float attackRecharge() {
+        return (float) Math.min(1.0, (sinceSwing + 0.5) / (20.0 / weaponStats(body.getMainHandItem())[1]));
+    }
+
+    /** True when the crosshair rests on a threat within reach. */
+    public boolean threatInReach() {
+        return target instanceof EntityHitResult hit && threats.isThreat(hit.getEntity(), body.level().getGameTime());
+    }
+
+    /** A threat it hurt lately died: the fight is won. */
+    public void defeated() {
+        defeatedThisTick++;
+        defeatedTotal++;
     }
 
     /** Forgets what it carried, for when something other than its own hands fills them. */
@@ -358,9 +399,13 @@ public final class Hands {
 
         boolean use = keys.use();
         if (body.isUsingItem()) {
-            // Eating or drinking goes on while use is held, and stops when it is let go.
+            // Eating or drinking goes on while use is held, and stops when it is let go; a drawn
+            // bow shoots when it is let go, and a shield comes down.
+            if (body.isBlocking()) {
+                blockingTicks++;
+            }
             if (!use) {
-                body.releaseUsingItem();
+                letGoOfUse();
             }
         } else if (use && (!useWasDown || useDelay == 0)) {
             useDelay = USE_REPEAT;
@@ -572,6 +617,7 @@ public final class Hands {
 
     private void startAttack() {
         if (target instanceof EntityHitResult hit) {
+            swingsAtCreatures++;
             hitCreature(hit.getEntity());
         }
         body.swing(InteractionHand.MAIN_HAND);
@@ -583,30 +629,32 @@ public final class Hands {
             return;
         }
         ItemStack weapon = body.getMainHandItem();
-        double[] damage = {1.0};
-        double[] speed = {4.0};
-        weapon.forEachModifier(EquipmentSlot.MAINHAND, (attribute, modifier) -> {
-            if (modifier.operation() != AttributeModifier.Operation.ADD_VALUE) {
-                return;
-            }
-            if (attribute.is(Attributes.ATTACK_DAMAGE)) {
-                damage[0] += modifier.amount();
-            } else if (attribute.is(Attributes.ATTACK_SPEED)) {
-                speed[0] += modifier.amount();
-            }
-        });
-        float recharge = (float) Math.min(1.0, (sinceSwing + 0.5) / (20.0 / speed[0]));
+        float recharge = attackRecharge();
         var source = body.damageSources().mobAttack(body);
-        float amount = (float) damage[0];
+        float amount = (float) weaponStats(weapon)[0];
         amount = EnchantmentHelper.modifyDamage(level, weapon, victim, source, amount);
-        amount *= 0.2f + recharge * recharge * 0.8f;
+        float share = 0.2f + recharge * recharge * 0.8f;
+        amount *= share;
         boolean critical = recharge > 0.9f && body.fallDistance > 0f && !body.onGround() && !body.onClimbable()
                 && !body.isInWater() && !body.hasEffect(MobEffects.BLINDNESS) && !body.isPassenger() && !body.isSprinting();
         if (critical) {
             amount *= 1.5f;
         }
         boolean knockback = body.isSprinting() && recharge > 0.9f;
+        long now = level.getGameTime();
+        boolean threat = threats.isThreat(victim, now);
+        float healthBefore = victim instanceof LivingEntity l ? l.getHealth() : 0f;
         if (victim.hurt(source, amount)) {
+            if (threat) {
+                // A crit counts as more than a full blow: a jump timed into the swing is worth learning too.
+                hitThisTick += critical ? share * 1.5f : share;
+                hitsOnThreats++;
+                hitShareTotal += share;
+                threats.hit(victim, now);
+            }
+            if (victim instanceof LivingEntity l) {
+                damageDealt += Math.max(0f, healthBefore - l.getHealth());
+            }
             if (knockback && victim instanceof LivingEntity living) {
                 float yaw = body.getYRot() * ((float) Math.PI / 180f);
                 living.knockback(0.5, Math.sin(yaw), -Math.cos(yaw));
@@ -618,6 +666,22 @@ public final class Hands {
             }
         }
         sinceSwing = 0;
+    }
+
+    /** A weapon's attack damage and attacks per second for a player holding it (a fist: 1 and 4). */
+    private static double[] weaponStats(ItemStack weapon) {
+        double[] stats = {1.0, 4.0};
+        weapon.forEachModifier(EquipmentSlot.MAINHAND, (attribute, modifier) -> {
+            if (modifier.operation() != AttributeModifier.Operation.ADD_VALUE) {
+                return;
+            }
+            if (attribute.is(Attributes.ATTACK_DAMAGE)) {
+                stats[0] += modifier.amount();
+            } else if (attribute.is(Attributes.ATTACK_SPEED)) {
+                stats[1] += modifier.amount();
+            }
+        });
+        return stats;
     }
 
     private void continueDigging(BlockPos pos) {
@@ -820,8 +884,11 @@ public final class Hands {
                 }
                 if (stack.getUseDuration(body) > 0) {
                     // Eating and drinking are the villager's own: the food and the potion's effects are its.
+                    // So are a raised shield, which blocks blows aimed at the villager, and a drawn
+                    // bow or trident, which the stand-in lets loose for it when use is let go.
                     if (stack.has(DataComponents.FOOD) || stack.getItem() instanceof PotionItem
-                            || stack.getUseAnimation() == UseAnim.DRINK || stack.getUseAnimation() == UseAnim.EAT) {
+                            || stack.getUseAnimation() == UseAnim.DRINK || stack.getUseAnimation() == UseAnim.EAT
+                            || heldUpByItself(p, stack)) {
                         p.giveBack(body);
                         body.startUsingItem(hand);
                         p.takeFrom(body);
@@ -843,6 +910,50 @@ public final class Hands {
             if (p.inOtherScreen()) {
                 openScreen(p.containerMenu);
             }
+        }
+    }
+
+    /**
+     * True for a thing the villager holds up itself while use is held: a shield, a bow or a trident
+     * to draw, a crossbow to load. A bow or crossbow with nothing to shoot is not drawn, as for a
+     * player; a loaded crossbow fires at once through the stand-in instead.
+     */
+    private static boolean heldUpByItself(StandIn p, ItemStack stack) {
+        UseAnim anim = stack.getUseAnimation();
+        if (anim == UseAnim.BLOCK || anim == UseAnim.SPEAR) {
+            return true;
+        }
+        if (stack.getItem() instanceof net.minecraft.world.item.CrossbowItem && net.minecraft.world.item.CrossbowItem.isCharged(stack)) {
+            return false;
+        }
+        return (anim == UseAnim.BOW || anim == UseAnim.CROSSBOW) && !p.getProjectile(stack).isEmpty();
+    }
+
+    /**
+     * Use let go while holding something up: food half eaten is put down, a shield comes down, and
+     * a drawn bow, a trident or a crossbow being loaded is let loose by the stand-in, standing where
+     * the villager stands and looking where it looks, drawn for as long as the villager drew it.
+     * Bows, tridents and crossbows only shoot for players.
+     */
+    private void letGoOfUse() {
+        UseAnim anim = body.getUseItem().getUseAnimation();
+        if (!(anim == UseAnim.BOW || anim == UseAnim.SPEAR || anim == UseAnim.CROSSBOW)
+                || !(body.level() instanceof ServerLevel)) {
+            body.releaseUsingItem();
+            return;
+        }
+        InteractionHand hand = body.getUsedItemHand();
+        int remaining = body.getUseItemRemainingTicks();
+        body.stopUsingItem();
+        StandIn p = standIn();
+        p.follow(body);
+        p.takeFrom(body);
+        try {
+            if (p.letLoose(hand, remaining)) {
+                shotsTotal++;
+            }
+        } finally {
+            p.giveBack(body);
         }
     }
 

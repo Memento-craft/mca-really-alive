@@ -41,11 +41,28 @@ public enum FeelChannel {
     USING_ITEM,
     // Added in brain file version 9.
     /** It carries something it has not looked over in a screen for a long while, or ever. */
-    CURIOUS;
+    CURIOUS,
+    // Added in brain file version 12 (10 and 11 are the speech and knowledge branches' versions).
+    /**
+     * A blow just landed, from in front, behind, the left or the right: a player sees the screen
+     * flash red and tip toward the side it came from. Fades over half a second.
+     */
+    HURT_FRONT,
+    HURT_BACK,
+    HURT_LEFT,
+    HURT_RIGHT,
+    /** How far the attack has recharged since the last swing: a player's crosshair attack indicator. */
+    ATTACK_READY,
+    /**
+     * The crosshair rests, within reach, on a threat: a monster, or someone who lately hurt it.
+     */
+    THREAT_IN_REACH;
 
     public static final int COUNT = values().length;
     /** Channels a brain saved before brain file version 8 has. */
     static final int COUNT_V7 = 27;
     /** Channels a brain saved with brain file version 8 has. */
     static final int COUNT_V8 = 30;
+    /** Channels a brain saved with brain file version 9 has. */
+    static final int COUNT_V9 = 31;
 }

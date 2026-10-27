@@ -135,6 +135,21 @@ public final class Brain {
     static final int TRY_ANOTHER_TICKS = 3;
     /** How brightly a place must shine under the pointer for the urge to deal one out there. */
     static final float DEAL_OUT_FROM = 0.9f;
+    /**
+     * Feeling a blow from one side turns the head that way, as a player whose screen tips toward a
+     * hit turns to see what hit them; a blow from behind turns it right round.
+     */
+    static final float HURT_TURN_WEIGHT = 1.5f;
+    /**
+     * A threat in the crosshair within reach drives the left button: the inborn urge to strike back
+     * at what attacks it. Learning can strengthen it, hold it back or time it.
+     */
+    static final float STRIKE_WEIGHT = 1.0f;
+    /**
+     * A left button held on a creature hits it once, as a player's does; it tires after this many
+     * ticks and lets go, so the next press can hit again.
+     */
+    static final int STRIKE_HOLD_TICKS = 4;
     /** Curiosity about what it carries -> inventory key, to look it over. */
     static final float CURIOUS_WEIGHT = 0.6f;
     /**
@@ -338,6 +353,8 @@ public final class Brain {
     MotorCommand lastCommand = MotorCommand.IDLE;
     /** Ticks the left button has been held down with a screen open. */
     private int screenButtonHeld;
+    /** Ticks the left button has been held on a threat in reach, in the world. */
+    private int strikeHeld;
     /** Ticks of use pressed without pleasure, and ticks left of the urge to turn the wheel. */
     private int futileUse;
     private int tryAnother;
@@ -474,6 +491,29 @@ public final class Brain {
         if (inputSlot[i] == IN_FEEL + FeelChannel.CURIOUS.ordinal()) {
             for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
                 connect(i, m, CURIOUS_WEIGHT);
+            }
+        }
+        wireFightReflexes(i);
+    }
+
+    /**
+     * The reflexes of a fight, added in brain file version 12: a blow from one side turns the head
+     * toward it (from behind, right round), and a threat in the crosshair within reach drives the
+     * left button.
+     */
+    private void wireFightReflexes(int i) {
+        int slot = inputSlot[i] - IN_FEEL;
+        MotorChannel turn = slot == FeelChannel.HURT_LEFT.ordinal() ? MotorChannel.YAW_LEFT
+                : slot == FeelChannel.HURT_RIGHT.ordinal() || slot == FeelChannel.HURT_BACK.ordinal() ? MotorChannel.YAW_RIGHT
+                : null;
+        if (turn != null) {
+            for (int m : motorPools[turn.ordinal()]) {
+                connect(i, m, HURT_TURN_WEIGHT);
+            }
+        }
+        if (slot == FeelChannel.THREAT_IN_REACH.ordinal()) {
+            for (int m : motorPools[MotorChannel.ATTACK.ordinal()]) {
+                connect(i, m, STRIKE_WEIGHT);
             }
         }
     }
@@ -1446,6 +1486,7 @@ public final class Brain {
         }
         drivePoke(bored);
         driveButtonRelease(bored);
+        driveStrikeRelease(bored);
         driveScreenSatiety(bored);
         driveTryAnother(bored);
         driveSpeechBabble(amp);
@@ -1475,6 +1516,21 @@ public final class Brain {
     private void driveButtonRelease(float screen) {
         screenButtonHeld = screen > 0f && lastCommand.attack() ? screenButtonHeld + 1 : 0;
         if (screenButtonHeld > BUTTON_TIRES_TICKS) {
+            for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+                extInput[i] -= BUTTON_RELEASE;
+            }
+        }
+    }
+
+    /**
+     * In the world, a left button held on a creature tires after a few ticks and lets go: holding
+     * it hits only once, as for a player, and only a fresh press hits again. Without this the
+     * strike reflex held the button down on a zombie and hit it once a fight.
+     */
+    private void driveStrikeRelease(float screen) {
+        boolean onCreature = screen <= 0f && input[IN_FEEL + FeelChannel.THREAT_IN_REACH.ordinal()] >= 0.5f;
+        strikeHeld = onCreature && lastCommand.attack() ? strikeHeld + 1 : 0;
+        if (strikeHeld > STRIKE_HOLD_TICKS) {
             for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
                 extInput[i] -= BUTTON_RELEASE;
             }

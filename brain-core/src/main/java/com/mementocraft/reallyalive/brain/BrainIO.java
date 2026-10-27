@@ -7,7 +7,11 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 9;
+    /**
+     * 12 added the fighting senses. 10 and 11 are taken by the speech and knowledge branches, whose
+     * files this branch cannot read yet.
+     */
+    private static final int VERSION = 12;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -107,7 +111,7 @@ public final class BrainIO {
             throw new IOException("Not a brain file");
         }
         int version = in.readInt();
-        if (version < 4 || version > VERSION) {
+        if (version < 4 || version > VERSION || version == 10 || version == 11) {
             throw new IOException("Unsupported brain version " + version);
         }
         float[] genes = new float[in.readInt()];
@@ -189,6 +193,8 @@ public final class BrainIO {
             b.remapLegacyInputs(FeelChannel.COUNT_V7, MotorChannel.COUNT_V7);
         } else if (version == 8) {
             b.remapLegacyInputs(FeelChannel.COUNT_V8, MotorChannel.COUNT);
+        } else if (version == 9) {
+            b.remapLegacyInputs(FeelChannel.COUNT_V9, MotorChannel.COUNT);
         }
         for (int c = 0; c < motorCount; c++) {
             int[] pool = b.motorPools[c];

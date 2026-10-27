@@ -67,8 +67,17 @@ public final class Senses {
         see(body, range, vision, new float[SenseLayout.COLOUR_SIZE]);
     }
 
-    /** Casts the eye rays, also filling the colour of what each ray hits. */
+    /** Casts the eye rays, also filling the colour of what each ray hits. Monsters are the threats seen. */
     public static void see(LivingEntity body, double range, float[] vision, float[] colour) {
+        see(body, range, vision, colour, e -> e instanceof Enemy);
+    }
+
+    /**
+     * Casts the eye rays, also filling the colour of what each ray hits. A creature it counts as a
+     * threat (a monster, or someone who hurt it) is seen as a hazard.
+     */
+    public static void see(LivingEntity body, double range, float[] vision, float[] colour,
+                           java.util.function.Predicate<Entity> threat) {
         Level level = body.level();
         Vec3 eye = body.getEyePosition();
         List<Entity> nearby = level.getEntities(body, body.getBoundingBox().inflate(range),
@@ -109,7 +118,7 @@ public final class Senses {
                     near = (float) (1.0 - entityDist / range);
                     rgb = colourOf(seen);
                     creature = seen instanceof LivingEntity ? 1f : 0.5f;
-                    hazard = seen instanceof Enemy ? 1f : 0f;
+                    hazard = threat.test(seen) ? 1f : 0f;
                 } else if (block.getType() != HitResult.Type.MISS) {
                     near = (float) (1.0 - blockDist / range);
                     BlockState state = level.getBlockState(block.getBlockPos());

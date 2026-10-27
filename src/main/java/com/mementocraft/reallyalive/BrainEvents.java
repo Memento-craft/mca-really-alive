@@ -58,6 +58,14 @@ public final class BrainEvents {
 
     @SubscribeEvent
     public static void join(EntityJoinLevelEvent e) {
+        if (!e.getLevel().isClientSide() && e.getEntity() instanceof net.minecraft.world.entity.projectile.Projectile shot) {
+            // An arrow or trident a stand-in let loose was the villager's: what it hits knows who shot it.
+            Hands shooter = StandIn.owner(shot.getOwner());
+            if (shooter != null) {
+                shot.setOwner(shooter.body());
+            }
+            return;
+        }
         if (e.getLevel().isClientSide() || !(e.getEntity() instanceof Villager v) || BrainManager.get() == null) {
             return;
         }
@@ -79,8 +87,18 @@ public final class BrainEvents {
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void hurt(net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent e) {
+        if (!e.getEntity().level().isClientSide() && e.getEntity() instanceof Villager v && BrainManager.get() != null) {
+            BrainManager.get().hurt(v, e.getSource());
+        }
+    }
+
     @SubscribeEvent
     public static void death(LivingDeathEvent e) {
+        if (!e.getEntity().level().isClientSide() && BrainManager.get() != null && !e.isCanceled()) {
+            BrainManager.get().died(e.getEntity());
+        }
         if (!e.getEntity().level().isClientSide() && e.getEntity() instanceof Villager v && BrainManager.get() != null
                 && v.hasData(Attachments.BRAIN)) {
             BrainManager.get().forget(v);
