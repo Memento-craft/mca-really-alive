@@ -163,6 +163,10 @@ It follows a short question that leans on the one before, as people do: after "w
 "and john?" is answered with "john is in the garden .", after "is mary in the kitchen?" with "no ,
 john is in the garden .", and after "what does ivan own?", "where does he keep it?" with "he keeps
 it in the stable .".
+It knows what things are like from what it was told: told "pia has a red hat." it answers "what
+colour is pia's hat?", knows that "is the axe sharp?" is "no , the axe is dull ." (it knows the
+opposites of common qualities), and that "whose garden is bigger?" is answered by "hilda has a big
+garden .".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

@@ -1250,6 +1250,11 @@ public final class Brain {
                 }
                 if (saidIn(seen, q)) {
                     telling = Math.max(telling, toldWeight(q, memory, tones));
+                } else if (answersKind(q, told) || yesNoAsked(heard) && saysOpposite(told, q)) {
+                    // "what colour is pia's hat?" is answered by "pia has a red hat .", "whose
+                    // garden is bigger?" by "hilda has a big garden .".
+                    telling = Math.max(telling, toldWeight(q, memory, tones));
+                    cue += toldWeight(q, memory, tones);
                 } else if (topics != null) {
                     // A word of the question the line did not say, but one that goes with a word
                     // it did ("what was he wearing?" "a purple coat.").
@@ -1320,12 +1325,15 @@ public final class Brain {
         }
         toldLine = best;
         toldLineAsHeard = best;
-        int answer = yesOrNo(heard, bestSeen, memory, tones);
+        int quality = yesNoAsked(heard) ? qualityAsked(heard) : -1;
+        // "is the tavern quiet at night?" after "the tavern is loud at night .": no.
+        int answer = quality >= 0 && !saidIn(best, quality) && saysOpposite(best, quality) ? language.vocabulary.find("no")
+            : yesOrNo(heard, bestSeen, memory, tones);
         if (answer < 0 && heard.length > 2 && heard[0] >= 0 && ASKS_YES_OR_NO.contains(language.vocabulary.word(heard[0]))) {
             // "the door was open." "i closed the door.": "is the door open?" "no , ...";
             // "kai turned the lamp on.": "is the lamp on?" "yes , ..."
             int state = heard[heard.length - 2];
-            if (state < 0 || !STATE_OPPOSITE.containsKey(language.vocabulary.word(state))) {
+            if (state < 0 || !hasOpposite(language.vocabulary.word(state))) {
                 state = -1;
             }
             int end = best.length - 1;
@@ -2369,7 +2377,7 @@ public final class Brain {
                 && Set.of("has", "have", "had").contains(language.vocabulary.word(heard[1]));
         boolean yesNo = ASKS_YES_OR_NO.contains(first);
         int state = yesNo && heard.length > 2 && heard[heard.length - 2] >= 0
-                && STATE_OPPOSITE.containsKey(language.vocabulary.word(heard[heard.length - 2])) ? heard[heard.length - 2] : -1;
+                && hasOpposite(language.vocabulary.word(heard[heard.length - 2])) ? heard[heard.length - 2] : -1;
         int doing = -1;
         if (where && heard.length > 3 && heard[1] >= 0 && Set.of("did", "does", "do").contains(language.vocabulary.word(heard[1]))) {
             doing = heard[heard.length - 2];
@@ -2688,16 +2696,84 @@ public final class Brain {
 
     /** Whether a line says the opposite of a state ("closed" for "open"). */
     private boolean saysOpposite(int[] line, int state) {
-        String other = state < 0 ? null : STATE_OPPOSITE.get(language.vocabulary.word(state));
-        if (other == null) {
+        String word = state < 0 ? null : language.vocabulary.word(state);
+        if (word == null || !hasOpposite(word)) {
             return false;
         }
+        String other = STATE_OPPOSITE.get(word);
         for (int w : line) {
-            if (w >= 0 && stem(language.vocabulary.word(w)).equals(stem(other))) {
+            if (w >= 0 && (other != null && stem(language.vocabulary.word(w)).equals(stem(other))
+                    || QUALITY_OPPOSITE.getOrDefault(word, Set.of()).contains(language.vocabulary.word(w)))) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Whether a line says what a word of the question asks for without saying the word: a colour
+     * for "colour", the plain quality for "bigger" ("big").
+     */
+    private boolean answersKind(int q, int[] told) {
+        String word = q < 0 ? "" : language.vocabulary.word(q);
+        if (word.equals("colour") || word.equals("color")) {
+            return saysAny(told, COLOURS);
+        }
+        String plain = OPPOSITE.containsKey(word) ? plainQuality(word) : null;
+        return plain != null && saysAny(told, Set.of(plain));
+    }
+
+    private boolean yesNoAsked(int[] heard) {
+        return heard.length > 2 && heard[0] >= 0 && ASKS_YES_OR_NO.contains(language.vocabulary.word(heard[0]));
+    }
+
+    /** The quality a yes or no question asks of ("quiet" in "is the tavern quiet at night?"), or -1. */
+    private int qualityAsked(int[] heard) {
+        for (int i = 2; i < heard.length; i++) {
+            if (heard[i] >= 0 && QUALITY_OPPOSITE.containsKey(language.vocabulary.word(heard[i]))) {
+                return heard[i];
+            }
+        }
+        return -1;
+    }
+
+    /** "bigger": "big", "larger": "large", "heavier": "heavy". */
+    private static String plainQuality(String more) {
+        String w = more.substring(0, more.length() - 2);
+        if (more.endsWith("ier")) {
+            return more.substring(0, more.length() - 3) + "y";
+        }
+        if (w.length() > 2 && w.charAt(w.length() - 1) == w.charAt(w.length() - 2)) {
+            return w.substring(0, w.length() - 1);
+        }
+        return QUALITY_OPPOSITE.containsKey(w + "e") ? w + "e" : w;
+    }
+
+    private static final Set<String> COLOURS = Set.of("red", "green", "blue", "yellow", "white", "black", "brown",
+            "grey", "gray", "orange", "pink", "purple", "golden", "silver");
+
+    /** Whether a word is a state or a quality with an opposite ("open", "sharp"). */
+    private static boolean hasOpposite(String word) {
+        return STATE_OPPOSITE.containsKey(word) || QUALITY_OPPOSITE.containsKey(word);
+    }
+
+    /** Qualities and their opposites, each of which may have more than one ("tall": "short", "low"). */
+    private static final java.util.Map<String, Set<String>> QUALITY_OPPOSITE = qualities("warm cold", "hot cold",
+            "sharp dull", "sharp blunt", "clean dirty", "big small", "big little", "large small", "tall short", "tall low",
+            "high low", "long short", "old young", "old new", "fresh stale", "fresh rotten", "heavy light", "fast slow",
+            "rich poor", "happy sad", "strong weak", "deep shallow", "wide narrow", "loud quiet", "safe dangerous",
+            "kind mean", "easy hard", "soft hard", "good bad", "clever stupid", "friendly unfriendly", "busy quiet",
+            "thick thin", "fat thin", "bright dark", "light dark", "sweet sour", "sweet bitter", "smooth rough",
+            "cheap expensive", "near far", "early late", "brave scared", "healthy sick", "well sick", "tired rested");
+
+    private static java.util.Map<String, Set<String>> qualities(String... pairs) {
+        java.util.Map<String, Set<String>> m = new java.util.HashMap<>();
+        for (String p : pairs) {
+            String[] w = p.split(" ");
+            m.computeIfAbsent(w[0], x -> new java.util.HashSet<>()).add(w[1]);
+            m.computeIfAbsent(w[1], x -> new java.util.HashSet<>()).add(w[0]);
+        }
+        return m;
     }
 
     /** Whether a line is one of those heard lately. */

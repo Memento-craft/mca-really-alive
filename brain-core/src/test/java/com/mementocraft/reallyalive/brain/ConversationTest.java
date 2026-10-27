@@ -327,6 +327,34 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsWhatThingsAreLike() {
+        // Colours, qualities and their opposites: {told, told, asked, right, wrong}.
+        String[][] talks = {{"pia has a red hat.", "lou has a green hat.", "what colour is pia's hat?", "red", "green"},
+            {"the sword is sharp.", "the axe is dull.", "is the axe sharp?", "no", "yes"},
+            {"hilda has a big garden.", "bram has a small garden.", "whose garden is bigger?", "hilda", "bram"},
+            {"the tavern is loud at night.", "the market was busy.", "is the tavern quiet at night?", "no", "yes"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 920 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            String want = talks[i][3];
+            boolean yesNo = want.equals("yes") || want.equals("no");
+            right += (yesNo ? !said.isEmpty() && said.get(0).equals(want) : said.contains(want)) && !said.contains(talks[i][4]) ? 1 : 0;
+        }
+        System.out.printf("knew what things are like %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "knew only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},
