@@ -949,7 +949,7 @@ public final class Brain {
             weighRecalled(mine, match, OWN_RECALL_WEIGHT, true, start, turn);
             if (toldLine != null) {
                 // What it was told, said back the other way round: "you have a dog named rex."
-                weighRecalled(new int[][] {toldBack(toldLine)}, new float[] {1f}, TOLD_WEIGHT, true, start, turn);
+                weighRecalled(new int[][] {toldInOwnWords ? toldLine : toldBack(toldLine)}, new float[] {1f}, TOLD_WEIGHT, true, start, turn);
             }
         }
         language.restore(start);
@@ -992,6 +992,8 @@ public final class Brain {
     private int heardLinesNext;
     private int[] recalledFocus = new int[0];
     private int[] toldLine;
+    /** Whether the told line is already said as this villager would say it ("rosa is my mother ."). */
+    private boolean toldInOwnWords;
     /** The told line as it was heard, before any "yes ," or "because" was put in front. */
     private int[] toldLineAsHeard;
 
@@ -1089,6 +1091,7 @@ public final class Brain {
         ExchangeMemory memory = ExchangeMemory.shared();
         int ask = language.vocabulary.find("?");
         toldLine = null;
+        toldInOwnWords = false;
         // A short, plain question about the speaker ("where do i live?"), not a long outburst
         // that ends in one.
         int[] heard = withoutAddress(heardLine);
@@ -1110,6 +1113,7 @@ public final class Brain {
             // "who is anna's son?" after "anna is ben's mother .": "ben is anna's son ."
             toldLine = kin;
             toldLineAsHeard = null;
+            toldInOwnWords = true;
             return new int[0];
         }
         int[] day = whatDay(heard);
@@ -1585,6 +1589,14 @@ public final class Brain {
             "grandchild", "grandparent");
     /** Who "my" names: the one talking. */
     private static final String SPEAKER = "#me";
+    /** Who "your" names: this villager. */
+    private static final String SELF = "#self";
+
+    /** One of its own family, as the game tells it: "mother" and the words of her name. */
+    record Kin(String word, int[] name) {}
+
+    /** Its own family, told again by the game now and then; not saved. */
+    final List<Kin> kin = new ArrayList<>();
 
     private static java.util.Map<String, String[]> kin(String... rows) {
         java.util.Map<String, String[]> m = new java.util.HashMap<>();
@@ -1603,8 +1615,8 @@ public final class Brain {
                 return null;
             }
             String w = language.vocabulary.word(line[i]);
-            if (w.equals("my")) {
-                return to - from == 1 ? SPEAKER : null;
+            if (w.equals("my") || w.equals("your")) {
+                return to - from == 1 ? (w.equals("my") ? SPEAKER : SELF) : null;
             }
             if (w.endsWith("'s")) {
                 w = w.substring(0, w.length() - 2);
@@ -1672,6 +1684,20 @@ public final class Brain {
                 }
             }
         }
+        for (Kin k : kin) {
+            // Its own family, as the game told it.
+            String[] word = KIN.get(k.word());
+            String one = kinName(k.name(), 0, k.name().length);
+            if (word == null || one == null) {
+                continue;
+            }
+            ties.add(new String[] {one, word[0], SELF});
+            ties.add(new String[] {SELF, KIN_TURNED.get(word[0]), one});
+            if (!word[1].equals("-")) {
+                genders.put(one, word[1]);
+            }
+            said.putIfAbsent(one, k.name());
+        }
         // What follows from them: a parent's parent, and the parents of a sibling.
         for (int round = 0; round < 2; round++) {
             List<String[]> more = new ArrayList<>();
@@ -1702,11 +1728,13 @@ public final class Brain {
                 if (t[1].equals(kind) && t[2].equals(of) && (gender.equals("-") || !genders.containsKey(t[0])
                         || genders.get(t[0]).equals(gender))) {
                     int[] who = t[0].equals(SPEAKER) ? new int[] {language.vocabulary.find("you"), language.vocabulary.find("are")}
+                            : t[0].equals(SELF) ? new int[] {language.vocabulary.find("i"), language.vocabulary.find("am")}
                             : said.containsKey(t[0]) ? join(said.get(t[0]), new int[] {is}) : null;
                     if (who == null) {
                         continue;
                     }
-                    int[] whose = of.equals(SPEAKER) ? new int[] {language.vocabulary.find("your")} : Arrays.copyOfRange(heard, 2, name);
+                    int[] whose = of.equals(SPEAKER) ? new int[] {language.vocabulary.find("your")}
+                            : of.equals(SELF) ? new int[] {language.vocabulary.find("my")} : Arrays.copyOfRange(heard, 2, name);
                     int[] answer = join(who, whose, new int[] {heard[name], language.vocabulary.find(".")});
                     return Arrays.stream(answer).anyMatch(w -> w < 0) ? null : answer;
                 }
@@ -1715,15 +1743,18 @@ public final class Brain {
             // "is ben anna's son?": ben is the one before the possessive.
             for (int split = 2; split < name; split++) {
                 String one = kinName(heard, 1, split), of = kinName(heard, split, name);
-                if (one == null || of == null || !language.vocabulary.word(heard[split]).equals("my")
+                String whose = language.vocabulary.word(heard[split]);
+                if (one == null || of == null || !whose.equals("my") && !whose.equals("your")
                         && !language.vocabulary.word(heard[name - 1]).endsWith("'s") && !language.vocabulary.word(heard[name - 1]).endsWith("'")) {
                     continue;
                 }
                 for (String[] t : ties) {
                     if (t[0].equals(one) && t[1].equals(kind) && t[2].equals(of)) {
+                        // "is rosa your mother?" "yes , rosa is my mother ."
+                        int[] of2 = Arrays.copyOfRange(heard, split, name + 1);
+                        of2[0] = whose.equals("my") ? language.vocabulary.find("your") : whose.equals("your") ? language.vocabulary.find("my") : of2[0];
                         return join(new int[] {language.vocabulary.find("yes"), language.vocabulary.find(",")},
-                                Arrays.copyOfRange(heard, 1, split), new int[] {is}, Arrays.copyOfRange(heard, split, name + 1),
-                                new int[] {language.vocabulary.find(".")});
+                                Arrays.copyOfRange(heard, 1, split), new int[] {is}, of2, new int[] {language.vocabulary.find(".")});
                     }
                 }
             }

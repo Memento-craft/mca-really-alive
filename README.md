@@ -136,6 +136,11 @@ It works out family ties from what it was told, lately or long ago: each tie bot
 parent as a grandparent, a sibling's parents as one's own, and "my" as the speaker ("the priest is
 my uncle." "who is the priest's nephew?" "you are the priest's nephew ."). 19 of 20 (3 before),
 20 of 20 on a set written afterwards, none wrong.
+The game also tells each villager its own family from MCA's family tree (parents, grandparents,
+partner, children, siblings, by name), so asked "who is your mother?" it says "rosa is my mother
+.", asked "who is lena's husband?" it says "i am lena's husband .", and it works out more from
+what it is told ("ana is rosa's mother." "who is your grandmother?" "ana is my grandmother ."). MCA
+is reached by reflection, so without it a villager just has no family to tell of.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

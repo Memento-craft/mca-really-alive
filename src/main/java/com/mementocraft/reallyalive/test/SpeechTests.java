@@ -402,4 +402,47 @@ public final class SpeechTests {
             }
         });
     }
+
+    /**
+     * A villager knows its family as MCA's family tree has it: made the child of "Rosa" in the
+     * tree, asked "who is your mother?" it says "rosa is my mother .". Its own batch, as above.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "family")
+    public static void villagerKnowsItsMotherFromTheFamilyTree(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        try {
+            Class<?> treeClass = Class.forName("net.conczin.mca.server.world.data.FamilyTree");
+            Object tree = treeClass.getMethod("get", net.minecraft.server.level.ServerLevel.class).invoke(null, h.getLevel());
+            Object child = treeClass.getMethod("getOrCreate", net.minecraft.world.entity.Entity.class).invoke(tree, v);
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Object female = Enum.valueOf((Class) Class.forName("net.conczin.mca.entity.ai.relationship.Gender"), "FEMALE");
+            Object mother = treeClass.getMethod("getOrCreate", java.util.UUID.class, String.class, female.getClass())
+                    .invoke(tree, java.util.UUID.randomUUID(), "Rosa", female);
+            child.getClass().getMethod("setMother", mother.getClass()).invoke(child, mother);
+        } catch (ReflectiveOperationException e) {
+            h.fail("could not reach MCA's family tree: " + e);
+            return;
+        }
+        com.mementocraft.reallyalive.sense.Naming.whoItIs(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "who is your mother?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("family benchmark: asked \"who is your mother?\", the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("rosa")),
+                        "asked \"who is your mother?\" it said " + answers + ", not rosa");
+                h.succeed();
+            }
+        });
+    }
 }

@@ -66,7 +66,8 @@ public final class Naming {
 
     /**
      * Tells a villager who it is: its name (MCA names every villager), its work and whether it is
-     * still a child, so it answers "what's your name?" and "what do you do?" truthfully.
+     * still a child, and its family as MCA knows it, so it answers "what's your name?", "what do
+     * you do?" and "who is your mother?" truthfully.
      */
     public static void whoItIs(Villager v, Brain brain) {
         String name = v.hasCustomName() ? v.getCustomName().getString() : null;
@@ -75,7 +76,7 @@ public final class Naming {
         if (p == VillagerProfession.NONE || p == VillagerProfession.NITWIT) {
             work = null;
         }
-        SelfKnowledge.tell(brain, name, work, v.isBaby());
+        SelfKnowledge.tell(brain, name, work, v.isBaby(), McaFamily.of(v));
     }
 
     /** Whether a player or another villager is close enough to talk to. */

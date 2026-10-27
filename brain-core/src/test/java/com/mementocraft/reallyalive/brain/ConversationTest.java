@@ -367,6 +367,28 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsItsOwnFamily() {
+        // As the game tells it: {question, right word}.
+        String[][] asked = {{"who is your mother?", "rosa"}, {"is rosa your mother?", "yes"}, {"who is your son?", "tomas"},
+            {"who is lena's husband?", "i"}, {"who is tomas's grandfather?", "juan"}};
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 850 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            SelfKnowledge.tell(b, "Pedro", "farmer", false, List.of(new String[] {"mother", "Rosa"}, new String[] {"father", "Juan"},
+                new String[] {"wife", "Lena"}, new String[] {"son", "Tomas"}));
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            right += said.contains(asked[i][1]) ? 1 : 0;
+        }
+        System.out.printf("knew its own family %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},

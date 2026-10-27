@@ -1,5 +1,6 @@
 package com.mementocraft.reallyalive.brain;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -24,6 +25,22 @@ public final class SelfKnowledge {
      * "librarian") or null for none.
      */
     public static void tell(Brain b, String name, String work, boolean child) {
+        tell(b, name, work, child, List.of());
+    }
+
+    /**
+     * Tells a brain who it is and who its family are: each a family word and a first name
+     * ({"mother", "rosa"}), so asked "who is your mother?" it says "rosa is my mother .", and
+     * works out more from them ("who is your grandmother?").
+     */
+    public static void tell(Brain b, String name, String work, boolean child, List<String[]> family) {
+        b.kin.clear();
+        for (String[] tie : family) {
+            int[] who = ids(b, tie[1].toLowerCase(java.util.Locale.ROOT));
+            if (tie.length == 2 && who.length > 0 && Arrays.stream(who).allMatch(w -> w >= 0)) {
+                b.kin.add(new Brain.Kin(tie[0], who));
+            }
+        }
         b.talk.forgetSelf();
         b.talk.you = java.util.Arrays.stream(ids(b, "you your yourself")).sorted().toArray();
         if (name != null && !name.isBlank()) {
