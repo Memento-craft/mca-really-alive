@@ -120,6 +120,11 @@ the key ."; "then it jumped onto the wall." after "the cat was on the roof." is 
 cat jumped onto the wall ."; "i closed the door." answers "is the door open?" with no. On 20 such
 talks it gets 18 right and none wrong (5 right and 10 wrong before), and 20 of 20 on a set written
 afterwards. A common name ("john", "paris") now counts as a name.
+It works out sums ("what is 12 plus 9?" "12 plus 9 is 21 ."; minus, times, divided by, take away)
+and what comes before or after a day, a month or a number ("what comes before monday?" "sunday
+comes before monday ."). On 20 everyday questions written afterwards (sums, what comes next,
+opposites, colours, how many legs) it answers 16, 8 before; what it gets wrong now are things it
+would have to know of the world, such as how many wheels a bike has.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

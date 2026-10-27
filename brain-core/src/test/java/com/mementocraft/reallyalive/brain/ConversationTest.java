@@ -298,6 +298,26 @@ class ConversationTest {
     }
 
     @Test
+    void villagerWorksOutSumsAndWhatComesNext() {
+        String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
+            {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},
+            {"what comes before monday?", "sunday"}, {"which month comes after june?", "july"}};
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 800 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            right += said.contains(asked[i][1]) ? 1 : 0;
+        }
+        System.out.printf("worked out sums and what comes next %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "worked out only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerKnowsWhichIsBiggerWithoutBeingTold() {
         // Nothing is told: the answer comes from which way round the language area finds likelier.
         String[][] asked = {{"is a horse bigger than a mouse?", "yes"}, {"is a mouse bigger than a horse?", "no"},

@@ -1091,6 +1091,16 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] reckoned = worked(heard);
+        if (reckoned == null) {
+            reckoned = nextInOrder(heard);
+        }
+        if (reckoned != null) {
+            // "what is two plus three?" "two plus three is five ."
+            toldLine = reckoned;
+            toldLineAsHeard = null;
+            return new int[0];
+        }
         int[] day = whatDay(heard);
         if (day != null) {
             // "what day is tomorrow?" after "today is monday .": "tomorrow is tuesday ."
@@ -1451,6 +1461,89 @@ public final class Brain {
     }
 
     private static final List<String> DAYS = List.of("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday");
+
+    private static final List<String> MONTHS = List.of("january", "february", "march", "april", "may", "june", "july",
+            "august", "september", "october", "november", "december");
+
+    /**
+     * A sum worked out: "what is two plus three?" "two plus three is five ."; also minus, times
+     * and divided by. Null if it is no such question, or the answer is no whole number.
+     */
+    private int[] worked(int[] heard) {
+        if (heard.length < 4 || heard[0] < 0 || !Set.of("what", "what's", "how", "whats").contains(language.vocabulary.word(heard[0]))) {
+            return null;
+        }
+        for (int i = 1; i + 1 < heard.length; i++) {
+            if (heard[i - 1] < 0 || heard[i] < 0 || heard[i + 1] < 0) {
+                continue;
+            }
+            int a = number(language.vocabulary.word(heard[i - 1]));
+            String op = language.vocabulary.word(heard[i]);
+            int at = i + 1;
+            if ((op.equals("divided") || op.equals("take")) && at + 1 < heard.length && heard[at] >= 0
+                    && Set.of("by", "away").contains(language.vocabulary.word(heard[at]))) {
+                at++;
+            }
+            int b = heard[at] < 0 ? -1 : number(language.vocabulary.word(heard[at]));
+            if (a < 0 || b < 0) {
+                continue;
+            }
+            int c = switch (op) {
+                case "plus", "+", "and" -> a + b;
+                case "minus", "-", "take" -> a - b;
+                case "times", "x", "*" -> a * b;
+                case "divided", "/" -> b != 0 && a % b == 0 ? a / b : -1;
+                default -> -1;
+            };
+            if (c < 0 || op.equals("and") && !contains(heard, language.vocabulary.find("make"))
+                    && !contains(heard, language.vocabulary.find("makes"))) {
+                continue;
+            }
+            int[] said = join(Arrays.copyOfRange(heard, i - 1, at + 1), new int[] {language.vocabulary.find("is"), numberWord(c),
+                language.vocabulary.find(".")});
+            return said[said.length - 2] < 0 ? null : said;
+        }
+        return null;
+    }
+
+    private int numberWord(int n) {
+        return language.vocabulary.find(n < NUMBERS.size() ? NUMBERS.get(n) : Integer.toString(n));
+    }
+
+    /**
+     * What comes before or after a day, a month or a number: "what day comes before friday?"
+     * "thursday comes before friday ."; null if it is no such question.
+     */
+    private int[] nextInOrder(int[] heard) {
+        if (heard.length < 4 || heard[0] < 0 || !Set.of("what", "which", "what's").contains(language.vocabulary.word(heard[0]))
+                || !contains(heard, language.vocabulary.find("comes")) && !contains(heard, language.vocabulary.find("come"))) {
+            return null;
+        }
+        for (int i = 1; i + 1 < heard.length; i++) {
+            if (heard[i] < 0 || heard[i + 1] < 0) {
+                continue;
+            }
+            String way = language.vocabulary.word(heard[i]);
+            String of = language.vocabulary.word(heard[i + 1]);
+            int step = way.equals("after") ? 1 : way.equals("before") ? -1 : 0;
+            if (step == 0) {
+                continue;
+            }
+            String said = null;
+            if (DAYS.contains(of)) {
+                said = DAYS.get(Math.floorMod(DAYS.indexOf(of) + step, 7));
+            } else if (MONTHS.contains(of)) {
+                said = MONTHS.get(Math.floorMod(MONTHS.indexOf(of) + step, 12));
+            } else if (number(of) >= 0 && number(of) + step >= 0) {
+                said = language.vocabulary.word(numberWord(number(of) + step));
+            }
+            if (said != null && language.vocabulary.find(said) >= 0) {
+                return new int[] {language.vocabulary.find(said), language.vocabulary.find("comes"), heard[i], heard[i + 1],
+                    language.vocabulary.find(".")};
+            }
+        }
+        return null;
+    }
 
     /**
      * The answer to "what day is tomorrow?" (or yesterday, or today) from the day told lately
