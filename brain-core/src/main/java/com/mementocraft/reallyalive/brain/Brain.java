@@ -127,6 +127,12 @@ public final class Brain {
     static final float BUTTON_RELEASE = 2f * BABBLE_GAIN;
     /** How hard an eye-catching thing in reach, right ahead, drives the use key. */
     static final float POKE_URGE = 0.5f * BABBLE_GAIN;
+    /**
+     * Ticks of pressing use on things in reach with nothing to show for it, after which an inborn
+     * urge turns the mouse wheel to try the next thing it carries; and how long that turn lasts.
+     */
+    static final int FUTILE_USE_TICKS = 40;
+    static final int TRY_ANOTHER_TICKS = 3;
     /** Curiosity about what it carries -> inventory key, to look it over. */
     static final float CURIOUS_WEIGHT = 0.6f;
     /**
@@ -330,6 +336,9 @@ public final class Brain {
     MotorCommand lastCommand = MotorCommand.IDLE;
     /** Ticks the left button has been held down with a screen open. */
     private int screenButtonHeld;
+    /** Ticks of use pressed without pleasure, and ticks left of the urge to turn the wheel. */
+    private int futileUse;
+    private int tryAnother;
     /** Ticks since a screen was last open. */
     private int sinceScreen = Integer.MAX_VALUE / 2;
 
@@ -1436,6 +1445,7 @@ public final class Brain {
         drivePoke(bored);
         driveButtonRelease(bored);
         driveScreenSatiety(bored);
+        driveTryAnother(bored);
         driveSpeechBabble(amp);
     }
 
@@ -1465,6 +1475,29 @@ public final class Brain {
         if (screenButtonHeld > BUTTON_TIRES_TICKS) {
             for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
                 extInput[i] -= BUTTON_RELEASE;
+            }
+        }
+    }
+
+    /**
+     * Pressing use on things in reach for a while with nothing to show for it gives an inborn
+     * urge to turn the mouse wheel and try the next thing it carries, as a child that cannot get
+     * one toy to do anything picks up another. A newborn that held iron at an unpowered press
+     * kept pressing use with it for 40000 ticks and never once brought the shafts it also carried
+     * into its hand.
+     */
+    private void driveTryAnother(float screen) {
+        boolean pleased = input[IN_EMOTION + SenseLayout.EMO_PLEASURE] > 0f;
+        boolean trying = screen <= 0f && lastCommand.use() && input[IN_FEEL + FeelChannel.TARGET_IN_REACH.ordinal()] >= 0.5f;
+        futileUse = pleased ? 0 : trying ? futileUse + 1 : futileUse;
+        if (futileUse > FUTILE_USE_TICKS) {
+            futileUse = 0;
+            tryAnother = TRY_ANOTHER_TICKS;
+        }
+        if (tryAnother > 0) {
+            tryAnother--;
+            for (int i : motorPools[MotorChannel.HOTBAR.ordinal()]) {
+                extInput[i] += 2f * BABBLE_GAIN;
             }
         }
     }

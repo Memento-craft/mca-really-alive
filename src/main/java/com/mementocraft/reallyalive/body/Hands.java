@@ -152,6 +152,8 @@ public final class Hands {
     public int screenClicks;
     /** Diagnostics: stacks thrown out of a screen. */
     public int throwsTotal;
+    /** Diagnostics: turns of the mouse wheel. */
+    public int wheelTurns;
     /** Kinds of things it lately threw out or gave a machine: taking those out of a machine is not making them. */
     private final java.util.Map<net.minecraft.world.item.Item, Long> givenKinds = new java.util.HashMap<>();
     private static final long GIVEN_REMEMBERED = 6000L;
@@ -473,6 +475,7 @@ public final class Hands {
 
     /** The mouse wheel: the next thing it carries comes into its hand, and what it held goes in its place. */
     private void nextInHand() {
+        wheelTurns++;
         var inventory = body.getInventory();
         int size = inventory.getContainerSize();
         for (int k = 0; k < size; k++) {

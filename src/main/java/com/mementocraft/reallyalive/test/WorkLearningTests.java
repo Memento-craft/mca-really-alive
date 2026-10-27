@@ -817,6 +817,16 @@ public final class WorkLearningTests {
         chainBenchmark(h, "2");
     }
 
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornPowersAndRunsAPress(GameTestHelper h) {
+        chainBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornPowersAndRunsAPress(GameTestHelper h) {
+        chainBenchmark(h, "4");
+    }
+
     /**
      * With Create installed: the PRESS pen, but with a one-block gap between the motor and the
      * press, and a newborn carrying shafts as well as iron. The press only works once a shaft is
@@ -900,8 +910,8 @@ public final class WorkLearningTests {
                 madePerWindow[w] = handle.hands().madeTotal - start[0];
                 start[0] = handle.hands().madeTotal;
                 LOG.info("CHAIN newborn {}: ticks {}-{}: took sheets {} times; press powered {} times, turning {} ticks; set going {}, placed {};"
-                                + " in hand {}", which, tick[0] - WINDOW, tick[0], madePerWindow[w], powered[0], pressTurning[0],
-                        handle.hands().setGoingTotal, handle.hands().placedTotal, v.getMainHandItem());
+                                + " in hand {}; wheel turned {} times", which, tick[0] - WINDOW, tick[0], madePerWindow[w], powered[0], pressTurning[0],
+                        handle.hands().setGoingTotal, handle.hands().placedTotal, v.getMainHandItem(), handle.hands().wheelTurns);
             }
             if (tick[0] == TICKS) {
                 String report = String.format("CHAIN: took sheets %d times, powered the press %d times", handle.hands().madeTotal, powered[0]);
