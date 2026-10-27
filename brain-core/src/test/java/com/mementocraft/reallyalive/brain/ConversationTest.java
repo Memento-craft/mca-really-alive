@@ -247,7 +247,9 @@ class ConversationTest {
             {"the mill is bigger than the church.", "the church is bigger than the well.", "what is the biggest?", "mill"},
             {"i have five apples and i eat two.", "the weather is nice today.", "how many apples do i have?", "three"},
             {"the farmer had eight chickens.", "a fox stole three of them.", "how many chickens does the farmer have?", "five"},
-            {"i picked six carrots.", "then i found four more.", "how many carrots do i have?", "ten"}};
+            {"i picked six carrots.", "then i found four more.", "how many carrots do i have?", "ten"},
+            {"today is monday.", "the weather is nice today.", "what day is tomorrow?", "tuesday"},
+            {"yesterday was friday.", "i had soup for lunch.", "what day is today?", "saturday"}};
         int right = 0;
         for (int i = 0; i < talks.length; i++) {
             Brain b = Brain.create(Genome.defaults(), 760 + i, 1f);

@@ -161,7 +161,7 @@ public final class Brain {
     /** How strongly a question must cue a line told earlier (summed telling-word weight), and how much its words are lifted. */
     static final float TOLD_CUE = Float.parseFloat(System.getProperty("reallyalive.toldCue", "5"));
     /** How many lines back a told line can be. */
-    static final int TOLD_LINES = 8;
+    static final int TOLD_LINES = 15;
     static final float TOLD_LINK = 2f;
     /** How alike two words must be for one to stand for the other in a question. */
     static final float TOLD_ALIKE = Float.parseFloat(System.getProperty("reallyalive.toldAlike", "0.4"));
@@ -170,6 +170,11 @@ public final class Brain {
     static final float TOLD_NAME = 8f;
     static final float TOLD_COVER = 0.5f;
     static final int TOLD_QUESTION_WORDS = 10;
+    /** Lines told longer ago than this many have to be asked about more fully to come back. */
+    static final int TOLD_RECENT = 8;
+    static final float TOLD_COVER_OLD = 0.6f;
+    /** A told line longer than this is a story, not a thing told to be asked about. */
+    static final int TOLD_LONGEST = 24;
     static final float TOLD_WEIGHT = Float.parseFloat(System.getProperty("reallyalive.toldWeight", "3"));
     static final float TOLD_LIFT = (float) Math.exp(Float.parseFloat(System.getProperty("reallyalive.toldLift", "3")));
     /**
@@ -1059,13 +1064,21 @@ public final class Brain {
      * most of what the question asks about. Returns those words, or none if the heard line is no
      * question or nothing told fits it well enough.
      */
-    private int[] toldBefore(int[] heard) {
+    private int[] toldBefore(int[] heardLine) {
         ExchangeMemory memory = ExchangeMemory.shared();
         int ask = language.vocabulary.find("?");
         toldLine = null;
         // A short, plain question about the speaker ("where do i live?"), not a long outburst
         // that ends in one.
+        int[] heard = withoutAddress(heardLine);
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
+            return new int[0];
+        }
+        int[] day = whatDay(heard);
+        if (day != null) {
+            // "what day is tomorrow?" after "today is monday .": "tomorrow is tuesday ."
+            toldLine = day;
+            toldLineAsHeard = null;
             return new int[0];
         }
         int[] many = howMany(heard);
@@ -1101,7 +1114,8 @@ public final class Brain {
         // lately, not other questions, is recalled.
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
             int[] told = heardLines[(heardLinesNext - k) % heardLines.length];
-            if (told.length == 0 || told[told.length - 1] == ask || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names)) {
+            if (told.length == 0 || told.length > TOLD_LONGEST || told[told.length - 1] == ask
+                    || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names)) {
                 continue;
             }
             if (!askingName && !contains(heard, language.vocabulary.find("called")) && namesIn(told, new ArrayList<>())) {
@@ -1149,7 +1163,7 @@ public final class Brain {
                     }
                 }
             }
-            if (!aboutThem && (cue + linked < TOLD_COVER * asked || telling < TOLD_TELLING)) {
+            if (!aboutThem && (cue + linked < (k <= TOLD_RECENT ? TOLD_COVER : TOLD_COVER_OLD) * asked || telling < TOLD_TELLING)) {
                 // About someone or something else, the question has to be mostly about what the
                 // line told ("where is the key?" after "the red key is under the bed.").
                 continue;
@@ -1246,7 +1260,7 @@ public final class Brain {
         List<int[]> lines = new ArrayList<>(), seen = new ArrayList<>();
         for (int k = Math.min(TOLD_LINES, heardLinesNext); k >= 2; k--) {
             int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
-            if (line.length > 0 && line[line.length - 1] != ask) {
+            if (line.length > 0 && line.length <= TOLD_LONGEST && line[line.length - 1] != ask) {
                 lines.add(line);
                 seen.add(withWhatTheyName(line, names));
             }
@@ -1395,6 +1409,66 @@ public final class Brain {
         private static Set<String> stems(String... words) {
             return java.util.Arrays.stream(words).map(Brain::stem).collect(java.util.stream.Collectors.toSet());
         }
+    }
+
+    private static final List<String> DAYS = List.of("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday");
+
+    /**
+     * The answer to "what day is tomorrow?" (or yesterday, or today) from the day told lately
+     * ("today is monday ."); null if it is no such question or no day was told.
+     */
+    private int[] whatDay(int[] heard) {
+        Integer when = null;
+        for (int w : heard) {
+            when = dayWord(w) != null ? dayWord(w) : when;
+        }
+        if (when == null || !contains(heard, language.vocabulary.find("day"))) {
+            return null;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            Integer told = null;
+            int day = -1;
+            for (int w : line) {
+                told = dayWord(w) != null ? dayWord(w) : told;
+                day = w >= 0 && DAYS.contains(language.vocabulary.word(w)) ? DAYS.indexOf(language.vocabulary.word(w)) : day;
+            }
+            if (day >= 0 && told != null) {
+                int asked = Math.floorMod(day + when - told, 7);
+                String[] said = {when == 1 ? "tomorrow" : when == -1 ? "yesterday" : "today", when == -1 ? "was" : "is",
+                    DAYS.get(asked), "."};
+                return Arrays.stream(said).mapToInt(language.vocabulary::find).toArray();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A question without the words that only call someone ("hey boss , what's up ?" asks
+     * "what's up ?"; "what's up , boss ?" too), so being called the same as in a told line
+     * doesn't bring that line back.
+     */
+    private int[] withoutAddress(int[] heard) {
+        int comma = language.vocabulary.find(",");
+        List<Integer> kept = new ArrayList<>();
+        for (int i = 0; i < heard.length; i++) {
+            String before = i > 0 && heard[i - 1] >= 0 ? language.vocabulary.word(heard[i - 1]) : "";
+            boolean greeting = Set.of("hey", "hi", "hello", "oh", "excuse").contains(i >= 0 && heard[i] >= 0 ? language.vocabulary.word(heard[i]) : "");
+            boolean called = i == 0 && heard.length > 1 && heard[1] == comma
+                    || i > 0 && Set.of("hey", "hi", "hello").contains(before)
+                    || i > 0 && i == heard.length - 2 && heard[i - 1] == comma;
+            if (!greeting && !called && !(heard[i] == comma && (i == 1 || kept.isEmpty()))) {
+                kept.add(heard[i]);
+            }
+        }
+        return kept.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    /** How many days from today a word says (tomorrow 1, yesterday -1, today 0), or null. */
+    private Integer dayWord(int w) {
+        String word = w < 0 ? "" : language.vocabulary.word(w);
+        return word.equals("tomorrow") ? Integer.valueOf(1) : word.equals("yesterday") ? Integer.valueOf(-1)
+                : word.equals("today") ? Integer.valueOf(0) : null;
     }
 
     /** Words after a bare count ("he lost one on the way"): no thing is named. */

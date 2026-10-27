@@ -96,6 +96,20 @@ doesn't bring old lines back. On 20 new sentences each asked about after other t
 questions without being told, it makes up an answer that happens to be right once in 60.
 Remembered answers also keep track of whether they answered a question or a telling, so news
 ("the bridge fell down yesterday.") is no longer answered as "what is a bridge?" was.
+It also reasons over what it was told. Asked a yes or no question, it says "yes ," with the line
+that says everything asked, and "no ," when that line says the opposite ("there is no bread.") or
+the same thing the other way round: told "the mill is older than the church.", asked "is the
+church older than the mill?" it says "no , the mill is older than the church.". It never makes up
+a no from a line that only shares words. It chains up to four lines that share a thing, so told
+"tom is taller than ben." and "ben is taller than sam.", asked "is tom taller than sam?" it says
+yes, and the same for in, on, under, before, after, north of and so on. It picks out the most
+("who is the oldest?" from several "older than" lines, "youngest" by reading them the other way
+round), counts ("i had five apples." "i ate two." "how many apples do i have?" "three."), and
+works out days ("today is monday." "what day is tomorrow?" "tuesday."). On 20 new questions of
+each kind: yes or no 19 right, 0 wrong; chains 20 of 20 on three sets; most, counting and days
+20 of 20 on two sets. It remembers the last 15 lines of a talk, so a fact told ten lines earlier
+still comes back (19 of 20, 1 before), and a greeting word ("hey boss,") is not taken for part
+of a question.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
