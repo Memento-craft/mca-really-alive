@@ -155,6 +155,10 @@ around?" "no , i don't see any zombies .".
 It knows how things are made, from the game's own crafting and smelting recipes: "how do i make
 bread?" "to make bread , you need three wheat .", "how can i get iron ingots?" "to get iron ingots ,
 smelt raw iron in a furnace .".
+It answers why and what-if from what it was told: told "if it rains, the field floods." it answers
+"what happens if it rains?" with "the field floods .", and told also "it rained all night." it
+answers "why did the field flood?" with "because it rained all night .". A cause told on the next
+line counts too ("the road is closed." "a tree fell on it." gives "because a tree fell on it .").
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

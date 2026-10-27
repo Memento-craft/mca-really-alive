@@ -1197,7 +1197,9 @@ public final class Brain {
             int k = t < recent ? t + 2 : TOLD_LINES + 1;
             int[] told = toldLines.get(t);
             if (told.length == 0 || told.length > TOLD_LONGEST || told[told.length - 1] == ask
-                    || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names)) {
+                    || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names) && !rule(told)) {
+                // A rule is for anyone: "if you feed the dog, it wags its tail." answers "what
+                // happens if i feed the dog?".
                 continue;
             }
             if (!askingName && !contains(heard, language.vocabulary.find("called")) && namesIn(told, new ArrayList<>())) {
@@ -1315,7 +1317,7 @@ public final class Brain {
             // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away."),
             // and of someone else, told of them again ("the miller is angry." "his cart broke.").
             int[] next = heardLines[(heardLinesNext - bestK + 1) % heardLines.length];
-            if (next.length > 0 && next[next.length - 1] != ask && (aboutThem ? aboutSpeaker(next) : toldOfAgain(next))) {
+            if (next.length > 0 && next[next.length - 1] != ask && (aboutThem ? aboutSpeaker(next) : toldOfAgain(next) || saysAny(next, AGAIN))) {
                 best = next;
                 toldLineAsHeard = next;
                 toldLine = new int[next.length + 1];
@@ -1323,10 +1325,69 @@ public final class Brain {
                 System.arraycopy(next, 0, toldLine, 1, next.length);
             }
         }
+        int[] toIt = answer < 0 && toldLine[0] != language.vocabulary.find("because") ? toTheQuestion(heard, best) : null;
+        if (toIt != null) {
+            // "what happens if it rains?" "the field floods ."; "why did the field flood?"
+            // "because it rained all night ."
+            toldLine = toIt;
+        }
         // Telling words: those that cue remembered exchanges, and names, which never do but are
         // not among the commonest words either.
         return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))
                 && (memory.weight(w) > 0f || tones != null && !tones.common(w))).distinct().toArray();
+    }
+
+    /** Words that tell of something again, anywhere in a line ("a tree fell on it."). */
+    private static final Set<String> AGAIN = Set.of("it", "he", "she", "they", "him", "her", "them", "his", "its", "their");
+
+    /**
+     * Only the part of what was told that answers the question: what happens if, the rule's
+     * outcome ("the field floods ."); why, what made it so ("because it rained all night .", from
+     * a rule and what was told of it, or from "because" in the line). Null if the whole is the answer.
+     */
+    private int[] toTheQuestion(int[] heard, int[] best) {
+        if (heard.length == 0 || heard[0] < 0) {
+            return null;
+        }
+        String first = language.vocabulary.word(heard[0]);
+        int stop = language.vocabulary.find("."), comma = language.vocabulary.find(",");
+        List<int[]> sentences = new ArrayList<>();
+        int from = 0;
+        for (int i = 0; i < best.length; i++) {
+            if (best[i] == stop || i == best.length - 1) {
+                sentences.add(Arrays.copyOfRange(best, from, i + 1));
+                from = i + 1;
+            }
+        }
+        if (first.equals("why")) {
+            int[] fact = null;
+            boolean ruled = false;
+            for (int[] sentence : sentences) {
+                ruled |= rule(sentence);
+                fact = rule(sentence) ? fact : sentence;
+            }
+            if (ruled && fact != null && sentences.size() > 1) {
+                return join(said("because"), fact);
+            }
+            int because = indexOf(best, language.vocabulary.find("because"), 1);
+            return sentences.size() == 1 && because > 0 && because < best.length - 2
+                    ? Arrays.copyOfRange(best, because, best.length) : null;
+        }
+        if (first.equals("what") && (contains(heard, language.vocabulary.find("if")) || contains(heard, language.vocabulary.find("when")))
+                && sentences.size() == 1 && rule(best) && best[0] >= 0) {
+            String opens = language.vocabulary.word(best[0]);
+            int at = indexOf(best, comma, 1);
+            if ((opens.equals("if") || opens.equals("when")) && at > 0 && at < best.length - 2) {
+                // "if it rains , the field floods ."
+                return Arrays.copyOfRange(best, at + 1, best.length);
+            }
+            int cut = Math.max(indexOf(best, language.vocabulary.find("if"), 1), indexOf(best, language.vocabulary.find("when"), 1));
+            if (cut > 1) {
+                // "the field floods if it rains ."
+                return join(Arrays.copyOfRange(best, 0, cut), said("."));
+            }
+        }
+        return null;
     }
 
     /** Whether a line says every telling word of a question, or one like it. */

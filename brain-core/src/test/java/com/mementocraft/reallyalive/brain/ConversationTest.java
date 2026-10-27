@@ -298,6 +298,32 @@ class ConversationTest {
     }
 
     @Test
+    void villagerWorksOutWhyAndWhatIf() {
+        // A cause or a consequence from what was told: {told, told, asked, right word}.
+        String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},
+            {"if it rains, the field floods.", "it rained all night.", "why did the field flood?", "rained"},
+            {"the bridge broke because the river rose.", "the baker sells bread.", "why did the bridge break?", "river"},
+            {"the road is closed.", "a tree fell on it.", "why is the road closed?", "tree"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 900 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("worked out why and what if %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "worked out only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerRemembersWhatItWasToldAcrossASave() throws java.io.IOException {
         String[][] told = {{"the priest keeps the church keys in a box behind the altar.", "where are the church keys?", "altar"},
             {"rosa won the archery contest at the fair.", "who won the archery contest?", "rosa"},
