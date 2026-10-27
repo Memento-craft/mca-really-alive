@@ -114,6 +114,12 @@ weighs how likely its language area finds the sentence and the same sentence the
 and answers with the likelier one when it is clearly likelier: 19 of 20 right, 0 wrong (6 right
 and 4 wrong before). Remembered yes or no answers are turned round to fit the question, and
 dropped when they are about other things.
+It keeps track of what changed: told "mary went to the kitchen." and then "mary went to the
+garden.", asked "where is mary?" it says the garden; "tom gave the key to anna." makes "anna has
+the key ."; "then it jumped onto the wall." after "the cat was on the roof." is said as "then the
+cat jumped onto the wall ."; "i closed the door." answers "is the door open?" with no. On 20 such
+talks it gets 18 right and none wrong (5 right and 10 wrong before), and 20 of 20 on a set written
+afterwards. A common name ("john", "paris") now counts as a name.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

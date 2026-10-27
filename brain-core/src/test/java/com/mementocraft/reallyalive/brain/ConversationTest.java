@@ -270,6 +270,34 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKeepsTrackOfWhatChanged() {
+        // The latest of what was told answers, not the first: {told, told, asked, right, wrong}.
+        String[][] talks = {{"mary went to the kitchen.", "mary went to the garden.", "where is mary?", "garden", "kitchen"},
+            {"the cat was on the roof.", "then it jumped onto the wall.", "where is the cat?", "wall", "roof"},
+            {"tom took the key.", "tom gave the key to anna.", "who has the key?", "anna", "tom"},
+            {"the door was open.", "i closed the door.", "is the door open?", "no", "yes"},
+            {"john is in the barn.", "john moved to the mill.", "where is john?", "mill", "barn"},
+            {"eli is in the forest.", "ana is in the barn.", "where is eli?", "forest", "barn"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 790 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][3]) && !said.contains(talks[i][4]) ? 1 : 0;
+        }
+        System.out.printf("kept track of what changed %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "kept track of only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerKnowsWhichIsBiggerWithoutBeingTold() {
         // Nothing is told: the answer comes from which way round the language area finds likelier.
         String[][] asked = {{"is a horse bigger than a mouse?", "yes"}, {"is a mouse bigger than a horse?", "no"},

@@ -1211,9 +1211,31 @@ public final class Brain {
         if (best == null) {
             return new int[0];
         }
+        int[] later = toldLater(heard, best, bestK);
+        boolean changed = later != null;
+        if (changed) {
+            // "mary went to the kitchen." "mary went to the garden.": "where is mary?" is answered
+            // by what happened last.
+            best = later;
+            bestSeen = later;
+        }
         toldLine = best;
         toldLineAsHeard = best;
         int answer = yesOrNo(heard, bestSeen, memory, tones);
+        if (answer < 0 && heard.length > 2 && heard[0] >= 0 && ASKS_YES_OR_NO.contains(language.vocabulary.word(heard[0]))) {
+            // "the door was open." "i closed the door.": "is the door open?" "no , ...";
+            // "kai turned the lamp on.": "is the lamp on?" "yes , ..."
+            int state = heard[heard.length - 2];
+            if (state < 0 || !STATE_OPPOSITE.containsKey(language.vocabulary.word(state))) {
+                state = -1;
+            }
+            int end = best.length - 1;
+            while (end > 0 && best[end] >= 0 && !Character.isLetter(language.vocabulary.word(best[end]).charAt(0))) {
+                end--;
+            }
+            answer = state < 0 ? -1 : saysOpposite(best, state) ? language.vocabulary.find("no")
+                    : (changed ? saidIn(best, state) : best[end] == state) ? language.vocabulary.find("yes") : -1;
+        }
         if (answer >= 0) {
             // "is the baker sick?" asks yes or no: "yes , the baker is sick today ."
             toldLine = new int[best.length + 2];
@@ -1636,6 +1658,184 @@ public final class Brain {
                 && Set.of("he", "she", "it", "they", "his", "her", "its", "their").contains(language.vocabulary.word(line[0]));
     }
 
+    /** Words that put a thing somewhere ("to the mill", "onto the wall"). */
+    private static final Set<String> PLACE = Set.of("to", "into", "onto", "in", "on", "at", "inside", "under", "behind");
+    /** Words that pass a thing on ("gave the key to anna"). */
+    private static final Set<String> PASSING = Set.of("give", "gave", "lend", "lent", "hand", "handed", "pass", "passed",
+            "sell", "sold", "throw", "threw", "bring", "brought");
+    /** Doings that last, and so change when someone goes somewhere else ("where does pedro live?"). */
+    private static final Set<String> LASTING = Set.of("live", "lives", "stay", "stays", "sleep", "sleeps", "work", "works");
+    private static final Set<String> GOING = Set.of("go", "went", "move", "moved", "ran", "run", "walked", "came", "come",
+            "jumped", "flew", "climbed", "left", "took", "put");
+    /** Words a line starts with when it tells what happened next. */
+    private static final Set<String> NEXT = Set.of("then", "now", "later", "after", "afterwards", "since", "but");
+    private static final java.util.Map<String, String> STATE_OPPOSITE = opposites("open closed", "on off", "full empty",
+            "alive dead", "awake asleep", "locked unlocked", "wet dry", "lit out", "hungry full");
+    private static final Set<String> ASKING_WORDS = Set.of("where", "who", "what", "which", "how", "why", "when", "whose");
+
+    /**
+     * What was told later of the thing a told line tells of, when it changes the answer: after
+     * "mary went to the kitchen." and "mary went to the garden.", "where is mary?" is answered by
+     * the garden; after "tom took the key." and "tom gave the key to anna.", "who has the key?" by
+     * "anna has the key ."; after "the door was open." and "i closed the door.", "is the door
+     * open?" by the closing. A later line that starts with he, she or it right after tells of the
+     * same thing, and says it by name. Null if nothing later changed it.
+     */
+    private int[] toldLater(int[] heard, int[] told, int k) {
+        int ask = language.vocabulary.find("?");
+        String first = heard[0] < 0 ? "" : language.vocabulary.word(heard[0]);
+        boolean where = first.equals("where");
+        boolean whoHas = first.equals("who") && heard.length > 2 && heard[1] >= 0
+                && Set.of("has", "have", "had").contains(language.vocabulary.word(heard[1]));
+        boolean yesNo = ASKS_YES_OR_NO.contains(first);
+        int state = yesNo && heard.length > 2 && heard[heard.length - 2] >= 0
+                && STATE_OPPOSITE.containsKey(language.vocabulary.word(heard[heard.length - 2])) ? heard[heard.length - 2] : -1;
+        int doing = -1;
+        if (where && heard.length > 3 && heard[1] >= 0 && Set.of("did", "does", "do").contains(language.vocabulary.word(heard[1]))) {
+            doing = heard[heard.length - 2];
+            if (doing >= 0 && (PLACE.contains(language.vocabulary.word(doing)) || language.vocabulary.word(doing).equals("from"))) {
+                // "where did the traveler come from?" asks of coming.
+                doing = heard[heard.length - 3];
+            }
+        }
+        if (k == 0) {
+            // A few lines together answered it; what happened after the last of them may change it.
+            if (!where && !whoHas) {
+                return null;
+            }
+            for (int j = 2; j <= TOLD_LINES && j <= heardLinesNext && k == 0; j++) {
+                int[] line = heardLines[(heardLinesNext - j) % heardLines.length];
+                if (line.length > 0 && line.length <= told.length && Arrays.equals(line, Arrays.copyOfRange(told, told.length - line.length, told.length))) {
+                    k = j;
+                    told = line;
+                }
+            }
+            if (k == 0) {
+                return null;
+            }
+        }
+        List<Integer> things = new ArrayList<>();
+        for (int w : heard) {
+            if (w >= 0 && w != state && w != doing && thingWord(w) && !ASKING_WORDS.contains(language.vocabulary.word(w))
+                    && !PLACE.contains(language.vocabulary.word(w)) && !language.vocabulary.word(w).equals("from")) {
+                things.add(w);
+            }
+        }
+        List<Integer> subject = new ArrayList<>();
+        for (int w : told) {
+            if (w >= 0 && thingWord(w)) {
+                // "the cat was on the roof" tells of the cat.
+                subject.add(w);
+                break;
+            }
+        }
+        things.addAll(subject);
+        int[] now = null;
+        int lastK = k;
+        for (int j = k - 1; j >= 2; j--) {
+            int[] line = heardLines[(heardLinesNext - j) % heardLines.length];
+            if (line.length == 0 || line.length > TOLD_LONGEST || line[line.length - 1] == ask) {
+                continue;
+            }
+            boolean again = j == lastK - 1 && pronounAt(line) >= 0;
+            for (int w : line) {
+                again |= w >= 0 && thingWord(w) && sameThing(List.of(w), things);
+            }
+            if (!again) {
+                continue;
+            }
+            boolean changes;
+            if (where) {
+                changes = doing < 0 || LASTING.contains(language.vocabulary.word(doing)) ? saysAny(line, PLACE) : saidIn(line, doing);
+                changes &= doing < 0 || saidIn(line, doing) || saysAny(line, GOING);
+            } else if (whoHas) {
+                changes = passedTo(line) >= 0;
+            } else if (yesNo) {
+                changes = state >= 0 && (saidIn(line, state) || saysOpposite(line, state))
+                        || j == lastK - 1 && line[0] >= 0 && NEXT.contains(language.vocabulary.word(line[0]));
+            } else {
+                changes = saysAny(line, NEXT) || saysAny(line, Set.of("became", "becomes", "become"));
+            }
+            if (changes) {
+                now = byName(line, told, subject);
+                lastK = j;
+            }
+        }
+        int to = whoHas ? passedTo(now != null ? now : told) : -1;
+        if (to >= 0) {
+            // "tom gave the key to anna .": "anna has the key ."
+            List<Integer> who = thingFrom(now != null ? now : told, to + 1);
+            if (who.isEmpty()) {
+                return now;
+            }
+            int[] answer = new int[who.size() + heard.length - 1];
+            for (int i = 0; i < who.size(); i++) {
+                answer[i] = who.get(i);
+            }
+            System.arraycopy(heard, 1, answer, who.size(), heard.length - 2);
+            answer[answer.length - 1] = language.vocabulary.find(".");
+            return answer;
+        }
+        return now;
+    }
+
+    /** Where in its first few words a line says he, she, it or they; -1 if it doesn't. */
+    private int pronounAt(int[] line) {
+        for (int i = 0; i < Math.min(4, line.length); i++) {
+            if (line[i] >= 0 && Set.of("he", "she", "it", "they").contains(language.vocabulary.word(line[i]))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** A line with its he, she or it said as the thing told of before ("then it ran" "then the horse ran"). */
+    private int[] byName(int[] line, int[] told, List<Integer> subject) {
+        int at = pronounAt(line);
+        int start = subject.isEmpty() ? -1 : indexOf(told, subject.get(0), 0);
+        if (at < 0 || start < 0) {
+            return line;
+        }
+        int end = start + subject.size();
+        while (start > 0 && told[start - 1] >= 0 && Set.of("the", "a", "an", "my", "your", "our").contains(language.vocabulary.word(told[start - 1]))) {
+            start--;
+        }
+        return join(Arrays.copyOfRange(line, 0, at), Arrays.copyOfRange(told, start, end), Arrays.copyOfRange(line, at + 1, line.length));
+    }
+
+    /** Where the one something was passed to is named ("gave the key to anna" names anna after "to"); -1 if none. */
+    private int passedTo(int[] line) {
+        for (int i = 0; i < line.length; i++) {
+            if (line[i] >= 0 && PASSING.contains(language.vocabulary.word(line[i]))) {
+                return indexOf(line, language.vocabulary.find("to"), i + 1);
+            }
+        }
+        return -1;
+    }
+
+    private boolean saysAny(int[] line, Set<String> words) {
+        for (int w : line) {
+            if (w >= 0 && words.contains(language.vocabulary.word(w))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether a line says the opposite of a state ("closed" for "open"). */
+    private boolean saysOpposite(int[] line, int state) {
+        String other = state < 0 ? null : STATE_OPPOSITE.get(language.vocabulary.word(state));
+        if (other == null) {
+            return false;
+        }
+        for (int w : line) {
+            if (w >= 0 && stem(language.vocabulary.word(w)).equals(stem(other))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Whether a line is one of those heard lately. */
     private boolean toldLately(int[] line) {
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
@@ -1980,9 +2180,15 @@ public final class Brain {
             return 0f;
         }
         float weight = memory.weight(w);
-        return weight > 0f || tones == null || tones.common(w) || !Character.isLetter(language.vocabulary.word(w).charAt(0))
-                ? weight : TOLD_NAME;
+        String word = language.vocabulary.word(w);
+        // A word that cues nothing is a name ("pedro"), even one heard as often as "john" or
+        // "paris", but not one of the few small words that cue nothing either.
+        return weight > 0f || tones == null || word.length() < 3 || !Character.isLetter(word.charAt(0))
+                || tones.common(w) && NOT_A_NAME.contains(word) ? weight : TOLD_NAME;
     }
+
+    private static final Set<String> NOT_A_NAME = Set.of("the", "hey", "you", "i'm", "just", "and", "that", "plus", "hmm",
+            "hmmm", "additionally", "ugh", "nope", "why's", "yep");
 
     /** Whether a line is the speaker talking about themselves ("i", "my", "me"). */
     private boolean aboutSpeaker(int[] line) {
