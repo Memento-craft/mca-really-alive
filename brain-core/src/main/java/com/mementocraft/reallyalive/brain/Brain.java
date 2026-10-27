@@ -119,6 +119,8 @@ public final class Brain {
     static final float LEAVE_URGE_FROM = 0.8f;
     /** How hard that urge drives the inventory key's motor pool, as strong as full babbling. */
     static final float LEAVE_URGE = BABBLE_GAIN;
+    /** Ticks after leaving a screen during which the inventory key is held back. */
+    static final int SCREEN_SATIETY_TICKS = 200;
     /** Ticks a held left button lasts on a screen before it tires and lets go. */
     static final int BUTTON_TIRES_TICKS = 20;
     /** How hard a tired left button is held back, enough to override full babbling. */
@@ -328,6 +330,8 @@ public final class Brain {
     MotorCommand lastCommand = MotorCommand.IDLE;
     /** Ticks the left button has been held down with a screen open. */
     private int screenButtonHeld;
+    /** Ticks since a screen was last open. */
+    private int sinceScreen = Integer.MAX_VALUE / 2;
 
     Brain(Genome genome, long seed, int capacity) {
         this.genome = genome;
@@ -1431,7 +1435,23 @@ public final class Brain {
         }
         drivePoke(bored);
         driveButtonRelease(bored);
+        driveScreenSatiety(bored);
         driveSpeechBabble(amp);
+    }
+
+    /**
+     * Having just left a screen, the urge to open one again is held back for a while, as a player
+     * who has just looked through their inventory does not open it again at once. Without this some
+     * brains toggled their inventory open and shut hundreds of times and spent 20-45% of their
+     * time in it instead of walking.
+     */
+    private void driveScreenSatiety(float screen) {
+        sinceScreen = screen > 0f ? 0 : sinceScreen + 1;
+        if (sinceScreen > 0 && sinceScreen <= SCREEN_SATIETY_TICKS) {
+            for (int i : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                extInput[i] -= BUTTON_RELEASE;
+            }
+        }
     }
 
     /**

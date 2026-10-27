@@ -183,9 +183,10 @@ public final class BrainEvents {
     @SubscribeEvent
     public static void brewed(PlayerBrewedPotionEvent e) {
         // The event fires for any potion taken from a stand's bottle slot, so a water bottle put in
-        // and taken straight back out would be felt as brewing; only a brewed potion counts.
+        // (or an empty bottle) taken straight back out would be felt as brewing; only a brewed
+        // potion counts.
         var contents = e.getStack().get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
-        if (contents != null && contents.is(net.minecraft.world.item.alchemy.Potions.WATER)) {
+        if (contents == null || contents.is(net.minecraft.world.item.alchemy.Potions.WATER)) {
             return;
         }
         made(e.getEntity());

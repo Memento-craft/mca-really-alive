@@ -540,6 +540,12 @@ public final class WorkLearningTests {
                 if (inHand != null && !inHand.is(net.minecraft.world.item.alchemy.Potions.WATER)) {
                     v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
                 }
+                // Empty bottles it put into the stand are tidied away too: they can never brew.
+                for (int i = 0; i < 3; i++) {
+                    if (brewing.getItem(i).is(Items.GLASS_BOTTLE)) {
+                        brewing.setItem(i, ItemStack.EMPTY);
+                    }
+                }
                 // The stand is kept fuelled, and a villager out of bottles or wart is handed more.
                 if (brewing.getItem(4).isEmpty()) {
                     brewing.setItem(4, new ItemStack(Items.BLAZE_POWDER, 64));
