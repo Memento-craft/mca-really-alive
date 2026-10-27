@@ -21,6 +21,8 @@ import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.slf4j.Logger;
 
+import java.util.List;
+
 import static com.mementocraft.reallyalive.test.McaVillagerTests.attach;
 import static com.mementocraft.reallyalive.test.McaVillagerTests.spawnMcaVillager;
 
@@ -316,11 +318,91 @@ public final class WorkLearningTests {
         craftBenchmark(h, "3");
     }
 
-    private static void craftBenchmark(GameTestHelper h, String which) {
-        if (!selected(h, "CRAFT")) {
+    /**
+     * With Create installed: andesite alloy instead of logs. Two alloys one above the other in
+     * the grid make eight shafts, the first part of any machine.
+     */
+    private static void shaftBenchmark(GameTestHelper h, String which) {
+        var alloy = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "andesite_alloy"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (alloy.isEmpty() || shaft.isEmpty()) {
+            if (selected(h, "SHAFT")) {
+                LOG.info("SHAFT: Create is not installed, nothing to learn");
+                h.succeed();
+            }
             return;
         }
-        Villager v = pen(h, new ItemStack(Items.OAK_LOG, 64), CRAFT_TICKS);
+        craftBenchmark(h, which, "SHAFT", alloy.get(), shaft.get());
+    }
+
+    /** SHAFT with a book of how shafts are made among its things: does looking at it help? */
+    private static void shaftBookBenchmark(GameTestHelper h, String which) {
+        var alloy = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "andesite_alloy"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (alloy.isEmpty() || shaft.isEmpty()) {
+            if (selected(h, "SHAFTBOOK")) {
+                LOG.info("SHAFTBOOK: Create is not installed, nothing to learn");
+                h.succeed();
+            }
+            return;
+        }
+        ItemStack book = com.mementocraft.reallyalive.body.RecipeBook.write(h.getLevel(), "Shafts", List.of(shaft.get()));
+        craftBenchmark(h, which, "SHAFTBOOK", alloy.get(), shaft.get(), book);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void newbornCraftsShaftsWithABook(GameTestHelper h) {
+        shaftBookBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void secondNewbornCraftsShaftsWithABook(GameTestHelper h) {
+        shaftBookBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void thirdNewbornCraftsShaftsWithABook(GameTestHelper h) {
+        shaftBookBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void newbornCraftsShaftsOnItsOwn(GameTestHelper h) {
+        shaftBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void secondNewbornCraftsShaftsOnItsOwn(GameTestHelper h) {
+        shaftBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void thirdNewbornCraftsShaftsOnItsOwn(GameTestHelper h) {
+        shaftBenchmark(h, "3");
+    }
+
+    private static void craftBenchmark(GameTestHelper h, String which) {
+        craftBenchmark(h, which, "CRAFT", Items.OAK_LOG, Items.OAK_PLANKS);
+    }
+
+    /**
+     * A newborn carrying 64 of a thing that crafts into another in its own 2x2 grid. Taking what
+     * it crafted out of the result slot is felt as making something.
+     */
+    private static void craftBenchmark(GameTestHelper h, String which, String name,
+                                       net.minecraft.world.item.Item from, net.minecraft.world.item.Item into) {
+        craftBenchmark(h, which, name, from, into, null);
+    }
+
+    /** The same, with a recipe book among its things, kept there if it loses it. */
+    private static void craftBenchmark(GameTestHelper h, String which, String name,
+                                       net.minecraft.world.item.Item from, net.minecraft.world.item.Item into, ItemStack book) {
+        if (!selected(h, name)) {
+            return;
+        }
+        Villager v = pen(h, new ItemStack(from, 64), CRAFT_TICKS);
+        if (book != null) {
+            v.getInventory().addItem(book.copy());
+        }
         BrainManager.Handle handle = BrainManager.get().handle(v);
         int[] tick = {0};
         int[] screenTicks = {0};
@@ -353,9 +435,12 @@ public final class WorkLearningTests {
                 // more, as a parent would, so the benchmark keeps measuring crafting, not building.
                 clearPen(h);
                 regrow(h, v);
-                if (carried(v, Items.OAK_LOG) == 0) {
-                    v.getInventory().removeItemType(Items.OAK_LOG, 64);
-                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.OAK_LOG, 64));
+                if (book != null && carried(v, book.getItem()) == 0) {
+                    v.getInventory().addItem(book.copy());
+                }
+                if (carried(v, from) == 0) {
+                    v.getInventory().removeItemType(from, 64);
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(from, 64));
                     handBacks[0]++;
                 }
             }
@@ -391,7 +476,7 @@ public final class WorkLearningTests {
                                 seen.append(c > 0.9f ? '#' : c > 0.2f ? '+' : c > 0f ? '.' : ' ');
                             }
                         }
-                        LOG.info("CRAFT newborn {} made something, hand free: pointer {},{}; command yaw {} pitch {}; eyes{}", which,
+                        LOG.info(name + " newborn {} made something, hand free: pointer {},{}; command yaw {} pitch {}; eyes{}", which,
                                 handle.hands().pointerX(), handle.hands().pointerY(), handle.command().yawDelta(),
                                 handle.command().pitchDelta(), seen);
                     }
@@ -411,24 +496,25 @@ public final class WorkLearningTests {
                 }
             }
             if (tick[0] % WINDOW == 0) {
-                LOG.info("CRAFT newborn " + which + ": by tick {}: opened {} screens, clicked {} slots ({} holding something), saw {} results form, made {};"
+                LOG.info(name + " newborn " + which + ": by tick {}: opened {} screens, clicked {} slots ({} holding something), saw {} results form, made {};"
                                 + " in screens {} ticks, left button {}, inventory key {}, over a slot {}, over a thing {}, mean pointer {},{}; carries {} logs, {} planks;"
                                 + " logs handed back {} times; a stack on the pointer {} ticks, over the grid {}, over the result {};"
                                 + " a result showing {} ticks, with the pointer free {}, over it {};"
-                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; brain {} neurons, {} synapses", tick[0],
+                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; recipes learnt {}, places matched {}, wheel turned {}; brain {} neurons, {} synapses", tick[0],
                         handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().clicksOnThings, handle.hands().formedTotal, handle.hands().madeTotal,
                         screenTicks[0], attackTicks[0], keyTicks[0], overSlot[0], overThing[0],
-                        Math.round(pointerSum[0] / Math.max(1, screenTicks[0])), Math.round(pointerSum[1] / Math.max(1, screenTicks[0])), carried(v, Items.OAK_LOG), carried(v, Items.OAK_PLANKS),
+                        Math.round(pointerSum[0] / Math.max(1, screenTicks[0])), Math.round(pointerSum[1] / Math.max(1, screenTicks[0])), carried(v, from), carried(v, into),
                         handBacks[0], pointerHolding[0], holdingOverGrid[0], holdingOverResult[0],
                         resultTicks[0], resultFree[0], resultOver[0], keyDownOutside[0], keyPressesOutside[0], curiousTicks[0], handle.hands().moves,
-                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.brain().neuronCount(), handle.brain().synapseCount());
+                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.hands().recipesLearnt, handle.hands().matchedTotal, handle.hands().wheelTurns,
+                        handle.brain().neuronCount(), handle.brain().synapseCount());
             }
             if (tick[0] == CRAFT_TICKS) {
-                String report = String.format("CRAFT: made %d things in %d ticks; opened its inventory %d times, open %d%% of the time,"
+                String report = String.format(name + ": made %d things in %d ticks; opened its inventory %d times, open %d%% of the time,"
                                 + " with a stack on the pointer %d%% of that",
                         handle.hands().madeTotal, CRAFT_TICKS, handle.hands().screensOpened, 100 * screenTicks[0] / CRAFT_TICKS,
                         screenTicks[0] == 0 ? 0 : 100 * pointerHolding[0] / screenTicks[0]);
-                LOG.info("CRAFT newborn {} learning result: {}", which, report);
+                LOG.info(name + " newborn {} learning result: {}", which, report);
                 if (handle.hands().madeTotal >= 3) {
                     h.succeed();
                 } else {

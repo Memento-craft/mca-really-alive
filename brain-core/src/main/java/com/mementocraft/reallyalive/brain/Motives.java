@@ -43,6 +43,12 @@ public final class Motives {
      * seeing something it built come alive, felt the less the more it has lately been doing so.
      */
     public static final float SET_GOING = 1.0f;
+    /**
+     * Putting something where a remembered picture of a recipe showed it: the grid looks a little
+     * more like the page in the book. Felt once for each place filled on a screen, so a recipe
+     * needing two things in two places is not all or nothing.
+     */
+    public static final float MATCH_PICTURE = 0.15f;
 
     private Motives() {}
 }

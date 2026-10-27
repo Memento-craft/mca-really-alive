@@ -154,6 +154,21 @@ public final class Hands {
     public int throwsTotal;
     /** Diagnostics: turns of the mouse wheel. */
     public int wheelTurns;
+    /** Diagnostics: recipes it has looked at long enough in a recipe book to remember. */
+    public int recipesLearnt;
+    /** Recipes looked at in a book, and when; the page being looked at, and for how long. */
+    private final java.util.LinkedHashMap<net.minecraft.resources.ResourceLocation, RecipeMemory> recipesSeen = new java.util.LinkedHashMap<>();
+    private net.minecraft.resources.ResourceLocation onPage;
+    private int onPageFor;
+    /** Ticks a page must be looked at to be remembered, how long it is remembered, and how many are. */
+    private static final int PAGE_LOOK_TICKS = 20;
+    private static final long RECIPE_REMEMBERED = 24000L;
+    private static final int RECIPES_REMEMBERED = 8;
+    /** Grid places filled as a remembered picture showed, most on this screen and this tick. */
+    private int matchedOnScreen;
+    private int matchedThisTick;
+    /** Diagnostics: places filled as a remembered picture showed. */
+    public int matchedTotal;
     /** Kinds of things it lately threw out or gave a machine: taking those out of a machine is not making them. */
     private final java.util.Map<net.minecraft.world.item.Item, Long> givenKinds = new java.util.HashMap<>();
     private static final long GIVEN_REMEMBERED = 6000L;
@@ -230,6 +245,8 @@ public final class Hands {
         changedThisTick = 0;
         madeThisTick = 0;
         formedThisTick = 0;
+        pleasure += matchedThisTick * Motives.MATCH_PICTURE;
+        matchedThisTick = 0;
         movedThisTick = 0f;
         if (dugThisTick) {
             pleasure += Motives.DIG_PER_TICK;
@@ -264,6 +281,9 @@ public final class Hands {
         setGoingLately *= (float) Math.pow(0.5, 1.0 / SET_GOING_HALF_LIFE);
         if (ticksLived % SET_GOING_EVERY == 0 && !stillWorked.isEmpty()) {
             watchSetGoing();
+        }
+        if (screen instanceof RecipeBook.Menu book) {
+            lookAtPage(book);
         }
         if (screen != null) {
             forEachCarried(item -> lookedOver.put(item, ticksLived));
@@ -899,6 +919,101 @@ public final class Hands {
         }
     }
 
+    /** A recipe remembered from a book, and when it was last looked at. */
+    private record RecipeMemory(net.minecraft.world.item.crafting.RecipeHolder<?> recipe, long seen) {}
+
+    /** Looking at a page of a recipe book long enough remembers the recipe on it. */
+    private void lookAtPage(RecipeBook.Menu book) {
+        var shown = book.shown().orElse(null);
+        net.minecraft.resources.ResourceLocation id = shown == null ? null : shown.id();
+        onPageFor = java.util.Objects.equals(id, onPage) ? onPageFor + 1 : 0;
+        onPage = id;
+        if (shown != null && onPageFor >= PAGE_LOOK_TICKS) {
+            if (recipesSeen.remove(id) == null) {
+                recipesLearnt++;
+            }
+            recipesSeen.put(id, new RecipeMemory(shown, ticksLived));
+            while (recipesSeen.size() > RECIPES_REMEMBERED) {
+                recipesSeen.remove(recipesSeen.keySet().iterator().next());
+            }
+        }
+    }
+
+    /**
+     * What a remembered recipe suggests on a crafting screen: the most recently seen crafting
+     * recipe that fits the grid and whose ingredients it has to hand. Null when none does. This is
+     * how the picture in the book comes back to mind: the grid places the picture showed, and the
+     * things it showed, catch the eye. It says nothing of how to get them there.
+     */
+    public com.mementocraft.reallyalive.sense.ScreenSight.RecipeHint recipeHint(AbstractContainerMenu menu) {
+        int first;
+        int width;
+        if (menu instanceof net.minecraft.world.inventory.CraftingMenu) {
+            first = 1;
+            width = 3;
+        } else if (menu instanceof net.minecraft.world.inventory.InventoryMenu) {
+            first = 1;
+            width = 2;
+        } else {
+            return null;
+        }
+        java.util.List<RecipeMemory> recent = new java.util.ArrayList<>(recipesSeen.values());
+        java.util.Collections.reverse(recent);
+        for (RecipeMemory m : recent) {
+            if (ticksLived - m.seen() > RECIPE_REMEMBERED || RecipeBook.machineFor(m.recipe()) != null) {
+                continue;
+            }
+            var r = m.recipe().value();
+            var ingredients = r.getIngredients();
+            int w = r instanceof net.minecraft.world.item.crafting.ShapedRecipe sh ? sh.getWidth() : width;
+            int h = r instanceof net.minecraft.world.item.crafting.ShapedRecipe sh ? sh.getHeight() : (ingredients.size() + width - 1) / width;
+            if (w > width || h > width || ingredients.size() > width * width) {
+                continue;
+            }
+            java.util.Map<Integer, net.minecraft.world.item.crafting.Ingredient> want = new java.util.HashMap<>();
+            for (int i = 0; i < ingredients.size(); i++) {
+                if (!ingredients.get(i).isEmpty()) {
+                    want.put(first + (i / w) * width + i % w, ingredients.get(i));
+                }
+            }
+            if (hasToHand(menu, want.values())) {
+                return new com.mementocraft.reallyalive.sense.ScreenSight.RecipeHint(want);
+            }
+        }
+        return null;
+    }
+
+    /** Filling one more grid place as a remembered recipe's picture showed is felt, once per place per screen. */
+    private void noticeMatch(AbstractContainerMenu menu) {
+        var hint = recipeHint(menu);
+        if (hint == null) {
+            return;
+        }
+        int matched = 0;
+        for (var e : hint.want().entrySet()) {
+            matched += e.getValue().test(menu.getSlot(e.getKey()).getItem()) ? 1 : 0;
+        }
+        if (matched > matchedOnScreen) {
+            matchedThisTick += matched - matchedOnScreen;
+            matchedTotal += matched - matchedOnScreen;
+            matchedOnScreen = matched;
+        }
+    }
+
+    /** Whether each ingredient is on the screen somewhere: in a pocket, on the pointer or already in the grid. */
+    private static boolean hasToHand(AbstractContainerMenu menu, java.util.Collection<net.minecraft.world.item.crafting.Ingredient> needed) {
+        for (var i : needed) {
+            boolean found = i.test(menu.getCarried());
+            for (Slot s : menu.slots) {
+                found |= s.hasItem() && i.test(s.getItem());
+            }
+            if (!found) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Watches a block it placed or worked, if it is still, to feel it if it starts turning. */
     private void noteWorked(ServerLevel level, BlockPos pos) {
         if (!Machines.present() || Machines.turning(level, pos)) {
@@ -968,6 +1083,7 @@ public final class Hands {
         screenOpenFor = 0;
         resultShown = false;
         formedOnScreen.clear();
+        matchedOnScreen = 0;
         // The pointer starts in the middle of the screen, where a player's mouse appears.
         float[] b = bounds(menu);
         pointerX = (b[0] + b[2]) / 2f;
@@ -1125,6 +1241,7 @@ public final class Hands {
             screenClicks++;
         }
         noticeResult(screen);
+        noticeMatch(screen);
     }
 
     /** A fingerprint of what lies where on a screen and on its pointer. */

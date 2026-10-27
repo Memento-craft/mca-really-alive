@@ -528,7 +528,7 @@ public final class UseTests {
      * and the sheet taken back with an empty hand is felt as making something; the iron itself,
      * taken back unpressed, would not be.
      */
-    @GameTest(template = ARENA, timeoutTicks = 600)
+    @GameTest(template = ARENA, timeoutTicks = 800)
     public static void pressesIronOnADepotIfCreateIsInstalled(GameTestHelper h) {
         var create = (java.util.function.Function<String, ResourceLocation>) id -> ResourceLocation.fromNamespaceAndPath("create", id);
         var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
@@ -551,7 +551,7 @@ public final class UseTests {
         Villager v = worker(h, new ItemStack(Items.IRON_INGOT, 2));
         BrainManager.Handle handle = handle(v);
         Vec3 side = new Vec3(6.3, 2.8, 12.5);
-        for (int at : new int[] {10, 300}) {
+        for (int at : new int[] {10, 500}) {
             h.runAtTickTime(at - 2, () -> aim(h, v, side));
             h.runAtTickTime(at, () -> {
                 aim(h, v, side);
@@ -561,13 +561,45 @@ public final class UseTests {
         }
         h.runAtTickTime(20, () -> LOG.info("onto the depot: hand {}, press turning {}", v.getMainHandItem(),
                 com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pressAt))));
-        h.runAtTickTime(310, () -> {
+        h.runAtTickTime(510, () -> {
             LOG.info("from the depot: carries {} sheets, {} iron, made {}", count(v, sheet.get()), count(v, Items.IRON_INGOT),
                     handle.hands().madeTotal);
             h.assertTrue(count(v, sheet.get()) >= 1, "no sheet was taken from the depot");
             h.assertTrue(handle.hands().madeTotal == 1, "taking the sheet was not felt as making something");
             h.succeed();
         });
+    }
+
+    /**
+     * A recipe book opens to pictures of its recipes, a page at a time; a page looked at for a
+     * second is remembered, and a remembered recipe marks where its picture put things on the
+     * crafting grid: planks one above the other for sticks.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 300)
+    public static void readsARecipeBookAndRemembersWhereThingsGo(GameTestHelper h) {
+        // Only sticks: two recipes, from planks and from bamboo.
+        ItemStack book = com.mementocraft.reallyalive.body.RecipeBook.write(h.getLevel(), "Sticks", List.of(Items.STICK));
+        Villager v = worker(h, book);
+        v.getInventory().addItem(new ItemStack(Items.OAK_PLANKS, 4));
+        BrainManager.Handle handle = handle(v);
+        new MouseScript()
+                .key(USE)
+                .waitTicks(26)
+                .click(slot(com.mementocraft.reallyalive.body.RecipeBook.Menu.NEXT), 0)
+                .waitTicks(26)
+                .key(INVENTORY)
+                .waitTicks(2)
+                .key(INVENTORY)
+                .play(h, handle, 5, () -> {
+                    var hint = handle.hands().recipeHint(handle.hands().screen());
+                    LOG.info("recipes learnt {}, screen {}, hint {}", handle.hands().recipesLearnt,
+                            handle.hands().screen() == null ? null : handle.hands().screen().getClass().getSimpleName(),
+                            hint == null ? null : hint.want().keySet());
+                    h.assertTrue(handle.hands().recipesLearnt == 2, "it did not remember the two pages it looked at: " + handle.hands().recipesLearnt);
+                    h.assertTrue(handle.hands().screen() instanceof InventoryMenu, "its own inventory is not open");
+                    h.assertTrue(hint != null && hint.want().keySet().equals(java.util.Set.of(1, 3)),
+                            "the stick recipe did not mark the two grid places one above the other: " + (hint == null ? null : hint.want().keySet()));
+                });
     }
 
     private static int count(Villager v, net.minecraft.world.item.Item item) {

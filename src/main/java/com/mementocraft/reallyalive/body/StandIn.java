@@ -157,4 +157,15 @@ public final class StandIn extends FakePlayer {
         NeoForge.EVENT_BUS.post(new PlayerContainerEvent.Open(this, menu));
         return OptionalInt.of(containerCounter);
     }
+    /**
+     * Reading a book: a recipe book opens as a screen the villager can look at, a page at a time.
+     * Other books have only text, which villagers cannot read yet.
+     */
+    @Override
+    public void openItemGui(ItemStack stack, net.minecraft.world.InteractionHand hand) {
+        if (RecipeBook.isRecipeBook(stack)) {
+            openMenu(new net.minecraft.world.SimpleMenuProvider((id, inv, player) -> new RecipeBook.Menu(id, stack, level()),
+                    stack.getHoverName()));
+        }
+    }
 }
