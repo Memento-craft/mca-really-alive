@@ -556,13 +556,13 @@ public final class WorkLearningTests {
                                 + " in screens {} ticks, left button {}, inventory key {}, over a slot {}, over a thing {}, mean pointer {},{}; carries {} logs, {} planks;"
                                 + " logs handed back {} times; a stack on the pointer {} ticks, over the grid {}, over the result {};"
                                 + " a result showing {} ticks, with the pointer free {}, over it {};"
-                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; recipes learnt {}, places matched {}, wheel turned {}; brain {} neurons, {} synapses", tick[0],
+                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; recipes learnt {}, places matched {}, wheel turned {}; shared out {}, dealt one {}; brain {} neurons, {} synapses", tick[0],
                         handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().clicksOnThings, handle.hands().formedTotal, handle.hands().madeTotal,
                         screenTicks[0], attackTicks[0], keyTicks[0], overSlot[0], overThing[0],
                         Math.round(pointerSum[0] / Math.max(1, screenTicks[0])), Math.round(pointerSum[1] / Math.max(1, screenTicks[0])), carried(v, from), carried(v, into),
                         handBacks[0], pointerHolding[0], holdingOverGrid[0], holdingOverResult[0],
                         resultTicks[0], resultFree[0], resultOver[0], keyDownOutside[0], keyPressesOutside[0], curiousTicks[0], handle.hands().moves,
-                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.hands().recipesLearnt, handle.hands().matchedTotal, handle.hands().wheelTurns,
+                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.hands().recipesLearnt, handle.hands().matchedTotal, handle.hands().wheelTurns, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal,
                         handle.brain().neuronCount(), handle.brain().synapseCount());
             }
             if (tick[0] == CRAFT_TICKS) {

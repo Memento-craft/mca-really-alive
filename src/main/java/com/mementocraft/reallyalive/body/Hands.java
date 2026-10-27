@@ -134,6 +134,15 @@ public final class Hands {
     private final java.util.Map<net.minecraft.world.item.Item, Long> lookedOver = new java.util.HashMap<>();
     /** Ticks after which a thing looked over is worth looking at again. */
     private static final long LOOK_AGAIN_TICKS = 6000L;
+    /**
+     * A thing it has never made anything from is looked over again sooner, for its first screens
+     * of looking, as a child goes back to a puzzle it has not worked out. Newborns handed two
+     * alloys opened their inventory 2-5 times in 10000 ticks and made a shaft 1-4 times in all.
+     */
+    private static final long LOOK_AGAIN_UNSOLVED_TICKS = 1500L;
+    private static final int UNSOLVED_LOOKS = 40;
+    private final java.util.Set<net.minecraft.world.item.Item> madeFrom = new java.util.HashSet<>();
+    private final java.util.Map<net.minecraft.world.item.Item, Integer> looks = new java.util.HashMap<>();
     /** Whether a result slot showed something after the last click, and what has been shown on this screen. */
     private boolean resultShown;
     private final java.util.Set<net.minecraft.world.item.Item> formedOnScreen = new java.util.HashSet<>();
@@ -202,6 +211,9 @@ public final class Hands {
      */
     private static final int SCREEN_LONG_TICKS = 300;
     public int formedTotal;
+    /** Drags let go over more than one slot, sharing a stack out; and single right clicks putting one thing into a workstation. */
+    public int sharedOutTotal;
+    public int dealtOneTotal;
 
     public Hands(Villager body) {
         this.body = body;
@@ -403,7 +415,9 @@ public final class Hands {
         boolean[] curious = {false};
         forEachCarried(item -> {
             Long seen = lookedOver.get(item);
-            curious[0] |= seen == null || ticksLived - seen > LOOK_AGAIN_TICKS;
+            long again = !madeFrom.contains(item) && looks.getOrDefault(item, 0) < UNSOLVED_LOOKS
+                    ? LOOK_AGAIN_UNSOLVED_TICKS : LOOK_AGAIN_TICKS;
+            curious[0] |= seen == null || ticksLived - seen > again;
         });
         return curious[0] ? 1f : 0f;
     }
@@ -465,6 +479,14 @@ public final class Hands {
     public void made() {
         madeThisTick++;
         madeTotal++;
+        if (screen != null) {
+            // What is still in the grid as the result is taken is what it was made from.
+            for (Slot s : screen.slots) {
+                if (s.hasItem() && !(s.container instanceof net.minecraft.world.entity.player.Inventory) && !(s instanceof net.minecraft.world.inventory.ResultSlot)) {
+                    madeFrom.add(s.getItem().getItem());
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------- picking up
@@ -1132,6 +1154,7 @@ public final class Hands {
         stopDigging();
         screen = menu;
         screensOpened++;
+        forEachCarried(item -> looks.merge(item, 1, Integer::sum));
         noveltyThisTick += novelty(menu);
         screenIdle = 0;
         screenOpenFor = 0;
@@ -1259,6 +1282,11 @@ public final class Hands {
             return;
         }
         if (!dragSlots.isEmpty()) {
+            if (dragSlots.size() > 1) {
+                sharedOutTotal++;
+            } else if (dragButton == 1 && !(dragSlots.iterator().next().container instanceof net.minecraft.world.entity.player.Inventory)) {
+                dealtOneTotal++;
+            }
             click(p, -999, AbstractContainerMenu.getQuickcraftMask(0, dragButton), ClickType.QUICK_CRAFT);
             for (Slot s : dragSlots) {
                 click(p, s.index, AbstractContainerMenu.getQuickcraftMask(1, dragButton), ClickType.QUICK_CRAFT);
