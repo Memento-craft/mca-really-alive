@@ -70,8 +70,14 @@ dependencies {
     // villager classes, so it does not compile against MCA.
     localRuntime "maven.modrinth:minecraft-comes-alive-reborn:${mca_version}"
     // Create, to check that its blocks answer a brain villager's hands: ./gradlew runGameTestServer -Pwith_create
-    if (project.hasProperty('with_create')) {
+    if (project.hasProperty('with_create') || project.hasProperty('with_aeronautics')) {
         localRuntime "maven.modrinth:create:${create_version}"
+    }
+    // Create Aeronautics and Sable, its sub-level physics, to check that villagers stand on, see and build on
+    // moving sub-levels: ./gradlew runGameTestServer -Pwith_aeronautics
+    if (project.hasProperty('with_aeronautics')) {
+        localRuntime "maven.modrinth:sable:${sable_version}"
+        localRuntime "maven.modrinth:create-aeronautics:${aeronautics_version}"
     }
 }
 
