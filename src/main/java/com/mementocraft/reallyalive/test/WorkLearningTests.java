@@ -64,8 +64,8 @@ public final class WorkLearningTests {
     }
 
     /**
-     * A 9 by 9 dirt floor walled in, the villager in the middle holding the given thing. The walls
-     * and the ground under the dirt are bedrock: a villager that digs (one did, with its hoe, and
+     * A 9 by 9 dirt floor walled and roofed in, the villager in the middle holding the given
+     * thing. The walls, roof and the ground under the dirt are bedrock: a villager that digs (one did, with its hoe, and
      * walked out under the wall) stays in the pen, and the dirt it digs up grows back.
      */
     private static Villager pen(GameTestHelper h, ItemStack inHand, int ticks) {
@@ -79,6 +79,9 @@ public final class WorkLearningTests {
                 for (int y = 2; y <= 4; y++) {
                     h.setBlock(x, y, z, wall ? Blocks.BEDROCK : Blocks.AIR);
                 }
+                // A roof too: newborns stacked the shafts they were given into steps and
+                // climbed out over the wall, and spent the rest of the benchmark outside.
+                h.setBlock(x, 5, z, Blocks.BEDROCK);
             }
         }
         Villager v = spawnMcaVillager(h, new Vec3(5.5, 2, 12.5));
@@ -676,10 +679,11 @@ public final class WorkLearningTests {
                 start[0] = handle.hands().setGoingTotal;
                 start[1] = handle.hands().placedTotal;
                 LOG.info("SPIN newborn {}: ticks {}-{}: {} shafts set going of {} placed; aimed at the motor {} ticks in all;"
-                                + " screens opened {}; mean pitch {}; carries {} shafts, in hand {}; place tries {}, refused {}",
+                                + " screens opened {}; mean pitch {}; carries {} shafts, in hand {}; place tries {}, refused {}; at {}",
                         which, tick[0] - WINDOW, tick[0], goingPerWindow[w],
                         placedPerWindow[w], aimedAtMotor[0], handle.hands().screensOpened, Math.round(v.getXRot()),
-                        carried(v, shaft.get()), v.getMainHandItem(), handle.hands().placeTries, handle.hands().placeRefused);
+                        carried(v, shaft.get()), v.getMainHandItem(), handle.hands().placeTries, handle.hands().placeRefused,
+                        h.relativePos(v.blockPosition()));
                 LOG.info("SPIN newborn {}: refused on {}", which, refusedOn);
             }
             if (tick[0] == TICKS) {
