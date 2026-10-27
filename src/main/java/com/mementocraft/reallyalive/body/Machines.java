@@ -60,6 +60,11 @@ public final class Machines {
         return isMachine(level, pos) && !level.getBlockState(pos).getBlock().getClass().getName().contains(".simpleRelays.");
     }
 
+    /** Whether the block at a position is turned by hand, as a hand crank or a valve handle is. */
+    public static boolean isCrank(Level level, BlockPos pos) {
+        return isMachine(level, pos) && level.getBlockState(pos).getBlock().getClass().getName().contains(".crank.");
+    }
+
     /** Whether the block at a position is a machine part with rotation in it. */
     public static boolean turning(Level level, BlockPos pos) {
         if (KINETIC == null || !level.isLoaded(pos)) {

@@ -182,6 +182,8 @@ public final class Hands {
     private static final long SET_GOING_WITHIN = 600L;
     private static final int SET_GOING_WATCHED = 32;
     private static final int SET_GOING_EVERY = 5;
+    /** How far from a machine part it works it watches still machine parts for starting to turn. */
+    private static final int WORKERS_NEAR = 4;
     private static final float SET_GOING_HALF_LIFE = 2400f;
     private int setGoingThisTick;
     private float setGoingLately;
@@ -842,6 +844,7 @@ public final class Hands {
         boolean machine = Machines.isMachine(level, clicked);
         boolean clickedStill = Machines.present() && !Machines.turning(level, clicked);
         boolean placeStill = Machines.present() && !Machines.turning(level, placeAt);
+        java.util.List<BlockPos> stillNear = machine ? stillPartsNear(level, clicked) : java.util.List.of();
         java.util.Map<net.minecraft.world.item.Item, Integer> carriedBefore = machine ? countsIn(p.getInventory()) : null;
         InteractionResult r;
         try {
@@ -860,6 +863,7 @@ public final class Hands {
         swing(r, hand);
         usedOnBlock++;
         noteWorked(level, clicked, clickedStill);
+        noteStillNear(level, stillNear);
         if (!placeAt.equals(clicked)) {
             noteWorked(level, placeAt, placeStill);
         }
@@ -1024,8 +1028,12 @@ public final class Hands {
             return;
         }
         if (Machines.turning(level, pos)) {
-            // Set going there and then, as a hand crank is by turning it.
             stillWorked.remove(pos);
+            if (Machines.isCrank(level, pos)) {
+                // A crank turns because the hand turns it: that is not setting it going. What it
+                // drives, watched above, is.
+                return;
+            }
             setGoingThisTick++;
             setGoingTotal++;
             return;
@@ -1033,6 +1041,41 @@ public final class Hands {
         stillWorked.remove(pos);
         stillWorked.put(pos.immutable(), ticksLived);
         if (stillWorked.size() > SET_GOING_WATCHED) {
+            stillWorked.remove(stillWorked.keySet().iterator().next());
+        }
+    }
+
+    /**
+     * The still machine parts near one about to be worked (the shaft behind a crank, a press a
+     * shaft away), but never a crank: what working it may set going.
+     */
+    private static java.util.List<BlockPos> stillPartsNear(ServerLevel level, BlockPos pos) {
+        java.util.List<BlockPos> out = new java.util.ArrayList<>();
+        for (BlockPos p : BlockPos.betweenClosed(pos.offset(-WORKERS_NEAR, -WORKERS_NEAR, -WORKERS_NEAR),
+                pos.offset(WORKERS_NEAR, WORKERS_NEAR, WORKERS_NEAR))) {
+            if (!p.equals(pos) && Machines.isMachine(level, p) && !Machines.isCrank(level, p) && !Machines.turning(level, p)) {
+                out.add(p.immutable());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * After working a machine part: each still part near it that turns now was set going by it,
+     * and the rest are watched, to feel them if they start soon after. The crank itself never
+     * counts, so a crank that drives nothing is not felt at all.
+     */
+    private void noteStillNear(ServerLevel level, java.util.List<BlockPos> stillNear) {
+        for (BlockPos p : stillNear) {
+            stillWorked.remove(p);
+            if (Machines.turning(level, p)) {
+                setGoingThisTick++;
+                setGoingTotal++;
+            } else {
+                stillWorked.put(p, ticksLived);
+            }
+        }
+        while (stillWorked.size() > SET_GOING_WATCHED) {
             stillWorked.remove(stillWorked.keySet().iterator().next());
         }
     }

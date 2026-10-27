@@ -604,7 +604,8 @@ public final class UseTests {
 
     /**
      * With Create installed: holding use on a hand crank turns it, and the shaft behind it, as a
-     * player's held right button does, and setting it going is felt.
+     * player's held right button does. The shaft it drives is felt set going; the crank itself,
+     * turning only under the hand, is not.
      */
     @GameTest(template = ARENA, timeoutTicks = 100)
     public static void turnsAHandCrankIfCreateIsInstalled(GameTestHelper h) {
@@ -634,7 +635,8 @@ public final class UseTests {
             LOG.info("hand crank held: shaft turning {}, set going {}", turning, handle.hands().setGoingTotal);
             handle.hold(MotorCommand.IDLE);
             h.assertTrue(turning, "the shaft behind the crank is not turning");
-            h.assertTrue(handle.hands().setGoingTotal == 1, "turning the crank was felt " + handle.hands().setGoingTotal + " times, not once");
+            h.assertTrue(handle.hands().setGoingTotal == 1, "the shaft the crank turned was felt set going "
+                    + handle.hands().setGoingTotal + " times, not once");
             h.succeed();
         });
     }
