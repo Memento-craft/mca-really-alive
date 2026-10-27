@@ -673,10 +673,13 @@ public final class WorkLearningTests {
                 LOG.info("SPIN newborn {}: refused on {}", which, refusedOn);
             }
             if (tick[0] == TICKS) {
-                int first = goingPerWindow[0];
-                int last = goingPerWindow[goingPerWindow.length - 1];
+                // Set going is rare, so the first and last two windows are compared.
+                int n = goingPerWindow.length;
+                int first = goingPerWindow[0] + goingPerWindow[1];
+                int last = goingPerWindow[n - 2] + goingPerWindow[n - 1];
                 String report = String.format("SPIN: %d set going of %d placed in the first %d ticks, %d of %d in the last; %d in all",
-                        first, placedPerWindow[0], WINDOW, last, placedPerWindow[placedPerWindow.length - 1], handle.hands().setGoingTotal);
+                        first, placedPerWindow[0] + placedPerWindow[1], 2 * WINDOW, last,
+                        placedPerWindow[n - 2] + placedPerWindow[n - 1], handle.hands().setGoingTotal);
                 LOG.info("SPIN newborn {} learning result: {}", which, report);
                 if (handle.hands().setGoingTotal >= 5 && last > first) {
                     h.succeed();
