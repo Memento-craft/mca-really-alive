@@ -1068,6 +1068,22 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] many = howMany(heard);
+        if (many != null) {
+            // "how many apples do i have?" after "i have three apples and i eat one .": "you
+            // have two apples ."
+            toldLine = many;
+            toldLineAsHeard = null;
+            return new int[0];
+        }
+        int[] most = mostOf(heard);
+        if (most != null) {
+            // "who is the oldest?" after "tom is older than sam." "sam is older than ben.":
+            // "tom is the oldest ."
+            toldLine = most;
+            toldLineAsHeard = null;
+            return new int[] {most[most.length - 5]};
+        }
         boolean aboutThem = aboutSpeaker(heard);
         ToneLinks tones = ToneLinks.shared();
         float asked = 0f;
@@ -1266,6 +1282,215 @@ public final class Brain {
         }
         return false;
     }
+
+    /**
+     * The answer to "who is the oldest?" from comparisons told lately ("tom is older than sam .",
+     * "sam is older than ben ."): the one that is more than another and less than none, said as
+     * "tom is the oldest ."; null if it is no such question or what was told doesn't settle it.
+     */
+    private int[] mostOf(int[] heard) {
+        int the = language.vocabulary.find("the");
+        int at = -1;
+        for (int i = 1; i < heard.length; i++) {
+            String w = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
+            if (heard[i - 1] == the && w.endsWith("est") && w.length() > 4) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            return null;
+        }
+        String most = language.vocabulary.word(heard[at]);
+        String moreWord = most.substring(0, most.length() - 3) + "er";
+        phrases.clear();
+        List<int[]> more = comparisons(moreWord);
+        if (more.isEmpty() && OPPOSITE.containsKey(moreWord)) {
+            // "who is the youngest?" after "tom is older than sam .": the one older than none.
+            for (int[] m : comparisons(OPPOSITE.get(moreWord))) {
+                more.add(new int[] {m[1], m[0]});
+            }
+        }
+        int top = -1;
+        for (int[] m : more) {
+            boolean less = false;
+            for (int[] n : more) {
+                less |= sameThing(n[1], m[0]);
+            }
+            if (!less) {
+                if (top >= 0 && !sameThing(top, m[0])) {
+                    return null;
+                }
+                top = m[0];
+            }
+        }
+        if (top < 0) {
+            return null;
+        }
+        int[] named = phrases.getOrDefault(top, new int[] {top});
+        int[] said = Arrays.copyOf(named, named.length + 4);
+        said[named.length] = language.vocabulary.find("is");
+        said[named.length + 1] = the;
+        said[named.length + 2] = heard[at];
+        said[named.length + 3] = language.vocabulary.find(".");
+        return said;
+    }
+
+    private static final List<String> NUMBERS = List.of("zero", "one", "two", "three", "four", "five", "six", "seven",
+            "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+            "eighteen", "nineteen", "twenty");
+    /** Doings that make fewer of something, and ones that make more, by their plain forms. */
+    private static final class Doings {
+        static final Set<String> FEWER = stems("eat", "lose", "sell", "give", "kill", "break", "use", "spend",
+            "drop", "steal", "take", "burn");
+        static final Set<String> MORE = stems("buy", "get", "find", "catch", "pick", "add", "grow", "make",
+            "receive", "win", "more", "another", "bake", "collect");
+
+        private static Set<String> stems(String... words) {
+            return java.util.Arrays.stream(words).map(Brain::stem).collect(java.util.stream.Collectors.toSet());
+        }
+    }
+
+    /** Words after a bare count ("he lost one on the way"): no thing is named. */
+    private static final Set<String> AFTER_A_COUNT = Set.of("more", "of", "on", "in", "at", "to", "from", "for", "today",
+            "yesterday", "again", "too", "away", "back", "with", "by", "were", "was", "are", "is");
+
+    private static int number(String w) {
+        int n = NUMBERS.indexOf(w);
+        if (n < 0 && !w.isEmpty() && w.chars().allMatch(Character::isDigit) && w.length() < 5) {
+            n = Integer.parseInt(w);
+        }
+        return n;
+    }
+
+    /**
+     * The answer to "how many apples do i have?" from what was told lately, in the order told:
+     * the last count of them ("i have three apples"), less what was eaten, lost or sold since and
+     * more what was bought or found ("and i eat one ."); null if it is no such question or
+     * nothing told counts them.
+     */
+    private int[] howMany(int[] heard) {
+        int at = -1;
+        for (int i = 0; i + 2 < heard.length; i++) {
+            if (heard[i] >= 0 && heard[i + 1] >= 0 && language.vocabulary.word(heard[i]).equals("how")
+                    && language.vocabulary.word(heard[i + 1]).equals("many")) {
+                at = i + 2;
+            }
+        }
+        if (at < 0 || heard[at] < 0) {
+            return null;
+        }
+        int thing = heard[at];
+        Integer count = null;
+        for (int k = Math.min(TOLD_LINES, heardLinesNext); k >= 2; k--) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            // Each part of the line on its own: "i have three apples", "and i eat one".
+            int doing = 0;
+            for (int i = 0; i < line.length; i++) {
+                String w = line[i] < 0 ? "" : language.vocabulary.word(line[i]);
+                String plain = stem(w);
+                if (w.equals(",") || w.equals(".") || w.equals("and") || w.equals("then") || w.equals("but")) {
+                    doing = 0;
+                    continue;
+                }
+                doing = Doings.FEWER.contains(plain) ? -1 : Doings.MORE.contains(plain) ? 1 : doing;
+                int n = number(w);
+                if (n < 0) {
+                    continue;
+                }
+                boolean ofIt = i + 1 < line.length && line[i + 1] >= 0 && sameThing(line[i + 1], thing)
+                        || i + 2 < line.length && line[i + 2] >= 0 && sameThing(line[i + 2], thing);
+                String next = i + 1 < line.length && line[i + 1] >= 0 ? language.vocabulary.word(line[i + 1]) : ".";
+                // "one on the way home", "two of them", "two more".
+                boolean bare = !Character.isLetter(next.charAt(0)) || AFTER_A_COUNT.contains(next);
+                if (next.equals("more")) {
+                    doing = 1;
+                }
+                for (int j = i + 1; doing == 0 && bare && j < line.length && line[j] >= 0; j++) {
+                    // "one was sold": the doing comes after the count.
+                    String later = language.vocabulary.word(line[j]);
+                    if (later.equals(",") || later.equals(".") || later.equals("and")) {
+                        break;
+                    }
+                    doing = Doings.FEWER.contains(stem(later)) ? -1 : Doings.MORE.contains(stem(later)) ? 1 : 0;
+                }
+                if (doing == 0 && ofIt || count == null && doing > 0 && ofIt) {
+                    // "i have three apples", or "i bought four eggs" with none before.
+                    count = n;
+                } else if (count != null && doing != 0 && (ofIt || bare)) {
+                    count = Math.max(0, count + doing * n);
+                }
+            }
+        }
+        if (count == null || count > 20) {
+            return null;
+        }
+        List<Integer> said = new ArrayList<>();
+        boolean mine = aboutSpeaker(heard);
+        if (mine) {
+            said.add(language.vocabulary.find("you"));
+            said.add(language.vocabulary.find("have"));
+        }
+        said.add(language.vocabulary.find(NUMBERS.get(count)));
+        said.add(thing);
+        said.add(language.vocabulary.find("."));
+        return said.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    /** Comparisons the other way round. */
+    private static final java.util.Map<String, String> OPPOSITE = opposites("older younger", "bigger smaller",
+            "taller shorter", "faster slower", "stronger weaker", "richer poorer", "heavier lighter", "higher lower",
+            "deeper shallower", "longer shorter", "wider narrower", "hotter colder", "louder quieter");
+
+    private static java.util.Map<String, String> opposites(String... pairs) {
+        java.util.Map<String, String> m = new java.util.HashMap<>();
+        for (String p : pairs) {
+            String[] w = p.split(" ");
+            m.putIfAbsent(w[0], w[1]);
+            m.putIfAbsent(w[1], w[0]);
+        }
+        return m;
+    }
+
+    /**
+     * The comparisons told lately with the given word ("older"): each the one, the other, and
+     * whether each was said with "the" ("the mill is bigger than the church .").
+     */
+    private List<int[]> comparisons(String moreWord) {
+        int than = language.vocabulary.find("than");
+        List<int[]> more = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            for (int i = 1; i < line.length; i++) {
+                if (line[i] == than && line[i - 1] >= 0 && language.vocabulary.word(line[i - 1]).equals(moreWord)) {
+                    int one = thingAt(line, i - 2, -1), other = thingAt(line, i + 1, 1);
+                    if (one >= 0 && other >= 0) {
+                        more.add(new int[] {one, other});
+                        // How each was said ("the iron bar"), to say it the same way.
+                        int head = i - 2;
+                        while (head > 0 && line[head] != one) {
+                            head--;
+                        }
+                        int from = head;
+                        while (from > 0 && line[from - 1] >= 0 && Character.isLetter(language.vocabulary.word(line[from - 1]).charAt(0))
+                                && !BETWEEN.contains(language.vocabulary.word(line[from - 1])) && head - from < 2) {
+                            from--;
+                        }
+                        from = from > 0 && line[from - 1] == language.vocabulary.find("the") ? from - 1 : from;
+                        phrases.putIfAbsent(one, Arrays.copyOfRange(line, from, head + 1));
+                        int to = i + 1;
+                        while (to < line.length && line[to] != other) {
+                            to++;
+                        }
+                        phrases.putIfAbsent(other, Arrays.copyOfRange(line, i + 1, Math.min(to + 1, line.length)));
+                    }
+                }
+            }
+        }
+        return more;
+    }
+
+    /** How the things compared lately were said, by the word for each. */
+    private final java.util.Map<Integer, int[]> phrases = new java.util.HashMap<>();
 
     /** Whether a line is one of those heard lately. */
     private boolean toldLately(int[] line) {
@@ -1542,7 +1767,7 @@ public final class Brain {
             "sing sang sung", "sink sank sunk", "sit sat", "sleep slept", "slide slid", "speak spoke spoken",
             "spend spent", "stand stood", "steal stole stolen", "stick stuck", "sting stung",
             "strike struck", "swim swam swum", "swing swung", "take took taken", "teach taught",
-            "tear tore torn", "tell told", "think thought", "throw threw thrown", "wake woke woken",
+            "tear tore torn", "tell told", "use used", "think thought", "throw threw thrown", "wake woke woken",
             "wear wore worn", "win won", "write wrote written");
 
     private static java.util.Map<String, String> irregular(String... verbs) {
@@ -1572,7 +1797,7 @@ public final class Brain {
             // "wolves", "wolf"; "knives", "knife".
             w = w.substring(0, w.length() - 3) + "f";
         }
-        for (String end : new String[] {"ing", "ied", "ies", "ed", "es", "s", "d"}) {
+        for (String end : new String[] {"ing", "ied", "ies", "ed", "es", "s"}) {
             if (w.endsWith(end) && w.length() - end.length() >= (end.startsWith("i") ? 2 : 3)) {
                 w = w.substring(0, w.length() - end.length()) + (end.startsWith("i") ? "y" : "");
                 break;

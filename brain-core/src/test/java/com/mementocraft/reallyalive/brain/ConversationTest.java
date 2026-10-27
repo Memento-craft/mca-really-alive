@@ -241,6 +241,33 @@ class ConversationTest {
      * man in a purple coat arrived.").
      */
     @Test
+    void villagerWorksOutTheMostAndHowMany() {
+        String[][] talks = {{"tom is older than sam.", "sam is older than ben.", "who is the oldest?", "tom"},
+            {"tom is older than sam.", "sam is older than ben.", "who is the youngest?", "ben"},
+            {"the mill is bigger than the church.", "the church is bigger than the well.", "what is the biggest?", "mill"},
+            {"i have five apples and i eat two.", "the weather is nice today.", "how many apples do i have?", "three"},
+            {"the farmer had eight chickens.", "a fox stole three of them.", "how many chickens does the farmer have?", "five"},
+            {"i picked six carrots.", "then i found four more.", "how many carrots do i have?", "ten"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 760 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("worked out the most and how many %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "worked out only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerDeducesFromTwoThingsItWasTold() {
         // Neither line alone answers: the answer follows from the two together.
         String[][] talks = {{"tom is older than sam.", "sam is older than ben.", "is tom older than ben?", "yes"},
