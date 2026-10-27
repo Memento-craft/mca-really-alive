@@ -840,6 +840,8 @@ public final class Hands {
             p.setItemInHand(hand, ItemStack.EMPTY);
         }
         boolean machine = Machines.isMachine(level, clicked);
+        boolean clickedStill = Machines.present() && !Machines.turning(level, clicked);
+        boolean placeStill = Machines.present() && !Machines.turning(level, placeAt);
         java.util.Map<net.minecraft.world.item.Item, Integer> carriedBefore = machine ? countsIn(p.getInventory()) : null;
         InteractionResult r;
         try {
@@ -857,8 +859,10 @@ public final class Hands {
         }
         swing(r, hand);
         usedOnBlock++;
-        noteWorked(level, clicked);
-        noteWorked(level, placeAt);
+        noteWorked(level, clicked, clickedStill);
+        if (!placeAt.equals(clicked)) {
+            noteWorked(level, placeAt, placeStill);
+        }
         if (carriedBefore != null) {
             tookFromMachine(carriedBefore, countsIn(p.getInventory()));
         }
@@ -1015,8 +1019,15 @@ public final class Hands {
     }
 
     /** Watches a block it placed or worked, if it is still, to feel it if it starts turning. */
-    private void noteWorked(ServerLevel level, BlockPos pos) {
-        if (!Machines.present() || Machines.turning(level, pos)) {
+    private void noteWorked(ServerLevel level, BlockPos pos, boolean stillBefore) {
+        if (!stillBefore) {
+            return;
+        }
+        if (Machines.turning(level, pos)) {
+            // Set going there and then, as a hand crank is by turning it.
+            stillWorked.remove(pos);
+            setGoingThisTick++;
+            setGoingTotal++;
             return;
         }
         stillWorked.remove(pos);
@@ -1231,7 +1242,7 @@ public final class Hands {
         int before = contents(screen);
         screen.clicked(slot, button, type, p);
         screen.broadcastChanges();
-        if (contents(screen) != before) {
+        if (contents(screen) != before && !(screen instanceof RecipeBook.Menu)) {
             // Something moved: felt the less, the more it has lately been moving things about.
             movedThisTick += 1f / (1f + movedLately);
             movedLately += 1f;
