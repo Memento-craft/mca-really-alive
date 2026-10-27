@@ -52,6 +52,14 @@ public final class Machines {
         return isMachine(level, pos) && level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK, pos, null) != null;
     }
 
+    /**
+     * Whether the block at a position is a working machine rather than a part that only passes
+     * rotation on (a shaft, a cogwheel): a press, a millstone, a fan.
+     */
+    public static boolean isWorker(Level level, BlockPos pos) {
+        return isMachine(level, pos) && !level.getBlockState(pos).getBlock().getClass().getName().contains(".simpleRelays.");
+    }
+
     /** Whether the block at a position is a machine part with rotation in it. */
     public static boolean turning(Level level, BlockPos pos) {
         if (KINETIC == null || !level.isLoaded(pos)) {

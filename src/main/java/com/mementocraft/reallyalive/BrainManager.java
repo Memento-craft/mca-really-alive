@@ -238,7 +238,10 @@ public final class BrainManager {
         }
         BrainData data = v.getData(Attachments.BRAIN);
         if (!data.hasGenome()) {
-            data.setGenome(Genome.random(new Rng(v.getUUID().getLeastSignificantBits())).toArray());
+            // -Dreallyalive.sameGenes=true gives every new brain the same default genes, so a
+            // benchmark can tell how much of its spread between villagers comes from their genes.
+            data.setGenome((Boolean.getBoolean("reallyalive.sameGenes") ? Genome.defaults()
+                    : Genome.random(new Rng(v.getUUID().getLeastSignificantBits()))).toArray());
         }
         data.setEnabled(true);
         Brain brain = load(v.getUUID());

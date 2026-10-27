@@ -36,6 +36,8 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
             // Only these learning benchmarks, e.g. -Pbenchmarks=TILL,STEP (all when unset).
             systemProperty 'reallyalive.benchmarks', project.findProperty('benchmarks') ?: ''
+            // -PsameGenes gives every new brain the default genes (to measure spread between villagers).
+            systemProperty 'reallyalive.sameGenes', project.hasProperty('sameGenes') ? 'true' : 'false'
         }
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'

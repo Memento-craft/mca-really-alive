@@ -601,6 +601,16 @@ public final class WorkLearningTests {
         spinBenchmark(h, "2");
     }
 
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornSetsAMachineGoing(GameTestHelper h) {
+        spinBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornSetsAMachineGoing(GameTestHelper h) {
+        spinBenchmark(h, "4");
+    }
+
     /**
      * With Create installed: a turning motor in the pen and a newborn carrying shafts. A shaft
      * placed on the motor's turning end, or on the end of a turning shaft, turns too, and that is
@@ -697,6 +707,16 @@ public final class WorkLearningTests {
     @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
     public static void secondNewbornRunsAPress(GameTestHelper h) {
         pressBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornRunsAPress(GameTestHelper h) {
+        pressBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornRunsAPress(GameTestHelper h) {
+        pressBenchmark(h, "4");
     }
 
     /**

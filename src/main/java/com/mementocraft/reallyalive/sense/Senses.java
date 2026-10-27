@@ -59,6 +59,8 @@ public final class Senses {
     private static final float WORKSTATION = 0.8f;
     /** How strongly a turning machine part catches the eye. */
     private static final float TURNING = 0.8f;
+    /** How strongly a machine part standing still catches the eye. */
+    private static final float STILL_MACHINE = 0.3f;
 
     /** Casts the eye rays. Column 0 is the left edge of view, row 0 the top. */
     public static void see(LivingEntity body, double range, float[] vision) {
@@ -128,6 +130,11 @@ public final class Senses {
                     } else if (Machines.holdsThings(level, block.getBlockPos())) {
                         // Machinery that holds things (a depot, a millstone) is a workstation too.
                         creature = Math.max(creature, WORKSTATION);
+                    } else if (Machines.isWorker(level, block.getBlockPos())) {
+                        // A working machine standing still (a press with no drive) stands out a
+                        // little. Shafts and cogs do not: lying about, they pulled the eye from
+                        // the turning motor and newborns set fewer of them going.
+                        creature = Math.max(creature, STILL_MACHINE);
                     }
                 } else {
                     near = 0f;
