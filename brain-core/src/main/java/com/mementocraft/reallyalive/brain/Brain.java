@@ -860,6 +860,13 @@ public final class Brain {
         LanguageArea.Place start = language.place();
         topicHeard = mustSay < 0 && !language.heardOwnLine() ? language.heardLine() : null;
         recalledFocus = topicHeard == null ? new int[0] : toldBefore(topicHeard);
+        if (topicHeard != null && toldLine == null) {
+            // Nothing told answers it; what it knows of the world may ("is a horse bigger than a
+            // mouse?").
+            toldLine = judged(topicHeard);
+            toldLineAsHeard = null;
+            language.restore(start);
+        }
         groundedWord(false);
         int[] openers = openers(tries);
         int turn = language.vocabulary.find(WordCode.TURN);
@@ -906,7 +913,17 @@ public final class Brain {
             int[] heard = language.heardLine();
             int[] before = language.earlierLine();
             talk.ask = language.vocabulary.find("?");
-            weighRecalled(memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask), match, RECALL_WEIGHT, false, start, turn);
+            int[][] recalled = memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask);
+            int keep = 0;
+            for (int r = 0; r < recalled.length; r++) {
+                int[] kept = keptTrue(heard, recalled[r]);
+                if (kept != null) {
+                    match[keep] = match[r];
+                    recalled[keep++] = kept;
+                }
+            }
+            recalled = Arrays.copyOf(recalled, keep);
+            weighRecalled(recalled, match, RECALL_WEIGHT, false, start, turn);
             int[][] mine = talk.recall(heard, before, 0f, RECALLED, match, memory);
             if (toldLine != null) {
                 // The told line that answers the question was picked from all told lately; the
@@ -1663,6 +1680,99 @@ public final class Brain {
         return order == 0 ? -1 : language.vocabulary.find(order > 0 ? "yes" : "no");
     }
 
+    private static final Set<String> ASKING = Set.of("is", "are", "can", "was", "were", "will", "does", "do");
+    static final float JUDGE_MARGIN = 1f;
+
+    /**
+     * A yes or no answer from what the language area knows: "is a horse bigger than a mouse?"
+     * is weighed as "a horse is bigger than a mouse ." against "a mouse is bigger than a horse ."; the likelier by a clear
+     * margin is the answer, said with yes or no. Null if it is no such question or neither is
+     * clearly likelier. The language area is left elsewhere.
+     */
+    private int[] judged(int[] heardLine) {
+        int[] heard = withoutAddress(heardLine);
+        int ask = language.vocabulary.find("?");
+        if (heard.length < 4 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask || heard[0] < 0
+                || !ASKING.contains(language.vocabulary.word(heard[0]))) {
+            return null;
+        }
+        int end = 1;
+        while (end < heard.length - 1 && heard[end] >= 0 && BEFORE_A_THING.contains(language.vocabulary.word(heard[end]))) {
+            end++;
+        }
+        if (end >= heard.length - 2) {
+            return null;
+        }
+        // "a horse" is "bigger than a mouse"
+        int[] subject = Arrays.copyOfRange(heard, 1, end + 1);
+        int[] rest = Arrays.copyOfRange(heard, end + 1, heard.length - 1);
+        int aux = heard[0];
+        int than = indexOf(rest, language.vocabulary.find("than"), 0);
+        int[] said = join(subject, new int[] {aux}, rest);
+        if (than < 0) {
+            return null;
+        }
+        int[] other = join(Arrays.copyOfRange(rest, than + 1, rest.length), new int[] {aux}, Arrays.copyOfRange(rest, 0, than + 1), subject);
+        said = join(said, new int[] {language.vocabulary.find(".")});
+        other = join(other, new int[] {language.vocabulary.find(".")});
+        float yes = outOfNowhere(said, said.length), no = outOfNowhere(other, other.length);
+        if (Math.abs(yes - no) < JUDGE_MARGIN) {
+            return null;
+        }
+        return join(new int[] {language.vocabulary.find(yes > no ? "yes" : "no"), language.vocabulary.find(",")}, yes > no ? said : other);
+    }
+
+    private static int[] join(int[]... parts) {
+        int n = 0;
+        for (int[] p : parts) {
+            n += p.length;
+        }
+        int[] all = new int[n];
+        int at = 0;
+        for (int[] p : parts) {
+            System.arraycopy(p, 0, all, at, p.length);
+            at += p.length;
+        }
+        return all;
+    }
+
+    /**
+     * A remembered answer made to say what it says the right way round: one that answered "is a
+     * dog bigger than a mouse?" with "yes , a dog is bigger than a mouse ." says "no" to "is a
+     * mouse bigger than a dog?"; null if it tells of other things than were asked about.
+     */
+    private int[] keptTrue(int[] heard, int[] answer) {
+        int yes = language.vocabulary.find("yes"), no = language.vocabulary.find("no");
+        if (answer.length < 3 || answer[0] != yes && answer[0] != no) {
+            return answer;
+        }
+        int[] said = Arrays.copyOfRange(answer, 1, answer.length);
+        int than = language.vocabulary.find("than");
+        int at = indexOf(heard, than, 0);
+        if (at > 0) {
+            // About other things than the question ("yes , a fox is bigger than a rabbit ." to
+            // "is a rabbit bigger than a bear?"), it is no answer to it.
+            List<Integer> asked = new ArrayList<>(thingFrom(heard, 0));
+            asked.addAll(thingFrom(heard, at + 1));
+            int its = indexOf(said, than, 0);
+            List<Integer> one = thingFrom(said, 0);
+            if (!one.isEmpty() && !sameThing(one, asked) || its >= 0 && !sameThing(thingFrom(said, its + 1), asked)) {
+                return null;
+            }
+            if (its < 0 && !one.isEmpty() && sameThing(one, thingFrom(heard, 0)) != (answer[0] == yes)) {
+                // "no , a fox is bigger ." to "is a fox bigger than ...?" says both.
+                return null;
+            }
+        }
+        int order = sameOrder(heard, said);
+        if (order < 0) {
+            int[] turned = answer.clone();
+            turned[0] = answer[0] == yes ? no : yes;
+            return turned;
+        }
+        return answer;
+    }
+
     /** Words that put two things one way round: "older than", "north of", "came before", "in". */
     private static final Set<String> ONE_WAY = Set.of("than", "of", "before", "after", "in", "inside", "on", "under",
             "behind", "above", "below");
@@ -1715,7 +1825,8 @@ public final class Brain {
      * to the next small word or stop ("the north tower is" names the north tower).
      */
     private List<Integer> thingFrom(int[] line, int from) {
-        while (from < line.length && line[from] >= 0 && BEFORE_A_THING.contains(language.vocabulary.word(line[from]))) {
+        while (from < line.length && line[from] >= 0 && (BEFORE_A_THING.contains(language.vocabulary.word(line[from]))
+                || !Character.isLetter(language.vocabulary.word(line[from]).charAt(0)))) {
             from++;
         }
         List<Integer> thing = new ArrayList<>();

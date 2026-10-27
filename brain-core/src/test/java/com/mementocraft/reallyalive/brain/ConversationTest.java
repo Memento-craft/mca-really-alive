@@ -270,6 +270,27 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsWhichIsBiggerWithoutBeingTold() {
+        // Nothing is told: the answer comes from which way round the language area finds likelier.
+        String[][] asked = {{"is a horse bigger than a mouse?", "yes"}, {"is a mouse bigger than a horse?", "no"},
+            {"is a whale bigger than a dog?", "yes"}, {"is a dog bigger than a whale?", "no"},
+            {"is a deer bigger than a snail?", "yes"}, {"is a snail bigger than a deer?", "no"}};
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 780 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            right += said.contains(asked[i][1]) && !said.contains(asked[i][1].equals("yes") ? "no" : "yes") ? 1 : 0;
+        }
+        System.out.printf("knew which is bigger %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerDeducesFromTwoThingsItWasTold() {
         // Neither line alone answers: the answer follows from the two together.
         String[][] talks = {{"tom is older than sam.", "sam is older than ben.", "is tom older than ben?", "yes"},

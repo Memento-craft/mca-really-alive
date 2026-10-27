@@ -109,7 +109,11 @@ works out days ("today is monday." "what day is tomorrow?" "tuesday."). On 20 ne
 each kind: yes or no 19 right, 0 wrong; chains 20 of 20 on three sets; most, counting and days
 20 of 20 on two sets. It remembers the last 15 lines of a talk, so a fact told ten lines earlier
 still comes back (19 of 20, 1 before), and a greeting word ("hey boss,") is not taken for part
-of a question.
+of a question. Asked a comparison it was never told about ("is a horse bigger than a mouse?"), it
+weighs how likely its language area finds the sentence and the same sentence the other way round,
+and answers with the likelier one when it is clearly likelier: 19 of 20 right, 0 wrong (6 right
+and 4 wrong before). Remembered yes or no answers are turned round to fit the question, and
+dropped when they are about other things.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
