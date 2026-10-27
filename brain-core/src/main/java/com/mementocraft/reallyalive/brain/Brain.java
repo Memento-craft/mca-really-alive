@@ -682,6 +682,10 @@ public final class Brain {
         lastLineOwn = own;
         if (!own) {
             heardLines[heardLinesNext++ % heardLines.length] = line;
+            int ask = language.vocabulary.find("?");
+            if (line.length >= 3 && line.length <= TOLD_LONGEST && line[line.length - 1] != ask) {
+                talk.rememberTold(line);
+            }
         }
     }
 
@@ -1139,8 +1143,24 @@ public final class Brain {
         int[][] names = namesGiven();
         // The latest line is the question itself; only what the speaker told about themselves
         // lately, not other questions, is recalled.
+        // Then what it was told longer ago and kept, even before a save.
+        List<int[]> toldLines = new ArrayList<>();
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
-            int[] told = heardLines[(heardLinesNext - k) % heardLines.length];
+            toldLines.add(heardLines[(heardLinesNext - k) % heardLines.length]);
+        }
+        int recent = toldLines.size();
+        for (int[] old : talk.toldLines()) {
+            boolean lately = false;
+            for (int k = 1; k <= TOLD_LINES + 1 && k <= heardLinesNext; k++) {
+                lately |= Arrays.equals(old, heardLines[(heardLinesNext - k) % heardLines.length]);
+            }
+            if (!lately) {
+                toldLines.add(old);
+            }
+        }
+        for (int t = 0; t < toldLines.size(); t++) {
+            int k = t < recent ? t + 2 : TOLD_LINES + 1;
+            int[] told = toldLines.get(t);
             if (told.length == 0 || told.length > TOLD_LONGEST || told[told.length - 1] == ask
                     || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names)) {
                 continue;
@@ -1190,16 +1210,19 @@ public final class Brain {
                     }
                 }
             }
-            if (!aboutThem && (cue + linked < (k <= TOLD_RECENT ? TOLD_COVER : TOLD_COVER_OLD) * asked || telling < TOLD_TELLING)) {
+            if ((!aboutThem || k > TOLD_LINES) && (cue + linked < (k <= TOLD_RECENT ? TOLD_COVER : TOLD_COVER_OLD) * asked
+                    || telling < TOLD_TELLING)) {
                 // About someone or something else, the question has to be mostly about what the
-                // line told ("where is the key?" after "the red key is under the bed.").
+                // line told ("where is the key?" after "the red key is under the bed."), and so
+                // does a line told long ago, maybe by someone else.
                 continue;
             }
             if (cue > bestCue) {
                 bestCue = cue;
                 best = told;
                 bestSeen = seen;
-                bestK = k;
+                // Lines from longer ago are not among those heard lately.
+                bestK = k <= TOLD_LINES ? k : 0;
             }
         }
         if (best == null || !coversAll(heard, bestSeen, memory, tones)) {

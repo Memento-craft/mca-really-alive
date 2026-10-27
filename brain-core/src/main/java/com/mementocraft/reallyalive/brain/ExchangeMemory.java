@@ -4,7 +4,9 @@ import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -260,6 +262,44 @@ final class ExchangeMemory {
         }
 
         /**
+         * Keeps a line it was told whole, to answer questions about it later, even after a save
+         * ("the key is under the bed ." days ago answers "where is the key?"): it is kept as an
+         * exchange the line answered itself, which recall leaves alone.
+         */
+        void rememberTold(int[] line) {
+            int[] cue = cuesOf(line, null);
+            if (cue.length == 0) {
+                return;
+            }
+            for (int i = 0; i < count; i++) {
+                if (told(i) && Arrays.equals(answers[i], line)) {
+                    return;
+                }
+            }
+            cues[next] = cue;
+            answers[next] = line.clone();
+            next = (next + 1) % CAPACITY;
+            count = Math.min(CAPACITY, count + 1);
+        }
+
+        /** Whether a place holds a line it was told rather than an exchange. */
+        private boolean told(int slot) {
+            return slot < CAPACITY && Arrays.equals(cues[slot], cuesOf(answers[slot], null));
+        }
+
+        /** The lines it was told and kept, the latest first. */
+        List<int[]> toldLines() {
+            List<int[]> lines = new ArrayList<>();
+            for (int i = 1; i <= count; i++) {
+                int slot = Math.floorMod(next - i, CAPACITY);
+                if (told(slot)) {
+                    lines.add(answers[slot]);
+                }
+            }
+            return lines;
+        }
+
+        /**
          * Every word of the line cues its own memories, small words faintly: a line it heard
          * itself is remembered whole, so "what do you do for work?" asked again is known again.
          */
@@ -293,7 +333,7 @@ final class ExchangeMemory {
 
         /** As {@link ExchangeMemory#recall}, from this villager's own memories. */
         int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, ExchangeMemory shared) {
-            int[] slots = slots();
+            int[] slots = Arrays.stream(slots()).filter(slot -> !told(slot)).toArray();
             int n = slots.length;
             float[] score = new float[n];
             float heardNorm = 0f;

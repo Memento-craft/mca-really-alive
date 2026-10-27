@@ -298,6 +298,45 @@ class ConversationTest {
     }
 
     @Test
+    void villagerRemembersWhatItWasToldAcrossASave() throws java.io.IOException {
+        String[][] told = {{"the priest keeps the church keys in a box behind the altar.", "where are the church keys?", "altar"},
+            {"rosa won the archery contest at the fair.", "who won the archery contest?", "rosa"},
+            {"the old well was filled with sand years ago.", "what was the old well filled with?", "sand"},
+            {"marco built his new house out of birch wood.", "what is marco's house made of?", "birch"}};
+        String[] other = {"the weather is nice today.", "i had soup for lunch.", "the market was busy.", "my feet hurt from walking.",
+            "how are you doing?", "i love the sound of rain.", "have you eaten yet?", "it's getting late."};
+        Brain b = Brain.create(Genome.defaults(), 830, 1f);
+        b.setBabbleScale(1f);
+        for (int t = 0; t < 300; t++) {
+            b.step(frame());
+        }
+        int[] onScript = {0, 0};
+        for (String[] fact : told) {
+            talk(b, fact[0], onScript);
+            for (String line : other) {
+                talk(b, line, onScript);
+            }
+        }
+        // Saved and loaded again, as when the world is left and come back to.
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        BrainIO.write(b, new java.io.DataOutputStream(bytes));
+        b = BrainIO.read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray())));
+        b.setBabbleScale(1f);
+        for (int t = 0; t < 300; t++) {
+            b.step(frame());
+        }
+        onScript = new int[] {0, 0};
+        int right = 0;
+        for (String[] fact : told) {
+            List<String> said = talk(b, fact[1], onScript);
+            System.out.println("  player: " + fact[1] + "\n  villager: " + String.join(" ", said));
+            right += said.contains(fact[2]) ? 1 : 0;
+        }
+        System.out.printf("remembered what it was told across a save %d of %d%n", right, told.length);
+        assertTrue(right >= told.length - 1, "remembered only " + right + " of " + told.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},

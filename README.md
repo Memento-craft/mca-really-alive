@@ -125,6 +125,12 @@ and what comes before or after a day, a month or a number ("what comes before mo
 comes before monday ."). On 20 everyday questions written afterwards (sums, what comes next,
 opposites, colours, how many legs) it answers 16, 8 before; what it gets wrong now are things it
 would have to know of the world, such as how many wheels a bike has.
+What it is told is also kept with its own saved exchanges, whole, as an exchange the line
+answered itself (which ordinary recall leaves alone), so it is remembered after much other talk
+and after the world is saved and loaded: told five things among 30 other lines, saved, loaded,
+and asked after ten more, it answers 18 of 20 (1 before) and 20 of 20 on another set. A line told
+that long ago has to be mostly about what is asked, even when the question is about the speaker,
+since someone else may have said it.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
