@@ -1105,6 +1105,13 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[0];
         }
+        int[] kin = family(heard);
+        if (kin != null) {
+            // "who is anna's son?" after "anna is ben's mother .": "ben is anna's son ."
+            toldLine = kin;
+            toldLineAsHeard = null;
+            return new int[0];
+        }
         int[] day = whatDay(heard);
         if (day != null) {
             // "what day is tomorrow?" after "today is monday .": "tomorrow is tuesday ."
@@ -1563,6 +1570,162 @@ public final class Brain {
             if (said != null && language.vocabulary.find(said) >= 0) {
                 return new int[] {language.vocabulary.find(said), language.vocabulary.find("comes"), heard[i], heard[i + 1],
                     language.vocabulary.find(".")};
+            }
+        }
+        return null;
+    }
+
+    /** Family words: what each says the one is to the other, and whether a man or a woman. */
+    private static final java.util.Map<String, String[]> KIN = kin("mother parent f", "father parent m",
+            "parent parent -", "son child m", "daughter child f", "child child -", "brother sibling m", "sister sibling f",
+            "wife spouse f", "husband spouse m", "uncle pibling m", "aunt pibling f", "nephew nibling m", "niece nibling f",
+            "grandmother grandparent f", "grandfather grandparent m", "grandson grandchild m", "granddaughter grandchild f");
+    private static final java.util.Map<String, String> KIN_TURNED = java.util.Map.of("parent", "child", "child", "parent",
+            "sibling", "sibling", "spouse", "spouse", "pibling", "nibling", "nibling", "pibling", "grandparent", "grandchild",
+            "grandchild", "grandparent");
+    /** Who "my" names: the one talking. */
+    private static final String SPEAKER = "#me";
+
+    private static java.util.Map<String, String[]> kin(String... rows) {
+        java.util.Map<String, String[]> m = new java.util.HashMap<>();
+        for (String row : rows) {
+            String[] w = row.split(" ");
+            m.put(w[0], new String[] {w[1], w[2]});
+        }
+        return m;
+    }
+
+    /** Someone named in a line from a place on: "the baker's" is the baker, "my" the speaker. */
+    private String kinName(int[] line, int from, int to) {
+        StringBuilder name = new StringBuilder();
+        for (int i = from; i < to; i++) {
+            if (line[i] < 0) {
+                return null;
+            }
+            String w = language.vocabulary.word(line[i]);
+            if (w.equals("my")) {
+                return to - from == 1 ? SPEAKER : null;
+            }
+            if (w.endsWith("'s")) {
+                w = w.substring(0, w.length() - 2);
+            } else if (w.endsWith("'")) {
+                w = w.substring(0, w.length() - 1);
+            }
+            if (!w.equals("the") && !w.equals("a")) {
+                name.append(name.length() > 0 ? " " : "").append(w);
+            }
+        }
+        return name.length() == 0 ? null : name.toString();
+    }
+
+    /**
+     * The answer to "who is anna's son?" or "is ben anna's son?" from the family told lately or
+     * long ago ("anna is ben's mother ."): each told tie is known both ways round, a parent's
+     * parent is a grandparent, and a sibling has the same parents. Null if it is no such question
+     * or nothing told answers it.
+     */
+    private int[] family(int[] heard) {
+        int n = heard.length;
+        if (n < 4 || heard[0] < 0 || heard[n - 2] < 0 || !KIN.containsKey(language.vocabulary.word(heard[n - 2]))) {
+            return null;
+        }
+        String first = language.vocabulary.word(heard[0]);
+        String rel = language.vocabulary.word(heard[n - 2]);
+        String kind = KIN.get(rel)[0], gender = KIN.get(rel)[1];
+        // Ties told: {one, kind, other}, "anna parent ben".
+        List<String[]> ties = new ArrayList<>();
+        java.util.Map<String, String> genders = new java.util.HashMap<>();
+        java.util.Map<String, int[]> said = new java.util.HashMap<>();
+        List<int[]> lines = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            lines.add(heardLines[(heardLinesNext - k) % heardLines.length]);
+        }
+        lines.addAll(talk.toldLines());
+        int is = language.vocabulary.find("is");
+        for (int[] line : lines) {
+            int at = indexOf(line, is, 0);
+            int end = line.length - 1;
+            while (end > 0 && line[end] >= 0 && !Character.isLetter(language.vocabulary.word(line[end]).charAt(0))) {
+                end--;
+            }
+            if (at < 1 || end < at + 2 || line[end] < 0 || !KIN.containsKey(language.vocabulary.word(line[end]))) {
+                continue;
+            }
+            String one = kinName(line, 0, at), other = kinName(line, at + 1, end);
+            if (one == null || other == null || one.equals(other)) {
+                continue;
+            }
+            String[] k = KIN.get(language.vocabulary.word(line[end]));
+            ties.add(new String[] {one, k[0], other});
+            ties.add(new String[] {other, KIN_TURNED.get(k[0]), one});
+            if (!k[1].equals("-")) {
+                genders.put(one, k[1]);
+            }
+            said.putIfAbsent(one, Arrays.copyOfRange(line, 0, at));
+            if (!other.equals(SPEAKER)) {
+                // "ben's" is said "ben".
+                int[] whose = Arrays.copyOfRange(line, at + 1, end);
+                String last = language.vocabulary.word(whose[whose.length - 1]);
+                whose[whose.length - 1] = language.vocabulary.find(last.substring(0, last.lastIndexOf('\'')));
+                if (whose[whose.length - 1] >= 0) {
+                    said.putIfAbsent(other, whose);
+                }
+            }
+        }
+        // What follows from them: a parent's parent, and the parents of a sibling.
+        for (int round = 0; round < 2; round++) {
+            List<String[]> more = new ArrayList<>();
+            for (String[] a : ties) {
+                for (String[] b : ties) {
+                    if (!a[2].equals(b[0]) || a[0].equals(b[2])) {
+                        continue;
+                    }
+                    String made = a[1].equals("parent") && b[1].equals("parent") ? "grandparent"
+                            : a[1].equals("parent") && b[1].equals("sibling") ? "parent"
+                            : a[1].equals("sibling") && b[1].equals("child") ? "child" : null;
+                    if (made != null) {
+                        more.add(new String[] {a[0], made, b[2]});
+                        more.add(new String[] {b[2], KIN_TURNED.get(made), a[0]});
+                    }
+                }
+            }
+            ties.addAll(more);
+        }
+        int name = n - 2;
+        if (first.equals("who") && n >= 5 && heard[1] == is) {
+            // "who is anna's son?"
+            String of = kinName(heard, 2, name);
+            if (of == null) {
+                return null;
+            }
+            for (String[] t : ties) {
+                if (t[1].equals(kind) && t[2].equals(of) && (gender.equals("-") || !genders.containsKey(t[0])
+                        || genders.get(t[0]).equals(gender))) {
+                    int[] who = t[0].equals(SPEAKER) ? new int[] {language.vocabulary.find("you"), language.vocabulary.find("are")}
+                            : said.containsKey(t[0]) ? join(said.get(t[0]), new int[] {is}) : null;
+                    if (who == null) {
+                        continue;
+                    }
+                    int[] whose = of.equals(SPEAKER) ? new int[] {language.vocabulary.find("your")} : Arrays.copyOfRange(heard, 2, name);
+                    int[] answer = join(who, whose, new int[] {heard[name], language.vocabulary.find(".")});
+                    return Arrays.stream(answer).anyMatch(w -> w < 0) ? null : answer;
+                }
+            }
+        } else if (first.equals("is") || first.equals("isn't")) {
+            // "is ben anna's son?": ben is the one before the possessive.
+            for (int split = 2; split < name; split++) {
+                String one = kinName(heard, 1, split), of = kinName(heard, split, name);
+                if (one == null || of == null || !language.vocabulary.word(heard[split]).equals("my")
+                        && !language.vocabulary.word(heard[name - 1]).endsWith("'s") && !language.vocabulary.word(heard[name - 1]).endsWith("'")) {
+                    continue;
+                }
+                for (String[] t : ties) {
+                    if (t[0].equals(one) && t[1].equals(kind) && t[2].equals(of)) {
+                        return join(new int[] {language.vocabulary.find("yes"), language.vocabulary.find(",")},
+                                Arrays.copyOfRange(heard, 1, split), new int[] {is}, Arrays.copyOfRange(heard, split, name + 1),
+                                new int[] {language.vocabulary.find(".")});
+                    }
+                }
             }
         }
         return null;

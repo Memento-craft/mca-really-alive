@@ -337,6 +337,36 @@ class ConversationTest {
     }
 
     @Test
+    void villagerWorksOutFamilyTies() {
+        // Told one way round, asked the other, or two ties apart: {told, told or "", asked, right}.
+        String[][] talks = {{"anna is ben's mother.", "", "who is anna's son?", "ben"},
+            {"rosa is ivan's wife.", "", "who is rosa's husband?", "ivan"},
+            {"anna is ben's mother.", "ben is tom's father.", "who is tom's grandmother?", "anna"},
+            {"pia is luca's mother.", "luca is ada's brother.", "who is ada's mother?", "pia"},
+            {"the priest is my uncle.", "", "who is the priest's nephew?", "you"},
+            {"nina is paul's sister.", "", "is paul nina's brother?", "yes"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 840 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                if (!talks[i][k].isEmpty()) {
+                    said = talk(b, talks[i][k], onScript);
+                    System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+                }
+            }
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("worked out family ties %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "worked out only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerWorksOutSumsAndWhatComesNext() {
         String[][] asked = {{"what is 12 plus 9?", "21"}, {"how much is eight minus three?", "five"},
             {"what is four times five?", "twenty"}, {"what is twenty divided by four?", "five"},

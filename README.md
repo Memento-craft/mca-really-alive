@@ -131,6 +131,11 @@ and after the world is saved and loaded: told five things among 30 other lines, 
 and asked after ten more, it answers 18 of 20 (1 before) and 20 of 20 on another set. A line told
 that long ago has to be mostly about what is asked, even when the question is about the speaker,
 since someone else may have said it.
+It works out family ties from what it was told, lately or long ago: each tie both ways round
+("anna is ben's mother." answers "who is anna's son?" with "ben is anna's son ."), a parent's
+parent as a grandparent, a sibling's parents as one's own, and "my" as the speaker ("the priest is
+my uncle." "who is the priest's nephew?" "you are the priest's nephew ."). 19 of 20 (3 before),
+20 of 20 on a set written afterwards, none wrong.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
