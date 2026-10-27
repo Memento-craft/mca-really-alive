@@ -1161,15 +1161,18 @@ public final class Brain {
                 bestK = k;
             }
         }
-        if (!aboutThem && (best == null || !coversAll(heard, bestSeen, memory, tones))) {
-            // No one line says it all, but two that tell of the same thing may: "tom is older than
-            // sam." and "sam is older than ben." answer "is tom older than ben?", "a wolf is at
-            // the gate." and "wolves are dangerous." answer "is the thing at the gate dangerous?".
-            int[][] pair = twoLinesTogether(heard, names, memory, tones);
-            if (pair != null) {
-                best = new int[pair[0].length + pair[1].length];
-                System.arraycopy(pair[0], 0, best, 0, pair[0].length);
-                System.arraycopy(pair[1], 0, best, pair[0].length, pair[1].length);
+        if (best == null || !coversAll(heard, bestSeen, memory, tones)) {
+            // No one line says it all, but a few that tell of the same things may: "tom is older
+            // than sam." and "sam is older than ben." answer "is tom older than ben?", "a wolf is
+            // at the gate." and "wolves are dangerous." answer "is the thing at the gate dangerous?".
+            List<int[]> chain = linesTogether(heard, names, memory, tones);
+            if (chain != null) {
+                best = new int[0];
+                for (int[] line : chain) {
+                    int[] longer = Arrays.copyOf(best, best.length + line.length);
+                    System.arraycopy(line, 0, longer, best.length, line.length);
+                    best = longer;
+                }
                 bestSeen = best;
                 bestK = 0;
             }
@@ -1187,10 +1190,11 @@ public final class Brain {
             toldLine[1] = language.vocabulary.find(",");
             System.arraycopy(best, 0, toldLine, 2, best.length);
         }
-        if (aboutThem && contains(heard, language.vocabulary.find("why")) && bestK > 2) {
-            // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away.").
+        if (contains(heard, language.vocabulary.find("why")) && bestK > 2 && !contains(best, language.vocabulary.find("because"))) {
+            // "why am i sad?": the why was told just after ("i'm sad today." "my cat ran away."),
+            // and of someone else, told of them again ("the miller is angry." "his cart broke.").
             int[] next = heardLines[(heardLinesNext - bestK + 1) % heardLines.length];
-            if (next.length > 0 && next[next.length - 1] != ask && aboutSpeaker(next)) {
+            if (next.length > 0 && next[next.length - 1] != ask && (aboutThem ? aboutSpeaker(next) : toldOfAgain(next))) {
                 best = next;
                 toldLineAsHeard = next;
                 toldLine = new int[next.length + 1];
@@ -1228,49 +1232,92 @@ public final class Brain {
         return true;
     }
 
+    /** The most told lines put together to answer one question. */
+    static final int CHAIN = 4;
+
     /**
-     * Two lines told lately, in the order heard, that share a telling word (the thing both tell
-     * of) and together say every telling word of the question, each saying at least one; or null.
+     * Lines told lately that answer the question together: each tells of something the one
+     * before it told of too (not a word of the question: the thing that links them, "sam" in
+     * "tom is older than sam ." "sam is older than ben ."), the first says something the question
+     * asks, and all together say all it asks. The fewest such lines, in that order; or null.
      */
-    private int[][] twoLinesTogether(int[] heard, int[][] names, ExchangeMemory memory, ToneLinks tones) {
+    private List<int[]> linesTogether(int[] heard, int[][] names, ExchangeMemory memory, ToneLinks tones) {
         int ask = language.vocabulary.find("?");
-        int[][] pair = null;
-        int bestShared = Integer.MAX_VALUE;
-        for (int a = TOLD_LINES; a >= 2; a--) {
-            for (int b = a - 1; b >= 2; b--) {
-                if (a > heardLinesNext) {
+        List<int[]> lines = new ArrayList<>(), seen = new ArrayList<>();
+        for (int k = Math.min(TOLD_LINES, heardLinesNext); k >= 2; k--) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line.length > 0 && line[line.length - 1] != ask) {
+                lines.add(line);
+                seen.add(withWhatTheyName(line, names));
+            }
+        }
+        for (int length = 2; length <= CHAIN; length++) {
+            for (int first = 0; first < lines.size(); first++) {
+                if (!saysSome(heard, seen.get(first), memory, tones)) {
                     continue;
                 }
-                int[] first = heardLines[(heardLinesNext - a) % heardLines.length];
-                int[] second = heardLines[(heardLinesNext - b) % heardLines.length];
-                if (first.length == 0 || second.length == 0 || first[first.length - 1] == ask || second[second.length - 1] == ask) {
-                    continue;
-                }
-                int[] x = withWhatTheyName(first, names);
-                int[] y = withWhatTheyName(second, names);
-                if (!sayTheSameThing(x, y, memory, tones) || !saysSome(heard, x, memory, tones) && !saysSome(heard, y, memory, tones)) {
-                    continue;
-                }
-                int[] both = Arrays.copyOf(x, x.length + y.length);
-                System.arraycopy(y, 0, both, x.length, y.length);
-                if (coversAll(heard, both, memory, tones) && a - b < bestShared) {
-                    // The closest two win.
-                    bestShared = a - b;
-                    pair = new int[][] {first, second};
+                List<Integer> path = new ArrayList<>(List.of(first));
+                List<int[]> found = extend(path, length, heard, lines, seen, memory, tones);
+                if (found != null) {
+                    return found;
                 }
             }
         }
-        return pair;
+        return null;
     }
 
-    /** Whether two lines share a telling word or name. */
-    private boolean sayTheSameThing(int[] x, int[] y, ExchangeMemory memory, ToneLinks tones) {
+    private List<int[]> extend(List<Integer> path, int length, int[] heard, List<int[]> lines, List<int[]> seen,
+            ExchangeMemory memory, ToneLinks tones) {
+        if (path.size() == length) {
+            int[] all = new int[0];
+            for (int i : path) {
+                int[] longer = Arrays.copyOf(all, all.length + seen.get(i).length);
+                System.arraycopy(seen.get(i), 0, longer, all.length, seen.get(i).length);
+                all = longer;
+            }
+            if (!coversAll(heard, all, memory, tones)) {
+                return null;
+            }
+            List<int[]> chain = new ArrayList<>();
+            for (int i : path) {
+                chain.add(lines.get(i));
+            }
+            return chain;
+        }
+        int last = path.get(path.size() - 1);
+        for (int next = 0; next < lines.size(); next++) {
+            if (path.contains(next) || !linked(seen.get(last), seen.get(next), heard, memory, tones)) {
+                continue;
+            }
+            path.add(next);
+            List<int[]> found = extend(path, length, heard, lines, seen, memory, tones);
+            path.remove(path.size() - 1);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /** Whether two lines share a telling word or name that the question doesn't say. */
+    private boolean linked(int[] x, int[] y, int[] heard, ExchangeMemory memory, ToneLinks tones) {
         for (int w : x) {
-            if (w >= 0 && toldWeight(w, memory, tones) >= TOLD_TELLING / 2 && saidIn(y, w)) {
+            if (w >= 0 && thingWord(w) && saidIn(y, w) && !saidIn(heard, w)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static final Set<String> NO_THING = Set.of("it", "and", "to", "at", "with", "for", "there", "here", "this",
+            "that", "so", "but", "or", "very", "too", "now", "today", "then", "also", "be", "been", "i", "you", "he",
+            "she", "we", "they", "me", "him", "them", "us", "if", "when");
+
+    /** Whether a word can name a thing that links two lines ("well" can, "the" and "is" can't). */
+    private boolean thingWord(int w) {
+        String word = language.vocabulary.word(w);
+        return Character.isLetter(word.charAt(0)) && !NO_THING.contains(word) && !BEFORE_A_THING.contains(word)
+                && !ONE_WAY.contains(word) && !NOT.contains(word) && !BETWEEN.contains(word);
     }
 
     /** Whether a line says at least one telling word of the question. */
@@ -1492,6 +1539,12 @@ public final class Brain {
     /** How the things compared lately were said, by the word for each. */
     private final java.util.Map<Integer, int[]> phrases = new java.util.HashMap<>();
 
+    /** Whether a line starts by telling of someone or something just told of ("his cart broke."). */
+    private boolean toldOfAgain(int[] line) {
+        return line.length > 0 && line[0] >= 0
+                && Set.of("he", "she", "it", "they", "his", "her", "its", "their").contains(language.vocabulary.word(line[0]));
+    }
+
     /** Whether a line is one of those heard lately. */
     private boolean toldLately(int[] line) {
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
@@ -1536,24 +1589,34 @@ public final class Brain {
         return order == 0 ? -1 : language.vocabulary.find(order > 0 ? "yes" : "no");
     }
 
+    /** Words that put two things one way round: "older than", "north of", "came before", "in". */
+    private static final Set<String> ONE_WAY = Set.of("than", "of", "before", "after", "in", "inside", "on", "under",
+            "behind", "above", "below");
+
     /**
-     * For a comparison ("is tom older than ben?"), whether what was told puts the two the same way
-     * round (1: "tom is older than sam . sam is older than ben .") or the other (-1: "ben is older
-     * than tom ."); 0 if they can't be told apart; 1 if it is no comparison.
+     * For a question that puts two things one way round ("is tom older than ben?", "is the ring in
+     * the cellar?"), whether what was told puts them the same way (1: "tom is older than sam . sam
+     * is older than ben .") or the other (-1: "ben is older than tom ."); 0 if it can't be told; 1
+     * if it is no such question. The first thing is the first one named where the first such word
+     * is said, the other the one said after the last such word.
      */
     private int sameOrder(int[] heard, int[] told) {
-        int than = language.vocabulary.find("than");
-        int at = indexOf(heard, than, 0);
-        if (at < 2 || at + 1 >= heard.length || indexOf(told, than, 0) < 0) {
+        int at = -1;
+        for (int i = 2; i + 1 < heard.length; i++) {
+            at = heard[i] >= 0 && ONE_WAY.contains(language.vocabulary.word(heard[i])) ? i : at;
+        }
+        if (at < 0 || indexOf(told, heard[at], 0) < 0) {
             return 1;
         }
-        int first = indexOf(told, than, 0), last = first;
-        for (int i = first + 1; i < told.length; i++) {
-            last = told[i] == than ? i : last;
+        int way = heard[at];
+        int last = indexOf(told, way, 0);
+        for (int i = last + 1; i < told.length; i++) {
+            last = told[i] == way ? i : last;
         }
-        int askedOne = thingAt(heard, at - 2, -1), askedOther = thingAt(heard, at + 1, 1);
-        int toldOne = thingAt(told, first - 2, -1), toldOther = thingAt(told, last + 1, 1);
-        if (askedOne < 0 || askedOther < 0 || toldOne < 0 || toldOther < 0) {
+        // The thing the told lines start from, and the one the last of them ends at.
+        List<Integer> askedOne = thingFrom(heard, 0), askedOther = thingFrom(heard, at + 1);
+        List<Integer> toldOne = thingFrom(told, 0), toldOther = thingFrom(told, last + 1);
+        if (askedOne.isEmpty() || askedOther.isEmpty() || toldOne.isEmpty() || toldOther.isEmpty()) {
             return 0;
         }
         if (sameThing(askedOne, toldOne) && sameThing(askedOther, toldOther)) {
@@ -1561,6 +1624,41 @@ public final class Brain {
         }
         return sameThing(askedOne, toldOther) && sameThing(askedOther, toldOne) ? -1 : 0;
     }
+
+    private boolean sameThing(List<Integer> a, List<Integer> b) {
+        for (int x : a) {
+            for (int y : b) {
+                if (sameThing(x, y)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The words naming a thing from a place in a line on, past the small words before it and up
+     * to the next small word or stop ("the north tower is" names the north tower).
+     */
+    private List<Integer> thingFrom(int[] line, int from) {
+        while (from < line.length && line[from] >= 0 && BEFORE_A_THING.contains(language.vocabulary.word(line[from]))) {
+            from++;
+        }
+        List<Integer> thing = new ArrayList<>();
+        for (int i = from; i < line.length && thing.size() < 3 && line[i] >= 0; i++) {
+            String w = language.vocabulary.word(line[i]);
+            if (!Character.isLetter(w.charAt(0)) || BETWEEN.contains(w) || ONE_WAY.contains(w) || BEFORE_A_THING.contains(w)) {
+                break;
+            }
+            thing.add(line[i]);
+        }
+        return thing;
+    }
+
+    /** Words a question or telling starts with before it names a thing. */
+    private static final Set<String> BEFORE_A_THING = Set.of("is", "are", "was", "were", "am", "did", "does", "do", "can",
+            "will", "has", "have", "the", "a", "an", "my", "your", "his", "her", "our", "their", "all", "every");
+
 
     /** Small words between a comparison and what it compares ("is", "the"). */
     private static final Set<String> BETWEEN = Set.of("is", "are", "was", "were", "am", "the", "a", "an", "much", "far", "even", "still");

@@ -275,7 +275,9 @@ class ConversationTest {
             {"all the farmers are tired today.", "pedro is a farmer.", "is pedro tired?", "yes"},
             {"if it rains, the field floods.", "it rained all night.", "did the field flood?", "yes"},
             {"the key is in the red box.", "the red box is in the barn.", "is the key in the barn?", "yes"},
-            {"if the baker oversleeps, there is no bread.", "the baker overslept today.", "is there bread?", "no"}};
+            {"if the baker oversleeps, there is no bread.", "the baker overslept today.", "is there bread?", "no"},
+            {"my house is north of the well.", "the well is north of the church.", "is the church north of my house?", "no"},
+            {"lena arrived before marco.", "marco arrived before joko.", "did lena arrive before joko?", "yes"}};
         int right = 0;
         for (int i = 0; i < talks.length; i++) {
             Brain b = Brain.create(Genome.defaults(), 740 + i, 1f);
