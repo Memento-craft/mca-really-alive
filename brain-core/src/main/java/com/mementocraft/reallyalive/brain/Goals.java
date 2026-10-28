@@ -42,6 +42,12 @@ final class Goals {
     /** A step seen getting closer (a block cracking that is to be broken) feels this good each tick. */
     static final float CLOSER = 0.08f;
     static final int MAX_THINGS = 512;
+    /** A need felt this strongly takes up, as a goal, what eased it before. */
+    static final float WANT_AT = 0.5f;
+    /** A need that falls this much at once was eased by what was just done. */
+    static final float EASED = 0.02f;
+    /** Deeds as done and as said: "broke" is "break". */
+    static final String[][] DEEDS = {{"broke ", "break "}, {"placed ", "place "}, {"ate ", "eat "}};
 
     /** For each thing, what getting it needs, and how surely. */
     final Map<String, Map<String, Float>> needs = new HashMap<>();
@@ -55,6 +61,10 @@ final class Goals {
     private final ArrayDeque<Object[]> recent = new ArrayDeque<>();
     long goalSince;
     long lastProgress;
+    /** How strongly each need ("hunger") was felt last tick. */
+    private final Map<String, Float> felt = new HashMap<>();
+    /** The need the goal held now serves, or null when it was asked for or there is none. */
+    String because;
     /** Whether it has looked at what it carries yet: the first look is no getting of anything. */
     private boolean looked;
 
@@ -77,6 +87,7 @@ final class Goals {
 
     /** Takes up a goal, dropping whatever it was after before. */
     void want(String thing, long now) {
+        because = null;
         stack.clear();
         doneSince.clear();
         stack.push(canonical(thing));
@@ -94,6 +105,38 @@ final class Goals {
 
     boolean has(String thing) {
         return carried.getOrDefault(thing, 0) > 0 || doneSince.contains(thing);
+    }
+
+    static boolean isDeed(String t) {
+        for (String[] d : DEEDS) {
+            if (t.startsWith(d[0])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A need, felt now this strongly (0..1). When it falls at once, what was just done or used up
+     * is what eases it, learned as any step is. When it is strong and nothing else is held in mind,
+     * what eased it surest is taken up as the goal. Returns how much it was eased this tick.
+     */
+    float feel(String need, float level, long tick) {
+        float was = felt.getOrDefault(need, level);
+        felt.put(need, level);
+        float eased = was - level;
+        if (eased > EASED) {
+            gained(need);
+        }
+        if (level >= WANT_AT && stack.isEmpty()) {
+            String way = missing(need);
+            if (way != null) {
+                want(way, tick);
+                because = need;
+                progress(tick);
+            }
+        }
+        return Math.max(0f, eased);
     }
 
     /** Learns that getting what comes first needs what comes second. */
@@ -213,17 +256,30 @@ final class Goals {
      */
     private float progress(long tick) {
         float joy = 0f;
+        // A step got another way (bread given, not baked) makes the steps above it needless.
+        int got = -1, i = 0;
+        for (String step : stack) {
+            if (has(step)) {
+                got = i;
+            }
+            i++;
+        }
+        while (got-- > 0) {
+            stack.pollFirst();
+        }
         while (!stack.isEmpty() && has(stack.peekFirst())) {
             stack.pollFirst();
             joy = Math.max(joy, stack.isEmpty() ? 1f : 0.5f);
             lastProgress = tick;
             if (stack.isEmpty()) {
                 doneSince.clear();
+                because = null;
             }
         }
         if (!stack.isEmpty() && tick - lastProgress > GIVE_UP) {
             stack.clear();
             doneSince.clear();
+            because = null;
             return joy;
         }
         while (!stack.isEmpty() && stack.size() < DEPTH) {

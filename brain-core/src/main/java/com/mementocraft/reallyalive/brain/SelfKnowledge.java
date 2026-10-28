@@ -70,22 +70,23 @@ public final class SelfKnowledge {
         if (goal == null) {
             return null;
         }
-        String line = (goal.startsWith("broke ") || goal.startsWith("placed ") ? "i want to " : "i want ") + thing(goal) + " .";
+        String line = (Goals.isDeed(goal) ? "i want to " : "i want ") + thing(goal) + " .";
+        if ("hunger".equals(b.goals.because)) {
+            line = "i'm hungry . " + line;
+        }
         String step = b.goals.nextStep();
         if (step != null && !step.equals(goal)) {
-            line += step.startsWith("broke ") || step.startsWith("placed ") ? " first i need to " + thing(step) + " ."
-                    : " first i need " + thing(step) + " .";
+            line += Goals.isDeed(step) ? " first i need to " + thing(step) + " ." : " first i need " + thing(step) + " .";
         }
         return line;
     }
 
     /** A thing or deed as said: "some bread", "break some wheat", "to place some dirt". */
     private static String thing(String t) {
-        if (t.startsWith("broke ")) {
-            return "break some " + t.substring(6);
-        }
-        if (t.startsWith("placed ")) {
-            return "place some " + t.substring(7);
+        for (String[] d : Goals.DEEDS) {
+            if (t.startsWith(d[0])) {
+                return d[1] + "some " + t.substring(d[0].length());
+            }
         }
         return "some " + t;
     }

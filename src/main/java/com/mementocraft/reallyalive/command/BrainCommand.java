@@ -148,7 +148,8 @@ public final class BrainCommand {
         }
         Brain b = BrainManager.get().handle(v).brain();
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("harvested %s, finds telling worth %.2f", b.deeds(), b.tellValue()));
+        sb.append(String.format("harvested %s, finds telling worth %.2f, hunger %.2f", b.deeds(), b.tellValue(),
+                BrainManager.get().handle(v).hunger()));
         java.util.List<String> plan = b.plan();
         if (!plan.isEmpty()) {
             sb.append("\nafter ").append(plan.get(plan.size() - 1)).append(", next step first: ").append(plan);

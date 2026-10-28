@@ -63,6 +63,48 @@ class GoalsTest {
     }
 
     @Test
+    void hungerTakesUpWhatEasedIt() {
+        Brain b = Brain.create(Genome.defaults(), 5, 0f);
+        Goals g = b.goals;
+        Map<String, Integer> bag = new HashMap<>(Map.of("bread", 2));
+        look(g, bag);
+        g.feel("hunger", 0.6f, tick);
+        assertNull(g.goal(), "it knows nothing that eases hunger yet");
+        // It eats a bread: one fewer, the deed done, hunger down a quarter.
+        bag.put("bread", 1);
+        look(g, bag, "ate bread");
+        float eased = g.feel("hunger", 0.35f, tick);
+        assertEquals(0.25f, eased, 1e-6);
+        System.out.println("hunger needs " + g.needsOf("hunger") + ", ate bread needs " + g.needsOf("ate bread"));
+        assertEquals(List.of("ate bread"), g.needsOf("hunger"));
+        assertEquals(List.of("bread"), g.needsOf("ate bread"));
+        g.told("bread", "wheat");
+
+        // Hungry again with the bread gone: it sets out to eat, and finds what it lacks for it.
+        bag.put("bread", 0);
+        look(g, bag);
+        g.feel("hunger", 0.4f, tick);
+        assertNull(g.goal(), "not hungry enough yet to set out");
+        look(g, bag);
+        g.feel("hunger", 0.6f, tick);
+        System.out.println("hungry, it is after (next step first): " + g.stack + ", because of " + g.because);
+        assertEquals(List.of("wheat", "bread", "ate bread"), List.copyOf(g.stack));
+        assertEquals("hunger", g.because);
+        String said = SelfKnowledge.plan(b);
+        System.out.println("  villager: " + said);
+        assertEquals("i'm hungry . i want to eat some bread . first i need some wheat .", said);
+
+        // Getting the bread, then eating it, ends the goal.
+        bag.put("bread", 1);
+        look(g, bag);
+        assertEquals("ate bread", g.nextStep());
+        bag.put("bread", 0);
+        assertEquals(1f, look(g, bag, "ate bread"), 1e-6);
+        g.feel("hunger", 0.35f, tick);
+        assertNull(g.goal());
+    }
+
+    @Test
     void whatIsToldIsKnownAndAskingSetsTheGoal() {
         assertNotNull(EnglishBase.shared(), "the English base is missing from the resources");
         Brain b = Brain.create(Genome.defaults(), 41, 1f);

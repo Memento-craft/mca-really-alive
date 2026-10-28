@@ -128,6 +128,8 @@ public final class BrainManager {
         /** Deeds done since the brain last sensed ("broke wheat", "placed dirt"), and blocks placed so far. */
         final List<String> did = new ArrayList<>();
         int placedSeen;
+        /** How hungry the body is, 0..1: it grows while the villager lives and eating takes it down. */
+        float hunger;
         /** The line it is writing down, its own written words to feel, and how many lines it wrote. */
         final List<String> writtenLine = new ArrayList<>();
         final List<String> wroteWords = new ArrayList<>();
@@ -171,6 +173,14 @@ public final class BrainManager {
 
         public Hands hands() {
             return hands;
+        }
+
+        public float hunger() {
+            return hunger;
+        }
+
+        public void setHunger(float hunger) {
+            this.hunger = Math.max(0f, Math.min(1f, hunger));
         }
 
         public MotorCommand command() {
@@ -373,6 +383,16 @@ public final class BrainManager {
         }
     }
 
+    /** A brain villager ate something: its hunger falls by what the food gives, as a player's would. */
+    public void ate(Villager v, net.minecraft.world.item.ItemStack food) {
+        Handle h = handles.get(v.getUUID());
+        var props = food.get(net.minecraft.core.component.DataComponents.FOOD);
+        if (h != null && props != null) {
+            h.setHunger(h.hunger - props.nutrition() / 20f);
+            h.did.add("ate " + Hands.nameOf(food.getItem()));
+        }
+    }
+
     /** A brain villager broke a block, with its hands or otherwise. */
     public void broke(Villager v, String block) {
         Handle h = handles.get(v.getUUID());
@@ -447,6 +467,8 @@ public final class BrainManager {
 
     /** Ticks between looks at what someone in view is doing with their hands and feet. */
     private static final int WATCH_INTERVAL = 4;
+    /** Ticks for a fed villager to grow fully hungry, two game days; halfway it sets out to eat. */
+    private static final int HUNGER_TICKS = 48_000;
     /** Ticks between looks at what it carries. */
     private static final int CARRIED_INTERVAL = 10;
 
@@ -557,12 +579,14 @@ public final class BrainManager {
             h.placedSeen = h.hands.placedTotal;
             h.did.add("placed " + blockName(v.level().getBlockState(h.hands.lastPlaced)));
         }
+        // A deed is looked at with what it carries, so what it used up is seen with it.
+        boolean deeds = !h.did.isEmpty();
         f.did.addAll(h.did);
         h.did.clear();
         if (h.hands.digging() != null) {
             f.doing.add("broke " + blockName(v.level().getBlockState(h.hands.digging())));
         }
-        if (h.age % CARRIED_INTERVAL == 0) {
+        if (deeds || h.age % CARRIED_INTERVAL == 0) {
             f.carried = h.hands.carried();
         }
         f.canWrite = Books.canWriteIn(v.getMainHandItem());
@@ -579,6 +603,8 @@ public final class BrainManager {
             f.read(next[0], next[1]);
         }
         Senses.feel(v, f);
+        h.setHunger(h.hunger + 1f / HUNGER_TICKS);
+        f.set(FeelChannel.HUNGER, h.hunger);
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());

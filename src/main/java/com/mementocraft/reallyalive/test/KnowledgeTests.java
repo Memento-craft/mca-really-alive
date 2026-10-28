@@ -2,6 +2,7 @@ package com.mementocraft.reallyalive.test;
 
 import com.mementocraft.reallyalive.BrainManager;
 import com.mementocraft.reallyalive.ReallyAlive;
+import com.mementocraft.reallyalive.brain.MotorCommand;
 import com.mementocraft.reallyalive.brain.WordCode;
 import com.mementocraft.reallyalive.speech.Speech;
 import com.mojang.logging.LogUtils;
@@ -111,6 +112,59 @@ public final class KnowledgeTests {
             } else if (t == 500) {
                 h.assertTrue(plan.isEmpty(), "with bread, it is still after " + plan);
                 LOG.info("plan: worked through it, and knows bread needs {}", handle.brain().needsOf("bread"));
+                h.succeed();
+            }
+            if (handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(t + ": " + handle.lastLine());
+            }
+        });
+    }
+
+    /**
+     * Hunger sets a villager's own goal. It eats a bread while hungry and learns that eating bread
+     * eases hunger; hungry again with no bread, it sets out to get some and says so.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 500, batch = "knowledge_hunger")
+    public static void hungerSetsTheGoalOfEating(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        v.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BREAD));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        MotorCommand use = new MotorCommand(0, 0, false, false, false, 0f, 0f, false, true);
+        Vec3 player = v.getEyePosition().add(1.5, 0, 0);
+        List<String> answers = new ArrayList<>();
+        int[] seen = {0};
+        float[] before = {0f};
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            List<String> plan = handle.brain().plan();
+            if (t == 5) {
+                handle.setHunger(0.6f);
+            } else if (t == 8) {
+                h.assertTrue(plan.isEmpty(), "knowing nothing that eases hunger, it is after " + plan);
+                v.setXRot(-80f); // looking at the sky, so use eats what is in hand
+                before[0] = handle.hunger();
+                handle.hold(use);
+            } else if (t == 50) {
+                handle.hold(null); // its own keys again, voice too
+            } else if (t == 60) {
+                LOG.info("hunger: ate, hunger {} -> {}, knows hunger needs {}", before[0], handle.hunger(), handle.brain().needsOf("hunger"));
+                h.assertTrue(v.getMainHandItem().isEmpty(), "it did not eat the bread, holding " + v.getMainHandItem());
+                h.assertTrue(handle.hunger() < before[0] - 0.2f, "eating took hunger only from " + before[0] + " to " + handle.hunger());
+                h.assertTrue(handle.brain().needsOf("hunger").contains("ate bread"), "hunger needs " + handle.brain().needsOf("hunger"));
+                handle.setHunger(0.7f);
+            } else if (t == 80) {
+                h.assertTrue(plan.equals(List.of("bread", "ate bread")), "hungry again, it is after " + plan);
+                Speech.playerSays(h.getLevel(), player, "what are you doing?", "Steve");
+            } else if (t == 300) {
+                LOG.info("hunger: asked what it is doing, it said {}", answers);
+                h.assertTrue(answers.stream().anyMatch(l -> l.contains("hungry")), "asked what it is doing, it said " + answers);
+                handle.hold(MotorCommand.IDLE);
+                v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BREAD));
+            } else if (t == 330) {
+                h.assertTrue(plan.equals(List.of("ate bread")), "with bread, it is after " + plan);
                 h.succeed();
             }
             if (handle.lines() > seen[0]) {

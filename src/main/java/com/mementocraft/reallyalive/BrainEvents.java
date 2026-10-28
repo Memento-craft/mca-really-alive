@@ -178,6 +178,13 @@ public final class BrainEvents {
     // ---------------------------------------------------------------- making things
 
     @SubscribeEvent
+    public static void ate(net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent.Finish e) {
+        if (e.getEntity() instanceof Villager v && !v.level().isClientSide() && BrainManager.get() != null) {
+            BrainManager.get().ate(v, e.getItem());
+        }
+    }
+
+    @SubscribeEvent
     public static void crafted(PlayerEvent.ItemCraftedEvent e) {
         made(e.getEntity());
     }
