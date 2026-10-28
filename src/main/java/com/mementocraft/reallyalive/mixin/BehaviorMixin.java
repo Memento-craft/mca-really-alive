@@ -15,14 +15,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * A brain villager farms with its own hands or not at all: the vanilla farmer's jobs that break,
  * plant and bonemeal crops and fill the composter without hands never start for it. Everything else
- * its vanilla or MCA brain does is left alone.
+ * its vanilla or MCA brain does is left alone. (Scripted melee is stopped in {@link MobMixin}.)
  */
 @Mixin(Behavior.class)
 public abstract class BehaviorMixin {
     @Inject(method = "tryStart", at = @At("HEAD"), cancellable = true)
     private void reallyalive$noHandlessFarming(ServerLevel level, LivingEntity owner, long time, CallbackInfoReturnable<Boolean> cir) {
         Object self = this;
-        if ((self instanceof HarvestFarmland || self instanceof UseBonemeal || self instanceof WorkAtComposter)
+        // Nor do the crossbow attacks of MCA's guards, which load and fire without hands.
+        if ((self instanceof HarvestFarmland || self instanceof UseBonemeal || self instanceof WorkAtComposter
+                || self instanceof net.minecraft.world.entity.ai.behavior.CrossbowAttack)
                 && BrainDriven.isDriven(owner)) {
             cir.setReturnValue(false);
         }

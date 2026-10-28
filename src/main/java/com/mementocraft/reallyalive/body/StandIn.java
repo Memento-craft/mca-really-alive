@@ -126,6 +126,23 @@ public final class StandIn extends FakePlayer {
         }
     }
 
+    /**
+     * Draws what is in this hand for as long as the villager drew it and lets it loose: a bow
+     * shoots, a trident is thrown, a crossbow is loaded. True when something left its hands.
+     */
+    boolean letLoose(net.minecraft.world.InteractionHand hand, int remaining) {
+        startUsingItem(hand);
+        if (!isUsingItem()) {
+            return false;
+        }
+        useItemRemaining = remaining;
+        int before = level().getEntitiesOfClass(net.minecraft.world.entity.projectile.Projectile.class,
+                getBoundingBox().inflate(4.0)).size();
+        releaseUsingItem();
+        return level().getEntitiesOfClass(net.minecraft.world.entity.projectile.Projectile.class,
+                getBoundingBox().inflate(4.0)).size() > before;
+    }
+
     /** True while a screen other than its own inventory is open. */
     boolean inOtherScreen() {
         return containerMenu != inventoryMenu;
