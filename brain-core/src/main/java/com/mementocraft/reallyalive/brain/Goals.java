@@ -190,7 +190,13 @@ final class Goals {
      * wheat got the wheat, and the wheat, not the breaking, is what the bread took.
      */
     private boolean screened(String thing, String b, Set<String> before) {
-        for (String z : before) {
+        Set<String> between = new HashSet<>(before);
+        for (Map.Entry<String, Integer> c : carried.entrySet()) {
+            if (c.getValue() > 0) {
+                between.add(c.getKey()); // the wheat still in hand came between the breaking and the bread too
+            }
+        }
+        for (String z : between) {
             if (!z.equals(b) && !z.equals(thing)) {
                 Map<String, Float> m = needs.get(z);
                 if (m != null && m.getOrDefault(b, 0f) >= STEP_MIN) {
