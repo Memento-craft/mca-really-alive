@@ -161,6 +161,13 @@ public final class Brain {
      * villagers never walked up to a skeleton shooting at them: 0 wins in 300 bouts.
      */
     static final float CHARGE_URGE = 0.5f * BABBLE_GAIN;
+    /**
+     * Ticks use may be held with no blow felt before the arm tires and lets it go, as a raised
+     * shield comes down when nothing comes at it. Longer than eating or drawing a bow takes. A
+     * villager with a shield held it up nearly all of every bout against skeletons, crept along at
+     * a fifth of its pace, and never reached one.
+     */
+    static final int SHIELD_TIRES_TICKS = 60;
     /** How hard a tired button held on a threat is let go: past every reflex and urge on it. */
     static final float STRIKE_RELEASE = 4f * BUTTON_RELEASE;
     /**
@@ -378,6 +385,9 @@ public final class Brain {
     private int strikeHeld;
     /** The held button has tired and is let go until it is up. */
     private boolean strikeTired;
+    /** Ticks use has been held with no blow felt, and whether that arm has tired. */
+    private int useQuiet;
+    private boolean useTired;
     /** Ticks of use pressed without pleasure, and ticks left of the urge to turn the wheel. */
     private int futileUse;
     private int tryAnother;
@@ -1517,6 +1527,7 @@ public final class Brain {
         driveStrikeRelease(bored);
         driveStrike(bored);
         driveCharge(bored);
+        driveShieldTires(bored);
         driveScreenSatiety(bored);
         driveTryAnother(bored);
         driveSpeechBabble(amp);
@@ -1607,6 +1618,26 @@ public final class Brain {
         float urge = CHARGE_URGE * brave * Math.min(1f, 0.5f + seen / 8f);
         for (int i : motorPools[MotorChannel.FORWARD.ordinal()]) {
             extInput[i] += urge;
+        }
+    }
+
+    /**
+     * Use held a long while with no blow felt tires the arm, and it is let go until it is up.
+     */
+    private void driveShieldTires(float screen) {
+        boolean blow = input[IN_FEEL + FeelChannel.HURT_FRONT.ordinal()] > 0f || input[IN_FEEL + FeelChannel.HURT_BACK.ordinal()] > 0f
+                || input[IN_FEEL + FeelChannel.HURT_LEFT.ordinal()] > 0f || input[IN_FEEL + FeelChannel.HURT_RIGHT.ordinal()] > 0f;
+        useQuiet = screen <= 0f && lastCommand.use() && !blow ? useQuiet + 1 : 0;
+        if (useQuiet > SHIELD_TIRES_TICKS) {
+            useTired = true;
+        }
+        if (!lastCommand.use()) {
+            useTired = false;
+        }
+        if (useTired) {
+            for (int i : motorPools[MotorChannel.USE.ordinal()]) {
+                extInput[i] -= STRIKE_RELEASE;
+            }
         }
     }
 

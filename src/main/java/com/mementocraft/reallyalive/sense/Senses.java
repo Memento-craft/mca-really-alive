@@ -62,6 +62,15 @@ public final class Senses {
     /** How strongly a machine part standing still catches the eye. */
     private static final float STILL_MACHINE = 0.3f;
 
+    /**
+     * An arrow, a trident or a fireball in flight: seen as a player sees one coming, and a hazard.
+     * Without this villagers could not see what a skeleton shot at them, only feel it land.
+     */
+    private static boolean flying(Entity e) {
+        return e instanceof net.minecraft.world.entity.projectile.Projectile && !e.onGround()
+                && e.getDeltaMovement().lengthSqr() > 0.01;
+    }
+
     /** Casts the eye rays. Column 0 is the left edge of view, row 0 the top. */
     public static void see(LivingEntity body, double range, float[] vision) {
         see(body, range, vision, new float[SenseLayout.COLOUR_SIZE]);
@@ -81,7 +90,7 @@ public final class Senses {
         Level level = body.level();
         Vec3 eye = body.getEyePosition();
         List<Entity> nearby = level.getEntities(body, body.getBoundingBox().inflate(range),
-                e -> e.isAlive() && e.isPickable());
+                e -> e.isAlive() && (e.isPickable() || flying(e)));
         for (int y = 0; y < SenseLayout.VISION_H; y++) {
             float pitch = Mth.clamp(body.getXRot() + ((y + 0.5f) / SenseLayout.VISION_H - 0.5f) * FOV_V, -90f, 90f);
             for (int x = 0; x < SenseLayout.VISION_W; x++) {
@@ -118,7 +127,7 @@ public final class Senses {
                     near = (float) (1.0 - entityDist / range);
                     rgb = colourOf(seen);
                     creature = seen instanceof LivingEntity ? 1f : 0.5f;
-                    hazard = threat.test(seen) ? 1f : 0f;
+                    hazard = threat.test(seen) || flying(seen) ? 1f : 0f;
                 } else if (block.getType() != HitResult.Type.MISS) {
                     near = (float) (1.0 - blockDist / range);
                     BlockState state = level.getBlockState(block.getBlockPos());
