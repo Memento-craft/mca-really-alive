@@ -185,6 +185,9 @@ says it.
 It reasons from what kind of thing something is: told "rex is a dog.", it answers "how many legs
 does rex have?" with "a dog has four legs .", and told "the monster by the gate is a skeleton.",
 "does it burn in the sun?" with "yes , skeletons burn in the sun .".
+All of this holds up in one long talk mixing chat, things told and every kind of question: a
+line told twenty lines back still answers, and a later change ("the cart is in the yard now.")
+wins over what it once answered from an older line.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

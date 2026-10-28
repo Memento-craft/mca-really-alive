@@ -461,6 +461,37 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKeepsUpWithALongMixedTalk() {
+        // One villager, one long talk: {line, right word or "-"}. Lines told long before still
+        // count, and a later change wins over what it once answered.
+        String[][] talk = {{"my name is aldo.", "-"}, {"my wife is called nora.", "-"}, {"the cart is in the barn.", "-"},
+            {"the horse is in the field.", "-"}, {"where is the cart?", "barn"}, {"and the horse?", "field"},
+            {"the miller has ten sacks.", "-"}, {"the baker has six sacks.", "-"}, {"who has more sacks?", "miller"},
+            {"what is ten minus six?", "four"}, {"the night was cold.", "-"}, {"was the night warm?", "no"},
+            {"what colour is grass?", "green"}, {"rufus is a wolf.", "-"}, {"what does rufus hunt?", "sheep"},
+            {"the weather is nice today.", "-"}, {"i had soup for lunch.", "-"}, {"the market was busy.", "-"},
+            {"the cart is in the yard now.", "-"}, {"where is the cart?", "yard"}, {"what's my name?", "aldo"},
+            {"what is my wife called?", "nora"}};
+        Brain b = Brain.create(Genome.defaults(), 970, 1f);
+        b.setBabbleScale(1f);
+        for (int t = 0; t < 300; t++) {
+            b.step(frame());
+        }
+        int[] onScript = {0, 0};
+        int right = 0, asked = 0;
+        for (String[] line : talk) {
+            List<String> said = talk(b, line[0], onScript);
+            System.out.println("  player: " + line[0] + "\n  villager: " + String.join(" ", said));
+            if (!line[1].equals("-")) {
+                asked++;
+                right += line[1].equals("no") ? (!said.isEmpty() && said.get(0).equals("no") ? 1 : 0) : (said.contains(line[1]) ? 1 : 0);
+            }
+        }
+        System.out.printf("kept up with a long talk %d of %d%n", right, asked);
+        assertTrue(right >= asked - 1, "kept up with only " + right + " of " + asked);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},

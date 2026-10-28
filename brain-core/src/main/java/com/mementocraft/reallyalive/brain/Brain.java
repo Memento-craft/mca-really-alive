@@ -933,8 +933,13 @@ public final class Brain {
                 // The told line that answers the question was picked from all told lately; the
                 // others are not brought up again by their words alone.
                 int kept = 0;
+                List<int[]> keptTold = talk.toldLines();
                 for (int r = 0; r < mine.length; r++) {
-                    if (!toldLately(mine[r]) || Arrays.equals(mine[r], toldLineAsHeard)) {
+                    // Nor is what it once answered from a line told long ago ("the cart is in the
+                    // barn ."), when a later line answers now.
+                    final int[] once = mine[r];
+                    boolean toldOnce = toldLately(once) || keptTold.stream().anyMatch(old -> Arrays.equals(old, once));
+                    if (!toldOnce || Arrays.equals(mine[r], toldLineAsHeard)) {
                         match[kept] = match[r];
                         mine[kept++] = mine[r];
                     }
@@ -1238,6 +1243,7 @@ public final class Brain {
         // Last, what everyone knows from growing up ("a spider has eight legs ."), only if
         // nothing it was told answers.
         int knownFrom = toldLines.size();
+        int bestT = -1;
         int[] knownBest = null;
         toldLines.addAll(knownToAll(language.vocabulary));
         for (int t = 0; t < toldLines.size(); t++) {
@@ -1256,6 +1262,11 @@ public final class Brain {
             }
             if (told == kindLine) {
                 // "rex is a dog ." says what kind rex is, not what is so of dogs.
+                continue;
+            }
+            List<int[]> givenHere = new ArrayList<>();
+            if (askingName && namesIn(told, givenHere) && givenHere.stream().noneMatch(g -> g[1] >= 0 && saidIn(heard, g[1]))) {
+                // "my brother is called leo ." names the brother, not the one asking "what's my name?".
                 continue;
             }
             if (!askingName && !contains(heard, language.vocabulary.find("called")) && namesIn(told, new ArrayList<>())) {
@@ -1315,7 +1326,8 @@ public final class Brain {
                     }
                 }
             }
-            if ((!aboutThem || k > TOLD_LINES) && (cue + linked < (k <= TOLD_RECENT ? TOLD_COVER : TOLD_COVER_OLD) * asked
+            boolean theirName = askingName && named && aboutThem && aboutSpeaker(told);
+            if ((!aboutThem || k > TOLD_LINES) && !theirName && (cue + linked < (k <= TOLD_RECENT ? TOLD_COVER : TOLD_COVER_OLD) * asked
                     || telling < TOLD_TELLING)) {
                 // About someone or something else, the question has to be mostly about what the
                 // line told ("where is the key?" after "the red key is under the bed."), and so
@@ -1331,6 +1343,7 @@ public final class Brain {
                 knownBest = told;
             }
             if (cue > bestCue + 1e-4f || cue > bestCue - 1e-4f && exact > bestExact) {
+                bestT = t;
                 // A line that says the word itself goes before one that says a like word ("my
                 // brother" before "my sister").
                 bestCue = cue;
@@ -1359,6 +1372,15 @@ public final class Brain {
         }
         if (best == null) {
             return new int[0];
+        }
+        if (bestT >= recent && bestT < knownFrom && best == toldLines.get(bestT)) {
+            // Told long ago, maybe changed since, also long ago ("the key is in the drawer ."
+            // then "i moved the key to the shelf .").
+            int[] since = movedSince(heard, toldLines, recent, bestT);
+            if (since != null) {
+                best = since;
+                bestSeen = since;
+            }
         }
         int[] later = toldLater(heard, best, bestK);
         boolean changed = later != null;
@@ -1915,7 +1937,8 @@ public final class Brain {
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
             int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
             if (line == null || line.length == 0 || line[line.length - 1] == v.find("?")) {
-                break;
+                // Questions in between ("how many more sheep does oskar have?") don't end it.
+                continue;
             }
             for (int i = 1; i + 1 < line.length; i++) {
                 int c = line[i] < 0 ? -1 : number(v.word(line[i]));
@@ -3005,6 +3028,35 @@ public final class Brain {
     }
 
     /**
+     * For "where is the key?" answered by a line kept from long ago, the latest kept line since
+     * that puts the same thing somewhere else; null if none does. Kept lines are latest first.
+     */
+    private int[] movedSince(int[] heard, List<int[]> lines, int from, int at) {
+        Vocabulary v = language.vocabulary;
+        if (heard[0] < 0 || !v.word(heard[0]).equals("where")) {
+            return null;
+        }
+        List<Integer> things = new ArrayList<>();
+        for (int w : heard) {
+            if (w >= 0 && thingWord(w) && !ASKING_WORDS.contains(v.word(w)) && !PLACE.contains(v.word(w))
+                    && !Set.of("is", "are", "was", "were", "now").contains(v.word(w))) {
+                things.add(w);
+            }
+        }
+        for (int t = from; t < at; t++) {
+            int[] line = lines.get(t);
+            boolean of = !things.isEmpty();
+            for (int w : things) {
+                of &= saidIn(line, w);
+            }
+            if (of && line[line.length - 1] != v.find("?") && saysAny(line, PLACE)) {
+                return line;
+            }
+        }
+        return null;
+    }
+
+    /**
      * "is john in the kitchen?" after "john is in the garden .": no, the line puts it somewhere
      * else; yes if it puts it there. -1 if the question asks of no place or the line tells of none.
      */
@@ -3227,7 +3279,7 @@ public final class Brain {
 
     /** Qualities and their opposites, each of which may have more than one ("tall": "short", "low"). */
     private static final java.util.Map<String, Set<String>> QUALITY_OPPOSITE = qualities("warm cold", "hot cold",
-            "sharp dull", "sharp blunt", "clean dirty", "big small", "big little", "large small", "tall short", "tall low",
+            "sharp dull", "sharp blunt", "clean dirty", "big small", "big little", "large small", "tall short", "tall low", "tall small", "tall little",
             "high low", "long short", "old young", "old new", "fresh stale", "fresh rotten", "heavy light", "fast slow",
             "rich poor", "happy sad", "strong weak", "deep shallow", "wide narrow", "loud quiet", "safe dangerous",
             "kind mean", "easy hard", "soft hard", "good bad", "clever stupid", "friendly unfriendly", "busy quiet",
