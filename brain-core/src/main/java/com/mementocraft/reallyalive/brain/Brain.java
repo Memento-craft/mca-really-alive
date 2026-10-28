@@ -917,6 +917,9 @@ public final class Brain {
             int[] heard = language.heardLine();
             int[] before = language.earlierLine();
             talk.ask = language.vocabulary.find("?");
+            if (talk.you.length == 0) {
+                talk.you = java.util.stream.Stream.of("you", "your", "yourself").mapToInt(language.vocabulary::find).filter(w -> w >= 0).sorted().toArray();
+            }
             int[][] recalled = memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask);
             int keep = 0;
             for (int r = 0; r < recalled.length; r++) {
@@ -954,7 +957,10 @@ public final class Brain {
             weighRecalled(mine, match, OWN_RECALL_WEIGHT, true, start, turn);
             if (toldLine != null) {
                 // What it was told, said back the other way round: "you have a dog named rex."
-                weighRecalled(new int[][] {toldInOwnWords ? toldLine : toldBack(toldLine)}, new float[] {1f}, TOLD_WEIGHT, true, start, turn);
+                // What was done in order is worked out from the story, and no remembered line about
+                // the same things ("pigs live in farms .") answers it instead.
+                weighRecalled(new int[][] {toldInOwnWords ? toldLine : toldBack(toldLine)}, new float[] {1f},
+                        toldInOrder ? 2 * TOLD_WEIGHT : TOLD_WEIGHT, true, start, turn);
             }
         }
         language.restore(start);
@@ -997,6 +1003,8 @@ public final class Brain {
     private int heardLinesNext;
     private int[] recalledFocus = new int[0];
     private int[] toldLine;
+    /** Whether the told line was picked by the order things happened in. */
+    private boolean toldInOrder;
     /** Whether the told line is already said as this villager would say it ("rosa is my mother ."). */
     private boolean toldInOwnWords;
     /** The told line as it was heard, before any "yes ," or "because" was put in front. */
@@ -1092,11 +1100,20 @@ public final class Brain {
      * most of what the question asks about. Returns those words, or none if the heard line is no
      * question or nothing told fits it well enough.
      */
+    /** A line told in order, without the "then" it was told with: "you milked the cow ." */
+    private int[] withoutThen(int[] ordered) {
+        if (ordered != null && ordered.length > 2 && ordered[0] == language.vocabulary.find("then")) {
+            return Arrays.copyOfRange(ordered, 1, ordered.length);
+        }
+        return ordered;
+    }
+
     private int[] toldBefore(int[] heardLine) {
         ExchangeMemory memory = ExchangeMemory.shared();
         int ask = language.vocabulary.find("?");
         toldLine = null;
         toldInOwnWords = false;
+        toldInOrder = false;
         // A short, plain question about the speaker ("where do i live?"), not a long outburst
         // that ends in one.
         int[] plain = withoutAddress(heardLine);
@@ -1120,7 +1137,8 @@ public final class Brain {
                 && heard[heard.length - 1] == ask) {
             // A longer question may still ask of the order of things ("what did the guard do
             // before he went to sleep?").
-            toldLine = inOrder(heard);
+            toldLine = withoutThen(inOrder(heard));
+            toldInOrder = toldLine != null;
             toldLine = toldLine != null ? toldLine : compared(heard);
             toldLineAsHeard = null;
             return new int[0];
@@ -1193,11 +1211,19 @@ public final class Brain {
             toldInOwnWords = true;
             return new int[0];
         }
-        int[] ordered = inOrder(heard);
+        int[] work = whatTheyDo(heard);
+        if (work != null) {
+            // "what do i do?" after "i run the bakery .": "you run the bakery ."
+            toldLine = work;
+            toldLineAsHeard = null;
+            return new int[0];
+        }
+        int[] ordered = withoutThen(inOrder(heard));
         if (ordered != null) {
             // "tom fed the pigs." "then he milked the cow.": "what did tom do first?" "tom fed
-            // the pigs ."; "what did he do after he fed the pigs?" "then he milked the cow ."
+            // the pigs ."; "what did he do after he fed the pigs?" "he milked the cow ."
             toldLine = ordered;
+            toldInOrder = true;
             toldLineAsHeard = null;
             return new int[0];
         }
@@ -1255,7 +1281,8 @@ public final class Brain {
             int k = t < recent ? t + 2 : TOLD_LINES + 1;
             int[] told = toldLines.get(t);
             if (told.length == 0 || told.length > TOLD_LONGEST || told[told.length - 1] == ask
-                    || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names) && !rule(told)) {
+                    || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names) && !rule(told)
+                    || ofAllAsked && aboutSpeaker(told)) {
                 // A rule is for anyone: "if you feed the dog, it wags its tail." answers "what
                 // happens if i feed the dog?".
                 continue;
@@ -1359,6 +1386,12 @@ public final class Brain {
             // than sam." and "sam is older than ben." answer "is tom older than ben?", "a wolf is
             // at the gate." and "wolves are dangerous." answer "is the thing at the gate dangerous?".
             List<int[]> chain = linesTogether(heard, names, memory, tones);
+            int[] went = chain == null ? null : wentLast(heard, chain);
+            if (went != null) {
+                // "mary went to the kitchen." "then she went to the garden.": "where is mary?"
+                // "mary went to the garden ."
+                chain = List.of(went);
+            }
             if (chain != null) {
                 best = new int[0];
                 for (int[] line : chain) {
@@ -1368,6 +1401,16 @@ public final class Brain {
                 }
                 bestSeen = best;
                 bestK = 0;
+            }
+        }
+        int[] ofAll = best == null ? null : ofAllSuch(heard, best);
+        if (ofAll != null) {
+            // "what do my bees make?" after "i keep bees .": what bees make, "bees make honey ."
+            ofAllAsked = true;
+            int[] r = toldBefore(ofAll);
+            ofAllAsked = false;
+            if (toldLine != null) {
+                return r;
             }
         }
         if (best == null) {
@@ -1397,6 +1440,8 @@ public final class Brain {
             best = there;
             bestSeen = there;
         }
+        // "mary went to the garden .", not "then mary went to the garden ."
+        best = withoutThen(best);
         toldLine = best;
         toldLineAsHeard = best;
         int quality = yesNoAsked(heard) ? qualityAsked(heard) : -1;
@@ -2821,6 +2866,31 @@ public final class Brain {
         return now;
     }
 
+    /**
+     * Asked where someone is, of lines told together of them, the last that puts them somewhere,
+     * by name ("then she went to the garden ." "mary went to the garden ."); null if not asked
+     * where or no later line puts them anywhere.
+     */
+    private int[] wentLast(int[] heard, List<int[]> chain) {
+        if (chain.size() < 2 || heard[0] < 0 || !language.vocabulary.word(heard[0]).equals("where")) {
+            return null;
+        }
+        List<Integer> subject = new ArrayList<>();
+        for (int w : chain.get(0)) {
+            if (w >= 0 && thingWord(w)) {
+                subject.add(w);
+                break;
+            }
+        }
+        for (int i = chain.size() - 1; i > 0; i--) {
+            int[] line = chain.get(i);
+            if (saysAny(line, PLACE) && pronounAt(line) >= 0) {
+                return byName(line, chain.get(0), subject);
+            }
+        }
+        return null;
+    }
+
     /** Where in its first few words a line says he, she, it or they; -1 if it doesn't. */
     private int pronounAt(int[] line) {
         for (int i = 0; i < Math.min(4, line.length); i++) {
@@ -3053,6 +3123,18 @@ public final class Brain {
                 return line;
             }
         }
+        int[] next = at - 1 >= from ? lines.get(at - 1) : null;
+        if (next != null && next[next.length - 1] != v.find("?") && pronounAt(next) >= 0 && saysAny(next, PLACE)) {
+            // "mary went to the kitchen ." "then she went to the garden .": she is mary.
+            List<Integer> subject = new ArrayList<>();
+            for (int w : lines.get(at)) {
+                if (w >= 0 && thingWord(w)) {
+                    subject.add(w);
+                    break;
+                }
+            }
+            return byName(next, lines.get(at), subject);
+        }
         return null;
     }
 
@@ -3134,10 +3216,22 @@ public final class Brain {
     private int[] inOrder(int[] heard) {
         Vocabulary v = language.vocabulary;
         int ask = v.find("?");
+        int first = v.find("first"), last = v.find("last"), after = v.find("after"), before = v.find("before");
+        int end = heard.length - 1;
+        boolean yesNo = yesNoAsked(heard);
+        int split = Math.max(indexOf(heard, after, 1), indexOf(heard, before, 1));
+        // What came after or before something is found among all told lately, questions in
+        // between or not; what came first or last, in the lines told since the last question
+        // that asked of something else than the order of things.
+        boolean wide = split > 1 && split < end - 1;
         List<int[]> story = new ArrayList<>();
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
             int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
             if (line == null || line.length == 0 || line[line.length - 1] == ask) {
+                if (wide || line != null && (contains(line, first) || contains(line, last)
+                        || contains(line, after) || contains(line, before))) {
+                    continue;
+                }
                 break;
             }
             story.add(0, line);
@@ -3145,11 +3239,7 @@ public final class Brain {
         if (story.size() < 2) {
             return null;
         }
-        int first = v.find("first"), last = v.find("last"), after = v.find("after"), before = v.find("before");
-        int end = heard.length - 1;
-        boolean yesNo = yesNoAsked(heard);
-        int split = Math.max(indexOf(heard, after, 1), indexOf(heard, before, 1));
-        if (split > 1 && split < end - 1) {
+        if (wide) {
             boolean isAfter = heard[split] == after;
             int[] event = Arrays.copyOfRange(heard, split + 1, end);
             int at = lineOf(story, event, -1);
@@ -3661,6 +3751,69 @@ public final class Brain {
             }
         }
         return false;
+    }
+
+    /**
+     * "what do my bees make?" without the "my", when the line told of their bees ("i keep bees .")
+     * tells nothing of what the question asks they do: what is so of all bees answers it. Null if
+     * the question asks of no thing of theirs, or the line tells what it asks.
+     */
+    private boolean ofAllAsked;
+
+    private static final Set<String> WHAT_THEY_DO = Set.of("what do i do ?", "what do i do for work ?",
+            "what do i do for a living ?", "what is my job ?", "what's my job ?", "what is my work ?");
+    /** Not what someone does: "i have a cat .", "i like apples ." */
+    private static final Set<String> NOT_DOING = Set.of("have", "like", "love", "want", "need", "think", "feel",
+            "see", "hope", "know", "guess", "mean", "am", "can", "will", "don't", "can't");
+
+    /**
+     * "what do i do?" (for work): the latest line the asker told of what they do now, "i run the
+     * bakery ." or "i'm a baker ."; not what they did ("i ate two apples .") or have. Null if not
+     * asked or not told.
+     */
+    private int[] whatTheyDo(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        StringBuilder asked = new StringBuilder();
+        for (int w : heard) {
+            asked.append(asked.length() == 0 ? "" : " ").append(w < 0 ? "" : v.word(w));
+        }
+        if (!WHAT_THEY_DO.contains(asked.toString())) {
+            return null;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line == null || line.length < 3 || line[0] < 0 || line[1] < 0 || line[line.length - 1] == v.find("?")) {
+                continue;
+            }
+            String who = v.word(line[0]), doing = v.word(line[1]);
+            boolean now = !doing.endsWith("ed") && !NOT_DOING.contains(doing)
+                    && (!IRREGULAR.containsKey(doing) || IRREGULAR.get(doing).equals(doing));
+            if (who.equals("i'm") && Set.of("a", "an", "the").contains(doing) || who.equals("i") && now) {
+                return line;
+            }
+        }
+        return null;
+    }
+
+    private int[] ofAllSuch(int[] heard, int[] told) {
+        Vocabulary v = language.vocabulary;
+        int my = indexOf(heard, v.find("my"), 0);
+        if (my < 0 || my + 2 >= heard.length || heard[my + 1] < 0 || !saidIn(told, heard[my + 1])) {
+            return null;
+        }
+        boolean asks = false;
+        for (int i = 0; i < heard.length - 1; i++) {
+            String w = heard[i] < 0 ? "" : v.word(heard[i]);
+            if (i == my || i == my + 1 || w.isEmpty() || ASKING_WORDS.contains(w) || !thingWord(heard[i])
+                    || Set.of("do", "does", "did", "is", "are", "was", "were", "have", "has", "what's", "where's", "who's").contains(w)) {
+                continue;
+            }
+            if (saidIn(told, heard[i])) {
+                return null;
+            }
+            asks = true;
+        }
+        return asks ? withoutAt(heard, my) : null;
     }
 
     /** A line told by someone else, as said back to them: "i" becomes "you", "my" "your". */

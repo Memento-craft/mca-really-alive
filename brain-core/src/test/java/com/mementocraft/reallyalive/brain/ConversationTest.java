@@ -383,6 +383,33 @@ class ConversationTest {
     }
 
     @Test
+    void villagerAnswersOfWhatTheAskerToldOfThemselves() {
+        // {told..., asked, right, wrong}.
+        String[][] talks = {{"i keep bees.", "what do my bees make?", "honey", "keep"},
+            {"i run the bakery.", "i ate two apples.", "what do i do?", "bakery", "apples"},
+            {"i fed the pigs.", "then i milked the cow.", "then i went to the market.", "what did i do first?", "what did i do last?", "market", "pigs"},
+            {"mary went to the kitchen.", "then she went to the garden.", "john is in the barn.", "where is john?", "and mary?", "garden", "kitchen"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 960 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            int asked = talks[i].length - 2;
+            for (int k = 0; k < asked; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][asked]) && !said.contains(talks[i][asked + 1]) ? 1 : 0;
+        }
+        System.out.printf("answered of the asker's own things %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "answered only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

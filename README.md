@@ -169,8 +169,9 @@ opposites of common qualities), and that "whose garden is bigger?" is answered b
 garden .".
 It keeps the order of what it was told: after "tom fed the pigs." "then he milked the cow." "then
 he went to the market.", it answers "what did tom do first?" ("tom fed the pigs ."), "what did tom
-do after he fed the pigs?" ("then he milked the cow .") and "did tom go to the market first?" ("no ,
-tom fed the pigs first .").
+do after he fed the pigs?" ("he milked the cow .") and "did tom go to the market first?" ("no ,
+tom fed the pigs first ."), also when the player tells of themselves ("what did i do last?" "you
+went to the market .") and after other questions in between.
 It compares amounts, days and months: after "tom has three apples." "anna has five apples.", "who
 has more apples?" is "anna has five apples ."; "how many more coins does lou have?" after "pia has
 4 coins." "lou has 9 coins." is "lou has five more coins ."; "which comes first, friday or sunday?"
@@ -184,7 +185,9 @@ raining?"). A fact with a word the villager has never heard ("enderman") comes t
 says it.
 It reasons from what kind of thing something is: told "rex is a dog.", it answers "how many legs
 does rex have?" with "a dog has four legs .", and told "the monster by the gate is a skeleton.",
-"does it burn in the sun?" with "yes , skeletons burn in the sun .".
+"does it burn in the sun?" with "yes , skeletons burn in the sun .". Told "i keep bees.", "what
+do my bees make?" is "a bee makes honey .", and told "i run the bakery.", "what do i do?" is "you
+run the bakery .".
 All of this holds up in one long talk mixing chat, things told and every kind of question: a
 line told twenty lines back still answers, and a later change ("the cart is in the yard now.")
 wins over what it once answered from an older line.

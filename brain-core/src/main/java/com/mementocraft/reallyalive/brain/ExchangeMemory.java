@@ -352,6 +352,15 @@ final class ExchangeMemory {
             return key && (selfOfItself[slot - CAPACITY] ? asked : asking);
         }
 
+        private boolean askedOfYou(int[] line) {
+            for (int w : line) {
+                if (Arrays.binarySearch(you, w) >= 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /** The words that ask something of the villager itself ("you", "your"), sorted ids. */
         int[] you = new int[0];
         /** The question mark's word id. */
@@ -416,6 +425,10 @@ final class ExchangeMemory {
                     // A question is not answered as the telling it asks about was: told "my
                     // favourite colour is green." and asked "what's my favourite colour?", the
                     // answer is not "why green?" again.
+                    v[p] = 0f;
+                }
+                if (asking && slots[p] < CAPACITY && askedOfYou(heard) != askedOfYou(cues[slots[p]])) {
+                    // "what do you do?" is not the "what do i do?" it answered before.
                     v[p] = 0f;
                 }
             }
