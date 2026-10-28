@@ -815,7 +815,10 @@ public final class Brain {
         goalJoy = Motives.GOAL * goals.sense(f.carried, f.did, f.doing, ticks);
         // A need eased (hunger by eating) feels good, the more the more it eased.
         goalJoy += Motives.NEED_EASED * goals.feel("hunger", f.feel[FeelChannel.HUNGER.ordinal()], ticks);
-        goalJoy += Motives.NEED_EASED * goals.feel("tiredness", f.tiredness, ticks);
+        for (java.util.Map.Entry<String, Float> need : f.needs.entrySet()) {
+            goalJoy += Motives.NEED_EASED * goals.feel(need.getKey(), need.getValue(), ticks);
+        }
+        goals.takeUp(ticks);
         String steps = String.join("<", goals.stack);
         if (!steps.equals(planSaid)) {
             // What it is after changed: so does what it says when asked.

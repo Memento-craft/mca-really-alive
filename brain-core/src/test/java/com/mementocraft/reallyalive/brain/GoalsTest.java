@@ -69,11 +69,13 @@ class GoalsTest {
         Map<String, Integer> bag = new HashMap<>(Map.of("bread", 2));
         look(g, bag);
         g.feel("hunger", 0.6f, tick);
+        g.takeUp(tick);
         assertNull(g.goal(), "it knows nothing that eases hunger yet");
         // It eats a bread: one fewer, the deed done, hunger down a quarter.
         bag.put("bread", 1);
         look(g, bag, "ate bread");
         float eased = g.feel("hunger", 0.35f, tick);
+        g.takeUp(tick);
         assertEquals(0.25f, eased, 1e-6);
         System.out.println("hunger needs " + g.needsOf("hunger") + ", ate bread needs " + g.needsOf("ate bread"));
         assertEquals(List.of("ate bread"), g.needsOf("hunger"));
@@ -84,9 +86,11 @@ class GoalsTest {
         bag.put("bread", 0);
         look(g, bag);
         g.feel("hunger", 0.4f, tick);
+        g.takeUp(tick);
         assertNull(g.goal(), "not hungry enough yet to set out");
         look(g, bag);
         g.feel("hunger", 0.6f, tick);
+        g.takeUp(tick);
         System.out.println("hungry, it is after (next step first): " + g.stack + ", because of " + g.because);
         assertEquals(List.of("wheat", "bread", "ate bread"), List.copyOf(g.stack));
         assertEquals("hunger", g.because);
@@ -101,7 +105,38 @@ class GoalsTest {
         bag.put("bread", 0);
         assertEquals(1f, look(g, bag, "ate bread"), 1e-6);
         g.feel("hunger", 0.35f, tick);
+        g.takeUp(tick);
         assertNull(g.goal());
+    }
+
+    @Test
+    void theStrongestNeedWinsAndFearOverrulesWork() {
+        Brain b = Brain.create(Genome.defaults(), 6, 0f);
+        Goals g = b.goals;
+        Map<String, Integer> bag = new HashMap<>();
+        look(g, bag);
+        g.told("boredom", "broke wheat");
+        g.told("loneliness", "talked with someone");
+        g.told("fear", "got away from zombie");
+        g.feel("boredom", 0.6f, tick);
+        g.feel("loneliness", 0.7f, tick);
+        g.feel("fear", 0f, tick);
+        g.takeUp(tick);
+        assertEquals("talked with someone", g.goal(), "the lonelier it is than bored, the more it wants company");
+        assertEquals("i'm lonely . i want to talk with someone .", SelfKnowledge.plan(b));
+        // Loneliness eased by a chat; still bored, it goes back to work.
+        look(g, bag, "talked with someone");
+        g.feel("loneliness", 0.5f, tick);
+        g.feel("boredom", 0.6f, tick);
+        g.takeUp(tick);
+        assertEquals("broke wheat", g.goal());
+        assertEquals("i'm bored . i want to break some wheat .", SelfKnowledge.plan(b));
+        // A zombie near: fear far stronger than boredom takes over.
+        look(g, bag);
+        g.feel("fear", 0.95f, tick);
+        g.takeUp(tick);
+        assertEquals("got away from zombie", g.goal());
+        assertEquals("i'm scared . i want to get away from the zombie .", SelfKnowledge.plan(b));
     }
 
     @Test

@@ -46,8 +46,13 @@ final class Goals {
     static final float WANT_AT = 0.5f;
     /** A need that falls this much at once was eased by what was just done. */
     static final float EASED = 0.02f;
+    /** A need this much stronger than the one the goal serves takes over. */
+    static final float OVERRULE = 0.3f;
+    static final float URGENT = 0.75f;
     /** Deeds as done and as said: "broke" is "break". */
-    static final String[][] DEEDS = {{"broke ", "break "}, {"placed ", "place "}, {"ate ", "eat "}, {"slept in ", "sleep in "}};
+    static final String[][] DEEDS = {{"broke ", "break ", "some "}, {"placed ", "place ", "some "}, {"ate ", "eat ", "some "},
+            {"slept in ", "sleep in ", "a "}, {"talked with ", "talk with ", ""}, {"got away from ", "get away from ", "the "},
+            {"made ", "make ", "some "}};
 
     /** For each thing, what getting it needs, and how surely. */
     final Map<String, Map<String, Float>> needs = new HashMap<>();
@@ -136,15 +141,44 @@ final class Goals {
             from = level;
         }
         easedFrom.put(need, from);
-        if (level >= WANT_AT && stack.isEmpty()) {
-            String way = missing(need);
-            if (way != null) {
-                want(way, tick);
-                because = need;
-                progress(tick);
+        return Math.max(0f, eased);
+    }
+
+    /**
+     * With the needs felt this tick: the strongest one it knows a way to ease, if strong enough,
+     * is taken up as the goal when nothing else is held in mind. A need far stronger than the one
+     * the goal serves (a monster near while fetching bread) takes over.
+     */
+    void takeUp(long tick) {
+        String best = null, way = null;
+        float bestLevel = WANT_AT;
+        for (Map.Entry<String, Float> e : felt.entrySet()) {
+            if (e.getValue() >= bestLevel) {
+                String w = missing(e.getKey());
+                if (w != null) {
+                    best = e.getKey();
+                    way = w;
+                    bestLevel = e.getValue();
+                }
             }
         }
-        return Math.max(0f, eased);
+        if (best == null) {
+            return;
+        }
+        boolean free = stack.isEmpty();
+        // Something asked for gives way only to a need that is urgent.
+        boolean overruled = because == null ? bestLevel >= URGENT
+                : !best.equals(because) && bestLevel > felt.getOrDefault(because, 0f) + OVERRULE;
+        if (free || overruled) {
+            want(way, tick);
+            because = best;
+            progress(tick);
+        }
+    }
+
+    /** How felt a need is, 0..1, as of the last tick. */
+    float felt(String need) {
+        return felt.getOrDefault(need, 0f);
     }
 
     /** Learns that getting what comes first needs what comes second. */
@@ -245,13 +279,7 @@ final class Goals {
      * wheat got the wheat, and the wheat, not the breaking, is what the bread took.
      */
     private boolean screened(String thing, String b, Set<String> before) {
-        Set<String> between = new HashSet<>(before);
-        for (Map.Entry<String, Integer> c : carried.entrySet()) {
-            if (c.getValue() > 0) {
-                between.add(c.getKey()); // the wheat still in hand came between the breaking and the bread too
-            }
-        }
-        for (String z : between) {
+        for (String z : before) {
             if (!z.equals(b) && !z.equals(thing)) {
                 Map<String, Float> m = needs.get(z);
                 if (m != null && m.getOrDefault(b, 0f) >= STEP_MIN) {

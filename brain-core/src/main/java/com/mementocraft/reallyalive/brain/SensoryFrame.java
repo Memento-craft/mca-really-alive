@@ -37,8 +37,11 @@ public final class SensoryFrame {
     public final List<String> did = new ArrayList<>();
     /** Deeds under way this tick, named as they will be when done: a block cracking is "broke dirt". */
     public final List<String> doing = new ArrayList<>();
-    /** How tired the body is, 0..1: it grows while awake and sleep takes it down. */
-    public float tiredness;
+    /**
+     * How strongly each need beyond hunger is felt, 0..1: "tiredness" (sleep eases it), "boredom"
+     * (work), "loneliness" (talk), "fear" (getting away). Hunger is felt through {@link FeelChannel#HUNGER}.
+     */
+    public final java.util.Map<String, Float> needs = new java.util.LinkedHashMap<>();
     /** It holds something to write in (a book and quill with room left). */
     public boolean canWrite;
     /** People the villager saw die this tick, by name. */
@@ -125,7 +128,7 @@ public final class SensoryFrame {
         carried = null;
         did.clear();
         doing.clear();
-        tiredness = 0f;
+        needs.clear();
         Arrays.fill(watched, 0f);
         died.clear();
         harvested.clear();

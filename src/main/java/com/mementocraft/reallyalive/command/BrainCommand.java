@@ -148,8 +148,14 @@ public final class BrainCommand {
         }
         Brain b = BrainManager.get().handle(v).brain();
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("harvested %s, finds telling worth %.2f, hunger %.2f", b.deeds(), b.tellValue(),
-                BrainManager.get().handle(v).hunger()));
+        BrainManager.Handle h = BrainManager.get().handle(v);
+        sb.append(String.format("harvested %s, finds telling worth %.2f%nhunger %.2f, tiredness %.2f, boredom %.2f, loneliness %.2f, fear %.2f",
+                b.deeds(), b.tellValue(), h.hunger(), h.tiredness(), h.boredom(), h.loneliness(), h.fear()));
+        for (String need : new String[] {"hunger", "tiredness", "boredom", "loneliness", "fear"}) {
+            if (!b.needsOf(need).isEmpty()) {
+                sb.append("\n  ").append(need).append(" is eased by ").append(b.needsOf(need));
+            }
+        }
         java.util.List<String> plan = b.plan();
         if (!plan.isEmpty()) {
             sb.append("\nafter ").append(plan.get(plan.size() - 1)).append(", next step first: ").append(plan);

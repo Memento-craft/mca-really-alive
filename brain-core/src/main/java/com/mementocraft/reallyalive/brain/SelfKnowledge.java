@@ -83,14 +83,15 @@ public final class SelfKnowledge {
     }
 
     /** How each need is said when it set the goal. */
-    static final java.util.Map<String, String> FELT = java.util.Map.of("hunger", "i'm hungry", "tiredness", "i'm tired");
+    static final java.util.Map<String, String> FELT = java.util.Map.of("hunger", "i'm hungry", "tiredness", "i'm tired",
+            "boredom", "i'm bored", "loneliness", "i'm lonely", "fear", "i'm scared");
 
     /** A thing or deed as said: "some bread", "break some wheat", "to place some dirt". */
     private static String thing(String t) {
         for (String[] d : Goals.DEEDS) {
             if (t.startsWith(d[0])) {
                 // One sleeps in a bed, but eats some bread.
-                return d[1] + (d[0].equals("slept in ") ? "a " : "some ") + t.substring(d[0].length());
+                return d[1] + d[2] + t.substring(d[0].length());
             }
         }
         return "some " + t;

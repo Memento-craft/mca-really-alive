@@ -132,6 +132,12 @@ public final class BrainManager {
         float hunger;
         /** How tired the body is, 0..1: it grows while awake and sleeping takes it down. */
         float tiredness;
+        /** How bored (idle too long), lonely (alone too long) and scared it is, 0..1, and of what. */
+        float boredom;
+        float loneliness;
+        float fear;
+        net.minecraft.world.entity.Entity feared;
+        int madeSeen;
         /** The line it is writing down, its own written words to feel, and how many lines it wrote. */
         final List<String> writtenLine = new ArrayList<>();
         final List<String> wroteWords = new ArrayList<>();
@@ -191,6 +197,26 @@ public final class BrainManager {
 
         public void setTiredness(float tiredness) {
             this.tiredness = Math.max(0f, Math.min(1f, tiredness));
+        }
+
+        public float boredom() {
+            return boredom;
+        }
+
+        public void setBoredom(float boredom) {
+            this.boredom = clampNeed(boredom);
+        }
+
+        public float loneliness() {
+            return loneliness;
+        }
+
+        public void setLoneliness(float loneliness) {
+            this.loneliness = clampNeed(loneliness);
+        }
+
+        public float fear() {
+            return fear;
         }
 
         public MotorCommand command() {
@@ -319,6 +345,8 @@ public final class BrainManager {
         h.heard = Hearing.now();
         h.hunger = data.hunger();
         h.tiredness = data.tiredness();
+        h.boredom = data.boredom();
+        h.loneliness = data.loneliness();
         handles.put(v.getUUID(), h);
         return h;
     }
@@ -330,7 +358,7 @@ public final class BrainManager {
             return;
         }
         save(h);
-        v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness);
+        v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness, h.boredom, h.loneliness);
         h.hands.release();
         MobAccessor body = (MobAccessor) v;
         body.reallyalive$setMoveControl(h.originalMove);
@@ -403,6 +431,43 @@ public final class BrainManager {
         if (h != null && props != null) {
             h.setHunger(h.hunger - props.nutrition() / 20f);
             h.did.add("ate " + Hands.nameOf(food.getItem()));
+        }
+    }
+
+    private static float clampNeed(float level) {
+        return Math.max(0f, Math.min(1f, level));
+    }
+
+    /**
+     * Fear rises fast while a monster is near and in sight, the more the nearer, and when it is
+     * hurt; it fades slowly once nothing threatens. Getting out of a feared monster's reach, or
+     * seeing it die, is getting away from it.
+     */
+    private static void fear(Villager v, Handle h) {
+        if (h.age % 5 == 0) {
+            net.minecraft.world.entity.Entity nearest = null;
+            double best = FEAR_NEAR;
+            for (var m : v.level().getEntitiesOfClass(net.minecraft.world.entity.Mob.class, v.getBoundingBox().inflate(FEAR_NEAR),
+                    m -> m instanceof net.minecraft.world.entity.monster.Enemy && m.isAlive() && v.hasLineOfSight(m))) {
+                double d = m.distanceTo(v);
+                if (d < best) {
+                    best = d;
+                    nearest = m;
+                }
+            }
+            if (nearest != null) {
+                h.feared = nearest;
+                h.fear = clampNeed(Math.max(h.fear, 0.5f + 0.5f * (float) (1 - best / FEAR_NEAR)));
+            } else if (h.feared != null && (!h.feared.isAlive() || h.feared.distanceTo(v) > FEAR_GONE)) {
+                h.did.add("got away from " + net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(h.feared.getType()).getPath().replace('_', ' '));
+                h.feared = null;
+            }
+        }
+        if (v.hurtTime > 0) {
+            h.fear = clampNeed(Math.max(h.fear, 0.8f));
+        }
+        if (h.feared == null) {
+            h.fear = clampNeed(h.fear - 0.005f);
         }
     }
 
@@ -493,6 +558,15 @@ public final class BrainManager {
     /** Ticks awake for a rested villager to grow fully tired (a day), and asleep to rest fully (most of a night). */
     private static final int AWAKE_TICKS = 24_000;
     private static final int REST_TICKS = 8_000;
+    /** Ticks for boredom to fill while it does no work, and loneliness while no one is near. */
+    private static final int BORED_TICKS = 12_000;
+    private static final int LONELY_TICKS = 12_000;
+    /** How much one piece of work eases boredom, and one line heard in company eases loneliness. */
+    private static final float WORK_EASES = 0.05f;
+    private static final float TALK_EASES = 0.15f;
+    /** A monster this near (blocks), in sight, is feared; once this far it has been got away from. */
+    private static final double FEAR_NEAR = 10;
+    private static final double FEAR_GONE = 14;
     /** Ticks between looks at what it carries. */
     private static final int CARRIED_INTERVAL = 10;
 
@@ -603,6 +677,16 @@ public final class BrainManager {
             h.placedSeen = h.hands.placedTotal;
             h.did.add("placed " + blockName(v.level().getBlockState(h.hands.lastPlaced)));
         }
+        // Work takes boredom down: breaking, placing, making.
+        for (String d : h.did) {
+            if (d.startsWith("broke ") || d.startsWith("placed ")) {
+                h.setBoredom(h.boredom - WORK_EASES);
+            }
+        }
+        if (h.hands.madeTotal > h.madeSeen) {
+            h.setBoredom(h.boredom - WORK_EASES * (h.hands.madeTotal - h.madeSeen));
+            h.madeSeen = h.hands.madeTotal;
+        }
         // A deed is looked at with what it carries, so what it used up is seen with it.
         boolean deeds = !h.did.isEmpty();
         f.did.addAll(h.did);
@@ -639,9 +723,17 @@ public final class BrainManager {
         } else {
             h.setTiredness(h.tiredness + 1f / AWAKE_TICKS);
         }
-        f.tiredness = h.tiredness;
+        f.needs.put("tiredness", h.tiredness);
+        if (!v.isSleeping()) {
+            h.setBoredom(h.boredom + 1f / BORED_TICKS);
+        }
+        h.setLoneliness(h.loneliness + (h.company ? 0f : 1f / LONELY_TICKS));
+        fear(v, h);
+        f.needs.put("boredom", h.boredom);
+        f.needs.put("loneliness", h.loneliness);
+        f.needs.put("fear", h.fear);
         if (h.age % 100 == 0) {
-            v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness);
+            v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness, h.boredom, h.loneliness);
         }
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
@@ -672,6 +764,11 @@ public final class BrainManager {
         for (int i = 0; i < f.heardWords.size(); i++) {
             if (!f.heardOwn.get(i) && f.heardWords.get(i).equals(WordCode.TURN)) {
                 h.line.clear();
+                // Someone spoke to it, or near it: company eases loneliness.
+                if (h.company) {
+                    h.setLoneliness(h.loneliness - TALK_EASES);
+                    f.did.add("talked with someone");
+                }
             }
         }
         feelings(v, h, f);

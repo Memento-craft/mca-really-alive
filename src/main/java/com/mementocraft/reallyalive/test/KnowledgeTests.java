@@ -174,6 +174,111 @@ public final class KnowledgeTests {
         });
     }
 
+    /** Turns a villager's head to look at a point in the test's coordinates. */
+    private static void aim(GameTestHelper h, Villager v, Vec3 relative) {
+        Vec3 to = h.absoluteVec(relative).subtract(v.getEyePosition());
+        float yaw = (float) (net.minecraft.util.Mth.atan2(to.z, to.x) * net.minecraft.util.Mth.RAD_TO_DEG) - 90f;
+        v.setYRot(yaw);
+        v.setYHeadRot(yaw);
+        v.setXRot((float) -(net.minecraft.util.Mth.atan2(to.y, to.horizontalDistance()) * net.minecraft.util.Mth.RAD_TO_DEG));
+    }
+
+    /** Bored, a villager breaks a block; it learns that work eases boredom, and bored again it sets out to. */
+    @GameTest(template = ARENA, timeoutTicks = 200, batch = "knowledge_bored")
+    public static void boredomSetsTheGoalOfWork(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        BlockPos dirt = new BlockPos(5, 2, 7);
+        h.setBlock(dirt, Blocks.DIRT);
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        MotorCommand attack = new MotorCommand(0, 0, false, false, false, 0f, 0f, true, false);
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            if (t == 5) {
+                handle.setBoredom(0.6f);
+                aim(h, v, new Vec3(5.5, 2.5, 7.0));
+                handle.hold(attack);
+            } else if (t == 60) {
+                handle.hold(MotorCommand.IDLE);
+                LOG.info("bored: broke the dirt ({}), boredom {}, knows boredom needs {}", h.getBlockState(dirt).isAir(),
+                        handle.boredom(), handle.brain().needsOf("boredom"));
+                h.assertTrue(h.getBlockState(dirt).isAir(), "holding attack on dirt did not break it");
+                h.assertTrue(handle.brain().needsOf("boredom").contains("broke dirt"), "boredom needs " + handle.brain().needsOf("boredom"));
+                handle.setBoredom(0.7f);
+            } else if (t == 80) {
+                List<String> plan = handle.brain().plan();
+                h.assertTrue(plan.equals(List.of("broke dirt")), "bored again, it is after " + plan);
+                h.succeed();
+            }
+        });
+    }
+
+    /** Alone too long, a villager talked to learns company eases loneliness, and lonely again it seeks it. */
+    @GameTest(template = ARENA, timeoutTicks = 200, batch = "knowledge_lonely")
+    public static void lonelinessSetsTheGoalOfTalking(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        named(h, new Vec3(7.5, 2, 5.5), "Tomas"); // company, no brain
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            if (t == 15) {
+                handle.setLoneliness(0.6f);
+            } else if (t == 20) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "hello misu.", "Steve");
+            } else if (t == 60) {
+                LOG.info("lonely: talked to, loneliness {}, knows loneliness needs {}", handle.loneliness(), handle.brain().needsOf("loneliness"));
+                h.assertTrue(handle.loneliness() < 0.5f, "being talked to took loneliness only to " + handle.loneliness());
+                h.assertTrue(handle.brain().needsOf("loneliness").contains("talked with someone"),
+                        "loneliness needs " + handle.brain().needsOf("loneliness"));
+                handle.setLoneliness(0.7f);
+            } else if (t == 80) {
+                List<String> plan = handle.brain().plan();
+                h.assertTrue(plan.equals(List.of("talked with someone")), "lonely again, it is after " + plan);
+                h.succeed();
+            }
+        });
+    }
+
+    /**
+     * A monster near frightens a villager; once it is gone the fear fades and the villager learns
+     * that getting away from it eased the fear. With a monster near again it sets out to get away,
+     * dropping what it was asked to do.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 300, batch = "knowledge_fear")
+    public static void fearSetsTheGoalOfGettingAway(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        net.minecraft.world.entity.monster.Zombie[] zombie = {null};
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            if (t == 10 || t == 120) {
+                zombie[0] = h.spawn(net.minecraft.world.entity.EntityType.ZOMBIE, new Vec3(5.5, 2, 9.5));
+                zombie[0].setNoAi(true);
+                aim(h, v, new Vec3(5.5, 3.5, 9.5));
+            } else if (t == 40) {
+                h.assertTrue(handle.fear() > 0.6f, "a zombie 4 blocks away frightened it only " + handle.fear());
+                zombie[0].discard();
+            } else if (t == 100) {
+                LOG.info("fear: zombie gone, fear {}, knows fear needs {}", handle.fear(), handle.brain().needsOf("fear"));
+                h.assertTrue(handle.brain().needsOf("fear").contains("got away from zombie"), "fear needs " + handle.brain().needsOf("fear"));
+                handle.brain().want("bread");
+            } else if (t == 110) {
+                h.assertTrue(handle.brain().plan().contains("bread"), "asked for bread, it is after " + handle.brain().plan());
+            } else if (t == 160) {
+                List<String> plan = handle.brain().plan();
+                LOG.info("fear: zombie back, fear {}, it is after {}", handle.fear(), plan);
+                h.assertTrue(plan.equals(List.of("got away from zombie")), "scared again, it is after " + plan);
+                zombie[0].discard();
+                h.succeed();
+            }
+        });
+    }
+
     /** Hunger and tiredness are the body's and are kept with it when the brain is put away and back. */
     @GameTest(template = ARENA, timeoutTicks = 100)
     public static void hungerAndTirednessAreKept(GameTestHelper h) {
