@@ -155,6 +155,12 @@ public final class Brain {
      * ticks and lets go, so the next press can hit again.
      */
     static final int STRIKE_HOLD_TICKS = 4;
+    /**
+     * How hard a monster or foe seen straight ahead drives walking toward it, at full health; the
+     * urge fades as health falls and is gone at half health, where caution wins. Without it
+     * villagers never walked up to a skeleton shooting at them: 0 wins in 300 bouts.
+     */
+    static final float CHARGE_URGE = 0.5f * BABBLE_GAIN;
     /** How hard a tired button held on a threat is let go: past every reflex and urge on it. */
     static final float STRIKE_RELEASE = 4f * BUTTON_RELEASE;
     /**
@@ -1510,6 +1516,7 @@ public final class Brain {
         driveButtonRelease(bored);
         driveStrikeRelease(bored);
         driveStrike(bored);
+        driveCharge(bored);
         driveScreenSatiety(bored);
         driveTryAnother(bored);
         driveSpeechBabble(amp);
@@ -1565,6 +1572,41 @@ public final class Brain {
             for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
                 extInput[i] -= STRIKE_RELEASE;
             }
+        }
+    }
+
+    /**
+     * A threat seen in the middle of the view (a creature that is also a hazard) gives an inborn
+     * urge to walk at it, the more the bigger it looms and the healthier the villager feels.
+     * Learning can add to it or hold it back. A hazard that is no creature (lava, fire) does not
+     * draw it.
+     */
+    private void driveCharge(float screen) {
+        if (screen > 0f) {
+            return;
+        }
+        float health = input[IN_FEEL + FeelChannel.HEALTH.ordinal()];
+        float brave = Math.max(0f, (health - 0.5f) * 2f);
+        if (brave <= 0f) {
+            return;
+        }
+        float seen = 0f;
+        for (int y = 0; y < SenseLayout.VISION_H; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 2; x < SenseLayout.VISION_W / 2 + 2; x++) {
+                float creature = input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)];
+                float hazard = input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_HAZARD)];
+                if (creature > 0.9f && hazard > 0f) {
+                    seen += 1f;
+                }
+            }
+        }
+        if (seen <= 0f) {
+            return;
+        }
+        // A foe filling a few rays far off pulls almost as hard as one up close.
+        float urge = CHARGE_URGE * brave * Math.min(1f, 0.5f + seen / 8f);
+        for (int i : motorPools[MotorChannel.FORWARD.ordinal()]) {
+            extInput[i] += urge;
         }
     }
 

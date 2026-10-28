@@ -259,14 +259,15 @@ public final class FightTests {
         int shieldTicks;
         int unprovoked;
         int inReach;
+        int useTicks;
         int readyInReach;
 
         String line() {
             return String.format("%d bouts: %d won, %d lost, %d drawn; %.1f hits a bout, mean blow %.2f of full, %.1f damage dealt"
-                            + " and %.1f taken a bout, %d swings at creatures, %d ticks blocking; a threat in reach %d ticks, %d of them ready",
+                            + " and %.1f taken a bout, %d swings at creatures, %d ticks blocking (use held %d ticks); a threat in reach %d ticks, %d of them ready",
                     bouts, wins, losses, bouts - wins - losses, hits / (float) Math.max(1, bouts),
                     share / Math.max(1, hits), dealt / Math.max(1, bouts), taken / Math.max(1, bouts), swings, shieldTicks,
-                    inReach, readyInReach);
+                    useTicks, inReach, readyInReach);
         }
     }
 
@@ -280,6 +281,17 @@ public final class FightTests {
         v.getInventory().clearContent();
         if (!v.getMainHandItem().is(Items.STONE_SWORD)) {
             v.setItemSlot(EquipmentSlot.MAINHAND, unbreakable(Items.STONE_SWORD));
+        }
+    }
+
+    /**
+     * Heals it and gives back its shield too: babbling in its inventory moved the shield out of
+     * its off hand, healing cleared the inventory, and it fought every later bout without one.
+     */
+    private static void heal(Villager v, Vec3 at, GameTestHelper h, boolean shield) {
+        heal(v, at, h);
+        if (shield && !v.getOffhandItem().is(Items.SHIELD)) {
+            v.setItemSlot(EquipmentSlot.OFFHAND, unbreakable(Items.SHIELD));
         }
     }
 
@@ -326,6 +338,7 @@ public final class FightTests {
             Tally t = windows[bout[0] / WINDOW];
             t.taken += Math.max(0f, lastHealth[0] - v.getHealth());
             lastHealth[0] = v.getHealth();
+            t.useTicks += handle.command().use() ? 1 : 0;
             if (handle.frame().feel[FeelChannel.THREAT_IN_REACH.ordinal()] > 0.5f) {
                 t.inReach++;
                 t.readyInReach += hands.attackRecharge() >= 0.95f ? 1 : 0;
@@ -365,7 +378,7 @@ public final class FightTests {
                         e -> e instanceof AbstractArrow || e instanceof net.minecraft.world.entity.item.ItemEntity)) {
                     e.discard();
                 }
-                heal(v, HOME, h);
+                heal(v, HOME, h, shield);
                 lastHealth[0] = v.getHealth();
                 if (bout[0] % WINDOW == 0) {
                     LOG.info("{} bouts {}-{}: {}", name, bout[0] - WINDOW, bout[0], t.line());
@@ -511,6 +524,7 @@ public final class FightTests {
             t.dealt += Math.max(0f, lastHealth[1] - p.getHealth());
             lastHealth[0] = v.getHealth();
             lastHealth[1] = p.getHealth();
+            t.useTicks += handle.command().use() ? 1 : 0;
             if (handle.frame().feel[FeelChannel.THREAT_IN_REACH.ordinal()] > 0.5f) {
                 t.inReach++;
                 t.readyInReach += hands.attackRecharge() >= 0.95f ? 1 : 0;
