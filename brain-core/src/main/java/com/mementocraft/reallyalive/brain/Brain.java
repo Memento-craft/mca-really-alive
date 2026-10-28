@@ -1105,6 +1105,11 @@ public final class Brain {
             // "where is it now?" after "where was the cat?" asks of the cat.
             meant = ofTheSame(plain);
         }
+        kindLine = null;
+        if (meant == null && plain.length > 0) {
+            // "how many legs does rex have?" after "rex is a dog .": what is so of dogs.
+            meant = ofItsKind(plain);
+        }
         int[] heard = meant != null ? meant : plain;
         if (memory != null && heard.length > TOLD_QUESTION_WORDS && heard.length <= TOLD_QUESTION_WORDS + 4
                 && heard[heard.length - 1] == ask) {
@@ -1233,6 +1238,7 @@ public final class Brain {
         // Last, what everyone knows from growing up ("a spider has eight legs ."), only if
         // nothing it was told answers.
         int knownFrom = toldLines.size();
+        int[] knownBest = null;
         toldLines.addAll(knownToAll(language.vocabulary));
         for (int t = 0; t < toldLines.size(); t++) {
             if (t == knownFrom && (best != null || saysAny(heard, OF_THE_MOMENT))) {
@@ -1246,6 +1252,10 @@ public final class Brain {
                     || aboutThem && !aboutSpeaker(told) && !namesTheirs(told, names) && !rule(told)) {
                 // A rule is for anyone: "if you feed the dog, it wags its tail." answers "what
                 // happens if i feed the dog?".
+                continue;
+            }
+            if (told == kindLine) {
+                // "rex is a dog ." says what kind rex is, not what is so of dogs.
                 continue;
             }
             if (!askingName && !contains(heard, language.vocabulary.find("called")) && namesIn(told, new ArrayList<>())) {
@@ -1316,6 +1326,9 @@ public final class Brain {
                 // A fact has to say something the question says, not just something like it
                 // ("how's the weather?" is not about the seasons).
                 continue;
+            }
+            if (t >= knownFrom && kindLine != null && cue > bestCue + 1e-4f) {
+                knownBest = told;
             }
             if (cue > bestCue + 1e-4f || cue > bestCue - 1e-4f && exact > bestExact) {
                 // A line that says the word itself goes before one that says a like word ("my
@@ -1413,7 +1426,10 @@ public final class Brain {
         }
         // Telling words: those that cue remembered exchanges, and names, which never do but are
         // not among the commonest words either.
-        return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && Character.isLetter(language.vocabulary.word(w).charAt(0))
+        // What kind it is ("tibbs is a cat") was told, not asked; what is so of the kind is the answer.
+        int[] kindTold = kindLine != null && knownBest != null ? kindLine : new int[0];
+        return Arrays.stream(best).filter(w -> w >= 0 && !saidIn(heard, w) && !contains(kindTold, w)
+                && Character.isLetter(language.vocabulary.word(w).charAt(0))
                 && (memory.weight(w) > 0f || tones != null && !tones.common(w))).distinct().toArray();
     }
 
@@ -1701,6 +1717,74 @@ public final class Brain {
             int[] said = join(Arrays.copyOfRange(heard, i - 1, at + 1), new int[] {language.vocabulary.find("is"), numberWord(c),
                 language.vocabulary.find(".")});
             return said[said.length - 2] < 0 ? null : said;
+        }
+        return null;
+    }
+
+    /** The told line that said what kind of thing was asked of ("rex is a dog ."), while answering. */
+    private int[] kindLine;
+
+    private static final Set<String> BEFORE_A_NAME = Set.of("the", "a", "an", "my", "your", "his", "her", "their", "our");
+
+    /**
+     * A question about something told to be of a kind ("rex is a dog .", "the thing in the cave is
+     * a zombie ."), asked of the kind instead: "how many legs does rex have?" as "how many legs
+     * does a dog have?", "does it burn in the sun?" as "does a zombie burn in the sun?". What is
+     * known of the kind then answers. Null if no told line says what kind it is.
+     */
+    private int[] ofItsKind(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        int ask = v.find("?"), is = v.find("is");
+        if (heard[heard.length - 1] != ask) {
+            return null;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            int at = line == null ? -1 : indexOf(line, is, 1);
+            if (at < 0 || at + 3 != line.length - 1 || line[line.length - 1] == ask || line[at + 1] < 0
+                    || !Set.of("a", "an").contains(v.word(line[at + 1])) || line[at + 2] < 0 || !thingWord(line[at + 2])) {
+                continue;
+            }
+            int kind = line[at + 2];
+            if (contains(heard, kind)) {
+                return null;
+            }
+            // Where the question names it: its words ("rex", "my pet"), or "it", "he", "she".
+            List<Integer> names = new ArrayList<>();
+            for (int i = 0; i < at; i++) {
+                if (line[i] >= 0 && !BEFORE_A_NAME.contains(v.word(line[i]))) {
+                    names.add(line[i]);
+                }
+            }
+            int from = -1, to = -1;
+            for (int i = 0; i < heard.length - 1 && !names.isEmpty(); i++) {
+                if (heard[i] == names.get(0) && i + names.size() <= heard.length) {
+                    boolean all = true;
+                    for (int j = 0; j < names.size() && all; j++) {
+                        all = heard[i + j] == names.get(j);
+                    }
+                    if (all) {
+                        from = i;
+                        to = i + names.size();
+                        while (from > 0 && heard[from - 1] >= 0 && BEFORE_A_NAME.contains(v.word(heard[from - 1]))) {
+                            from--;
+                        }
+                    }
+                }
+            }
+            if (from < 0) {
+                for (int i = 1; i < heard.length - 1 && from < 0; i++) {
+                    if (heard[i] >= 0 && Set.of("it", "he", "she").contains(v.word(heard[i]))) {
+                        from = i;
+                        to = i + 1;
+                    }
+                }
+            }
+            if (from < 0) {
+                continue;
+            }
+            kindLine = line;
+            return join(Arrays.copyOfRange(heard, 0, from), new int[] {line[at + 1], kind}, Arrays.copyOfRange(heard, to, heard.length));
         }
         return null;
     }

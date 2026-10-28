@@ -182,6 +182,9 @@ sun?" "yes , zombies burn in the sun .". These are recalled like lines told long
 nothing it was told answers, and never for questions about the one talking or about now ("is it
 raining?"). A fact with a word the villager has never heard ("enderman") comes to mind once someone
 says it.
+It reasons from what kind of thing something is: told "rex is a dog.", it answers "how many legs
+does rex have?" with "a dog has four legs .", and told "the monster by the gate is a skeleton.",
+"does it burn in the sun?" with "yes , skeletons burn in the sun .".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

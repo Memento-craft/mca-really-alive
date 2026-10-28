@@ -435,6 +435,32 @@ class ConversationTest {
     }
 
     @Test
+    void villagerReasonsFromWhatKindOfThingItIs() {
+        // {told, asked, right word}: what is known of the kind answers for the one told of.
+        String[][] talks = {{"rex is a dog.", "how many legs does rex have?", "four"},
+            {"the monster by the gate is a skeleton.", "does it burn in the sun?", "yes"},
+            {"hans is a baker.", "what does hans make?", "bread"},
+            {"my tool is a shovel.", "what is my tool for?", "digging"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 960 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 2; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][2]) ? 1 : 0;
+        }
+        System.out.printf("reasoned from the kind %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "reasoned only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},
