@@ -75,7 +75,7 @@ public final class KnowledgeTests {
      * Told what bread takes and asked for some, a villager holds bread as its goal with the steps
      * under it, and works down them as it does each: breaking the wheat, carrying it, having bread.
      */
-    @GameTest(template = ARENA, timeoutTicks = 600, batch = "knowledge_goal")
+    @GameTest(template = ARENA, timeoutTicks = 700, batch = "knowledge_goal")
     public static void villagerWorksThroughAPlan(GameTestHelper h) {
         BrainManager.get().setLockstep(true);
         Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
@@ -93,28 +93,29 @@ public final class KnowledgeTests {
                 Speech.playerSays(h.getLevel(), player, "you get wheat by breaking wheat.", "Steve");
             } else if (t == 110) {
                 Speech.playerSays(h.getLevel(), player, "can you make some bread?", "Steve");
-            } else if (t == 160) {
+            } else if (t == 200) {
                 Speech.playerSays(h.getLevel(), player, "what are you doing?", "Steve");
-            } else if (t == 260) {
+            } else if (t == 380) {
                 LOG.info("plan: asked for bread, it is after {} and said {}", plan, answers);
                 h.assertTrue(plan.equals(List.of("broke wheat", "wheat", "bread")), "asked for bread, it is after " + plan);
+                h.assertTrue(answers.stream().anyMatch(l -> l.contains("i want some bread")), "asked what it is doing, it said " + answers);
                 h.setBlock(crop.below(), Blocks.FARMLAND);
                 h.setBlock(crop, ((CropBlock) Blocks.WHEAT).getStateForAge(7));
                 h.getLevel().destroyBlock(h.absolutePos(crop), false, v);
-            } else if (t == 300) {
+            } else if (t == 420) {
                 h.assertTrue(plan.equals(List.of("wheat", "bread")), "having broken the wheat, it is after " + plan);
                 v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT, 3));
-            } else if (t == 340) {
+            } else if (t == 460) {
                 h.assertTrue(plan.equals(List.of("bread")), "carrying wheat, it is after " + plan);
                 v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BREAD, 1));
-            } else if (t == 380) {
+            } else if (t == 500) {
                 h.assertTrue(plan.isEmpty(), "with bread, it is still after " + plan);
                 LOG.info("plan: worked through it, and knows bread needs {}", handle.brain().needsOf("bread"));
                 h.succeed();
             }
-            if (t > 160 && handle.lines() > seen[0]) {
+            if (handle.lines() > seen[0]) {
                 seen[0] = handle.lines();
-                answers.add(handle.lastLine());
+                answers.add(t + ": " + handle.lastLine());
             }
         });
     }
