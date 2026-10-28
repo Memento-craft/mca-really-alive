@@ -602,6 +602,45 @@ public final class UseTests {
                 });
     }
 
+    /**
+     * With Create installed: holding use on a hand crank turns it, and the shaft behind it, as a
+     * player's held right button does. The shaft it drives is felt set going; the crank itself,
+     * turning only under the hand, is not.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void turnsAHandCrankIfCreateIsInstalled(GameTestHelper h) {
+        var crank = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "hand_crank"));
+        var shaft = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (crank.isEmpty() || shaft.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos at = new BlockPos(5, 2, 12);
+        // The crank faces the villager, west, and turns the shaft behind it.
+        h.setBlock(at, crank.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.WEST));
+        h.setBlock(at.east(), shaft.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.X));
+        Villager v = worker(h, ItemStack.EMPTY);
+        BrainManager.Handle handle = handle(v);
+        Vec3 aimAt = new Vec3(5.5, 2.5, 12.5);
+        h.runAtTickTime(8, () -> aim(h, v, aimAt));
+        h.runAtTickTime(10, () -> {
+            aim(h, v, aimAt);
+            handle.hold(USE);
+        });
+        h.runAtTickTime(30, () -> {
+            boolean turning = com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(at.east()));
+            LOG.info("hand crank held: shaft turning {}, set going {}", turning, handle.hands().setGoingTotal);
+            handle.hold(MotorCommand.IDLE);
+            h.assertTrue(turning, "the shaft behind the crank is not turning");
+            h.assertTrue(handle.hands().setGoingTotal == 1, "the shaft the crank turned was felt set going "
+                    + handle.hands().setGoingTotal + " times, not once");
+            h.succeed();
+        });
+    }
+
     private static int count(Villager v, net.minecraft.world.item.Item item) {
         int n = v.getMainHandItem().is(item) ? v.getMainHandItem().getCount() : 0;
         for (int i = 0; i < v.getInventory().getContainerSize(); i++) {

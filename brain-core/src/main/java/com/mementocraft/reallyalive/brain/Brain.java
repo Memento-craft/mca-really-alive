@@ -133,6 +133,8 @@ public final class Brain {
      */
     static final int FUTILE_USE_TICKS = 40;
     static final int TRY_ANOTHER_TICKS = 3;
+    /** How brightly a place must shine under the pointer for the urge to deal one out there. */
+    static final float DEAL_OUT_FROM = 0.9f;
     /** Curiosity about what it carries -> inventory key, to look it over. */
     static final float CURIOUS_WEIGHT = 0.6f;
     /**
@@ -1861,7 +1863,12 @@ public final class Brain {
      * it is looking at. Not while a screen is open: there the middle of the view is the pointer.
      */
     private void drivePoke(float screen) {
-        if (screen > 0f || input[IN_FEEL + FeelChannel.TARGET_IN_REACH.ordinal()] < 0.5f) {
+        if (screen > 0f) {
+            dealOut();
+            grasp();
+            return;
+        }
+        if (input[IN_FEEL + FeelChannel.TARGET_IN_REACH.ordinal()] < 0.5f) {
             return;
         }
         float seen = 0f;
@@ -1874,6 +1881,61 @@ public final class Brain {
             return;
         }
         for (int i : motorPools[MotorChannel.USE.ordinal()]) {
+            extInput[i] += POKE_URGE * seen;
+        }
+    }
+
+    /**
+     * On a screen, with a stack on the pointer and a place that takes it shining right under the
+     * pointer, the same poking urge presses the right button, which puts down one of the stack
+     * and, held while the pointer moves on, one in each place it passes, as a player deals things
+     * out, and holds the left button back. Recipes needing one stack in two places (two alloys
+     * for shafts) were never made: the left button puts the whole stack down in one.
+     */
+    private void dealOut() {
+        if (input[IN_FEEL + FeelChannel.POINTER_HOLDING.ordinal()] < 0.5f) {
+            return;
+        }
+        float shining = 0f;
+        for (int y = SenseLayout.VISION_H / 2 - 1; y <= SenseLayout.VISION_H / 2; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 1; x <= SenseLayout.VISION_W / 2; x++) {
+                shining = Math.max(shining, input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CLIMBABLE)]);
+            }
+        }
+        if (shining < DEAL_OUT_FROM) {
+            return;
+        }
+        for (int i : motorPools[MotorChannel.USE.ordinal()]) {
+            extInput[i] += POKE_URGE * shining;
+        }
+        // And the other hand is held back there, or the left button, learnt first for moving
+        // whole stacks, pressed first and put both alloys down in one place: newborns handed
+        // exactly two alloys saw a shaft form 0-4 times in 150000 ticks.
+        for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+            extInput[i] -= BUTTON_RELEASE * shining;
+        }
+    }
+
+    /**
+     * On a screen, with nothing on the pointer and a thing that catches the eye right under it,
+     * the same poking urge presses the left button and takes it, as a baby grasps what is put in
+     * its palm. Newborns that had shared two alloys over the grid and had eight shafts showing
+     * kept the pointer on them for 65 ticks and took them 2 times out of 13.
+     */
+    private void grasp() {
+        if (input[IN_FEEL + FeelChannel.POINTER_HOLDING.ordinal()] >= 0.5f) {
+            return;
+        }
+        float seen = 0f;
+        for (int y = SenseLayout.VISION_H / 2 - 1; y <= SenseLayout.VISION_H / 2; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 1; x <= SenseLayout.VISION_W / 2; x++) {
+                seen = Math.max(seen, input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)]);
+            }
+        }
+        if (seen < DEAL_OUT_FROM) {
+            return;
+        }
+        for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
             extInput[i] += POKE_URGE * seen;
         }
     }

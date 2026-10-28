@@ -44,6 +44,7 @@ public final class WorkLearningTests {
     private static final int CRAFT_TICKS = 150_000;
     /** Tilled ground goes back to dirt this often, so there is always something to till. */
     private static final int REGROW = 200;
+    private static final int LITTER = 32;
     /** Brewing needs the stand found and opened in the world first, on top of all of crafting's steps. */
     private static final int BREW_TICKS = 150_000;
 
@@ -210,6 +211,20 @@ public final class WorkLearningTests {
     }
 
     /** Takes away whatever was put on the pen's floor, except the blocks to keep. */
+    /**
+     * Keeps a pen from filling with dropped things: past {@code LITTER} items lying about, the
+     * oldest are cleared away, as they would be on a long day in a real village. Without this a
+     * newborn that throws what it is given again and again slows the whole server to a crawl.
+     */
+    private static void tidyLitter(GameTestHelper h) {
+        var litter = h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                new net.minecraft.world.phys.AABB(h.absolutePos(new BlockPos(0, 0, 7)).getCenter(), h.absolutePos(new BlockPos(10, 6, 17)).getCenter()));
+        if (litter.size() > LITTER) {
+            litter.sort(java.util.Comparator.comparingInt(net.minecraft.world.entity.item.ItemEntity::getAge).reversed());
+            litter.subList(0, litter.size() - LITTER).forEach(net.minecraft.world.entity.Entity::discard);
+        }
+    }
+
     private static void clearPen(GameTestHelper h, BlockPos... keep) {
         for (int x = 1; x <= 9; x++) {
             for (int z = 8; z <= 16; z++) {
@@ -255,6 +270,9 @@ public final class WorkLearningTests {
             }
             tick[0]++;
             planted[0] = handle.hands().placedTotal;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 replant(h, v);
                 if (carried(v, Items.WHEAT_SEEDS) == 0) {
@@ -350,6 +368,35 @@ public final class WorkLearningTests {
         craftBenchmark(h, which, "SHAFTBOOK", alloy.get(), shaft.get(), book);
     }
 
+    /** SHAFT handed two alloys at a time, exactly what one craft takes: a smaller first step. */
+    private static void twoAlloysBenchmark(GameTestHelper h, String which) {
+        var alloy = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "andesite_alloy"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        if (alloy.isEmpty() || shaft.isEmpty()) {
+            if (selected(h, "SHAFT2")) {
+                LOG.info("SHAFT2: Create is not installed, nothing to learn");
+                h.succeed();
+            }
+            return;
+        }
+        craftBenchmark(h, which, "SHAFT2", alloy.get(), shaft.get(), null, 2);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void newbornCraftsShaftsFromTwoAlloys(GameTestHelper h) {
+        twoAlloysBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void secondNewbornCraftsShaftsFromTwoAlloys(GameTestHelper h) {
+        twoAlloysBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    public static void thirdNewbornCraftsShaftsFromTwoAlloys(GameTestHelper h) {
+        twoAlloysBenchmark(h, "3");
+    }
+
     @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
     public static void newbornCraftsShaftsWithABook(GameTestHelper h) {
         shaftBookBenchmark(h, "1");
@@ -396,10 +443,16 @@ public final class WorkLearningTests {
     /** The same, with a recipe book among its things, kept there if it loses it. */
     private static void craftBenchmark(GameTestHelper h, String which, String name,
                                        net.minecraft.world.item.Item from, net.minecraft.world.item.Item into, ItemStack book) {
+        craftBenchmark(h, which, name, from, into, book, 64);
+    }
+
+    /** The same, handed only {@code count} at a time: exactly what one recipe takes, as a first lesson. */
+    private static void craftBenchmark(GameTestHelper h, String which, String name, net.minecraft.world.item.Item from,
+                                       net.minecraft.world.item.Item into, ItemStack book, int count) {
         if (!selected(h, name)) {
             return;
         }
-        Villager v = pen(h, new ItemStack(from, 64), CRAFT_TICKS);
+        Villager v = pen(h, new ItemStack(from, count), CRAFT_TICKS);
         if (book != null) {
             v.getInventory().addItem(book.copy());
         }
@@ -430,6 +483,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 // Logs placed about the pen are cleared away; one that has no logs left is handed
                 // more, as a parent would, so the benchmark keeps measuring crafting, not building.
@@ -440,7 +496,7 @@ public final class WorkLearningTests {
                 }
                 if (carried(v, from) == 0) {
                     v.getInventory().removeItemType(from, 64);
-                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(from, 64));
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(from, count));
                     handBacks[0]++;
                 }
             }
@@ -500,13 +556,13 @@ public final class WorkLearningTests {
                                 + " in screens {} ticks, left button {}, inventory key {}, over a slot {}, over a thing {}, mean pointer {},{}; carries {} logs, {} planks;"
                                 + " logs handed back {} times; a stack on the pointer {} ticks, over the grid {}, over the result {};"
                                 + " a result showing {} ticks, with the pointer free {}, over it {};"
-                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; recipes learnt {}, places matched {}, wheel turned {}; brain {} neurons, {} synapses", tick[0],
+                                + " outside screens the inventory key down {} ticks, pressed {} times, curious {} ticks; moved things {} times, thrown {}; placed {} blocks; recipes learnt {}, places matched {}, wheel turned {}; shared out {}, dealt one {}; brain {} neurons, {} synapses", tick[0],
                         handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().clicksOnThings, handle.hands().formedTotal, handle.hands().madeTotal,
                         screenTicks[0], attackTicks[0], keyTicks[0], overSlot[0], overThing[0],
                         Math.round(pointerSum[0] / Math.max(1, screenTicks[0])), Math.round(pointerSum[1] / Math.max(1, screenTicks[0])), carried(v, from), carried(v, into),
                         handBacks[0], pointerHolding[0], holdingOverGrid[0], holdingOverResult[0],
                         resultTicks[0], resultFree[0], resultOver[0], keyDownOutside[0], keyPressesOutside[0], curiousTicks[0], handle.hands().moves,
-                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.hands().recipesLearnt, handle.hands().matchedTotal, handle.hands().wheelTurns,
+                        handle.hands().throwsTotal, handle.hands().placedTotal, handle.hands().recipesLearnt, handle.hands().matchedTotal, handle.hands().wheelTurns, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal,
                         handle.brain().neuronCount(), handle.brain().synapseCount());
             }
             if (tick[0] == CRAFT_TICKS) {
@@ -615,6 +671,9 @@ public final class WorkLearningTests {
             if (handle.hands().target() instanceof BlockHitResult hit && hit.getBlockPos().equals(h.absolutePos(stand))) {
                 aimedAtStand[0]++;
                 usedOnStand[0] += handle.command().use() ? 1 : 0;
+            }
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
             }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 clearPen(h, stand);
@@ -866,6 +925,9 @@ public final class WorkLearningTests {
                 aimedAtDepot[0]++;
                 usedOnDepot[0] += handle.command().use() ? 1 : 0;
             }
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 clearPen(h, onto, pressAt, motorAt);
                 regrow(h, v);
@@ -1000,6 +1062,9 @@ public final class WorkLearningTests {
                 // The drive comes apart again, so there is always building to do.
                 h.setBlock(gap, Blocks.AIR);
             }
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 clearPen(h, onto, pressAt, motorAt, gap);
                 regrow(h, v);
@@ -1027,6 +1092,126 @@ public final class WorkLearningTests {
                 String report = String.format("CHAIN: took sheets %d times, powered the press %d times", handle.hands().madeTotal, powered[0]);
                 LOG.info("CHAIN newborn {} learning result: {}", which, report);
                 if (handle.hands().madeTotal >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornCranksAPress(GameTestHelper h) {
+        crankBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornCranksAPress(GameTestHelper h) {
+        crankBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornCranksAPress(GameTestHelper h) {
+        crankBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornCranksAPress(GameTestHelper h) {
+        crankBenchmark(h, "4");
+    }
+
+    /**
+     * With Create installed: the PRESS pen with no motor, and a newborn carrying a hand crank as
+     * well as iron. The press runs only while a crank set on its side is turned (use held on it),
+     * so making sheets takes building its own power source and working it. The crank is taken
+     * back now and then and handed over again, so it can be put somewhere better.
+     */
+    private static void crankBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "CRANK")) {
+            return;
+        }
+        java.util.function.Function<String, ResourceLocation> create = id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var depot = BuiltInRegistries.BLOCK.getOptional(create.apply("depot"));
+        var crank = BuiltInRegistries.BLOCK.getOptional(create.apply("hand_crank"));
+        if (press.isEmpty() || depot.isEmpty() || crank.isEmpty()) {
+            LOG.info("CRANK: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        // The depot is set in the floor, so the press's sides, where a crank goes, are at eye height.
+        BlockPos onto = new BlockPos(5, 1, 9);
+        BlockPos pressAt = onto.above(2);
+        var pressState = press.get().defaultBlockState().setValue(
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST);
+        net.minecraft.world.item.Item crankItem = crank.get().asItem();
+        Villager v = pen(h, new ItemStack(crankItem), TICKS);
+        v.getInventory().addItem(new ItemStack(Items.IRON_INGOT, 16));
+        h.setBlock(onto, depot.get());
+        h.setBlock(pressAt, pressState);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] powered = {0};
+        int[] pressTurning = {0};
+        int[] cranksPlaced = {0};
+        boolean[] wasTurning = {false};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (!h.getBlockState(onto).is(depot.get())) {
+                h.setBlock(onto, depot.get());
+            }
+            if (!h.getBlockState(pressAt).is(press.get())) {
+                h.setBlock(pressAt, pressState);
+            }
+            boolean turning = com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pressAt));
+            powered[0] += turning && !wasTurning[0] ? 1 : 0;
+            pressTurning[0] += turning ? 1 : 0;
+            wasTurning[0] = turning;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                boolean crankInPen = false;
+                for (int x = 1; x <= 9; x++) {
+                    for (int z = 8; z <= 16; z++) {
+                        for (int y = 2; y <= 4; y++) {
+                            crankInPen |= h.getBlockState(new BlockPos(x, y, z)).is(crank.get());
+                        }
+                    }
+                }
+                if (tick[0] % (REGROW * 12) == 0 || !crankInPen && carried(v, crankItem) == 0) {
+                    // The crank comes back to its hands, to put somewhere (maybe better) again.
+                    clearPen(h, onto, pressAt);
+                    regrow(h, v);
+                    if (carried(v, crankItem) == 0) {
+                        v.getInventory().addItem(new ItemStack(crankItem));
+                        cranksPlaced[0]++;
+                    }
+                }
+                if (carried(v, Items.IRON_INGOT) == 0) {
+                    v.getInventory().addItem(new ItemStack(Items.IRON_INGOT, 16));
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    ItemStack s = v.getInventory().getItem(i);
+                    if (!s.is(crankItem) && !s.is(Items.IRON_INGOT)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("CRANK newborn {}: by tick {}: press powered {} times, turning {} ticks; took sheets {} times; set going {}, placed {};"
+                                + " cranks handed back {}; in hand {}; wheel turned {} times", which, tick[0], powered[0], pressTurning[0],
+                        handle.hands().madeTotal, handle.hands().setGoingTotal, handle.hands().placedTotal, cranksPlaced[0],
+                        v.getMainHandItem(), handle.hands().wheelTurns);
+            }
+            if (tick[0] == TICKS) {
+                String report = String.format("CRANK: powered the press %d times (%d ticks), took sheets %d times",
+                        powered[0], pressTurning[0], handle.hands().madeTotal);
+                LOG.info("CRANK newborn {} learning result: {}", which, report);
+                if (powered[0] >= 3) {
                     h.succeed();
                 } else {
                     h.fail("not learned yet: " + report);

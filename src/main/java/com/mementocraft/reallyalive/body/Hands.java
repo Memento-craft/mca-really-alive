@@ -134,6 +134,15 @@ public final class Hands {
     private final java.util.Map<net.minecraft.world.item.Item, Long> lookedOver = new java.util.HashMap<>();
     /** Ticks after which a thing looked over is worth looking at again. */
     private static final long LOOK_AGAIN_TICKS = 6000L;
+    /**
+     * A thing it has never made anything from is looked over again sooner, for its first screens
+     * of looking, as a child goes back to a puzzle it has not worked out. Newborns handed two
+     * alloys opened their inventory 2-5 times in 10000 ticks and made a shaft 1-4 times in all.
+     */
+    private static final long LOOK_AGAIN_UNSOLVED_TICKS = 1500L;
+    private static final int UNSOLVED_LOOKS = 40;
+    private final java.util.Set<net.minecraft.world.item.Item> madeFrom = new java.util.HashSet<>();
+    private final java.util.Map<net.minecraft.world.item.Item, Integer> looks = new java.util.HashMap<>();
     /** Whether a result slot showed something after the last click, and what has been shown on this screen. */
     private boolean resultShown;
     private final java.util.Set<net.minecraft.world.item.Item> formedOnScreen = new java.util.HashSet<>();
@@ -182,6 +191,8 @@ public final class Hands {
     private static final long SET_GOING_WITHIN = 600L;
     private static final int SET_GOING_WATCHED = 32;
     private static final int SET_GOING_EVERY = 5;
+    /** How far from a machine part it works it watches still machine parts for starting to turn. */
+    private static final int WORKERS_NEAR = 4;
     private static final float SET_GOING_HALF_LIFE = 2400f;
     private int setGoingThisTick;
     private float setGoingLately;
@@ -200,6 +211,9 @@ public final class Hands {
      */
     private static final int SCREEN_LONG_TICKS = 300;
     public int formedTotal;
+    /** Drags let go over more than one slot, sharing a stack out; and single right clicks putting one thing into a workstation. */
+    public int sharedOutTotal;
+    public int dealtOneTotal;
 
     public Hands(Villager body) {
         this.body = body;
@@ -427,7 +441,9 @@ public final class Hands {
         boolean[] curious = {false};
         forEachCarried(item -> {
             Long seen = lookedOver.get(item);
-            curious[0] |= seen == null || ticksLived - seen > LOOK_AGAIN_TICKS;
+            long again = !madeFrom.contains(item) && looks.getOrDefault(item, 0) < UNSOLVED_LOOKS
+                    ? LOOK_AGAIN_UNSOLVED_TICKS : LOOK_AGAIN_TICKS;
+            curious[0] |= seen == null || ticksLived - seen > again;
         });
         return curious[0] ? 1f : 0f;
     }
@@ -489,6 +505,14 @@ public final class Hands {
     public void made() {
         madeThisTick++;
         madeTotal++;
+        if (screen != null) {
+            // What is still in the grid as the result is taken is what it was made from.
+            for (Slot s : screen.slots) {
+                if (s.hasItem() && !(s.container instanceof net.minecraft.world.entity.player.Inventory) && !(s instanceof net.minecraft.world.inventory.ResultSlot)) {
+                    madeFrom.add(s.getItem().getItem());
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------- picking up
@@ -866,6 +890,9 @@ public final class Hands {
             p.setItemInHand(hand, ItemStack.EMPTY);
         }
         boolean machine = Machines.isMachine(level, clicked);
+        boolean clickedStill = Machines.present() && !Machines.turning(level, clicked);
+        boolean placeStill = Machines.present() && !Machines.turning(level, placeAt);
+        java.util.List<BlockPos> stillNear = machine ? stillPartsNear(level, clicked) : java.util.List.of();
         java.util.Map<net.minecraft.world.item.Item, Integer> carriedBefore = machine ? countsIn(p.getInventory()) : null;
         InteractionResult r;
         try {
@@ -883,8 +910,11 @@ public final class Hands {
         }
         swing(r, hand);
         usedOnBlock++;
-        noteWorked(level, clicked);
-        noteWorked(level, placeAt);
+        noteWorked(level, clicked, clickedStill);
+        noteStillNear(level, stillNear);
+        if (!placeAt.equals(clicked)) {
+            noteWorked(level, placeAt, placeStill);
+        }
         if (carriedBefore != null) {
             tookFromMachine(carriedBefore, countsIn(p.getInventory()));
         }
@@ -1041,13 +1071,59 @@ public final class Hands {
     }
 
     /** Watches a block it placed or worked, if it is still, to feel it if it starts turning. */
-    private void noteWorked(ServerLevel level, BlockPos pos) {
-        if (!Machines.present() || Machines.turning(level, pos)) {
+    private void noteWorked(ServerLevel level, BlockPos pos, boolean stillBefore) {
+        if (!stillBefore) {
+            return;
+        }
+        if (Machines.turning(level, pos)) {
+            stillWorked.remove(pos);
+            if (Machines.isCrank(level, pos)) {
+                // A crank turns because the hand turns it: that is not setting it going. What it
+                // drives, watched above, is.
+                return;
+            }
+            setGoingThisTick++;
+            setGoingTotal++;
             return;
         }
         stillWorked.remove(pos);
         stillWorked.put(pos.immutable(), ticksLived);
         if (stillWorked.size() > SET_GOING_WATCHED) {
+            stillWorked.remove(stillWorked.keySet().iterator().next());
+        }
+    }
+
+    /**
+     * The still machine parts near one about to be worked (the shaft behind a crank, a press a
+     * shaft away), but never a crank: what working it may set going.
+     */
+    private static java.util.List<BlockPos> stillPartsNear(ServerLevel level, BlockPos pos) {
+        java.util.List<BlockPos> out = new java.util.ArrayList<>();
+        for (BlockPos p : BlockPos.betweenClosed(pos.offset(-WORKERS_NEAR, -WORKERS_NEAR, -WORKERS_NEAR),
+                pos.offset(WORKERS_NEAR, WORKERS_NEAR, WORKERS_NEAR))) {
+            if (!p.equals(pos) && Machines.isMachine(level, p) && !Machines.isCrank(level, p) && !Machines.turning(level, p)) {
+                out.add(p.immutable());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * After working a machine part: each still part near it that turns now was set going by it,
+     * and the rest are watched, to feel them if they start soon after. The crank itself never
+     * counts, so a crank that drives nothing is not felt at all.
+     */
+    private void noteStillNear(ServerLevel level, java.util.List<BlockPos> stillNear) {
+        for (BlockPos p : stillNear) {
+            stillWorked.remove(p);
+            if (Machines.turning(level, p)) {
+                setGoingThisTick++;
+                setGoingTotal++;
+            } else {
+                stillWorked.put(p, ticksLived);
+            }
+        }
+        while (stillWorked.size() > SET_GOING_WATCHED) {
             stillWorked.remove(stillWorked.keySet().iterator().next());
         }
     }
@@ -1104,6 +1180,7 @@ public final class Hands {
         stopDigging();
         screen = menu;
         screensOpened++;
+        forEachCarried(item -> looks.merge(item, 1, Integer::sum));
         noveltyThisTick += novelty(menu);
         screenIdle = 0;
         screenOpenFor = 0;
@@ -1231,6 +1308,11 @@ public final class Hands {
             return;
         }
         if (!dragSlots.isEmpty()) {
+            if (dragSlots.size() > 1) {
+                sharedOutTotal++;
+            } else if (dragButton == 1 && !(dragSlots.iterator().next().container instanceof net.minecraft.world.entity.player.Inventory)) {
+                dealtOneTotal++;
+            }
             click(p, -999, AbstractContainerMenu.getQuickcraftMask(0, dragButton), ClickType.QUICK_CRAFT);
             for (Slot s : dragSlots) {
                 click(p, s.index, AbstractContainerMenu.getQuickcraftMask(1, dragButton), ClickType.QUICK_CRAFT);
@@ -1257,7 +1339,7 @@ public final class Hands {
         int before = contents(screen);
         screen.clicked(slot, button, type, p);
         screen.broadcastChanges();
-        if (contents(screen) != before) {
+        if (contents(screen) != before && !(screen instanceof RecipeBook.Menu)) {
             // Something moved: felt the less, the more it has lately been moving things about.
             movedThisTick += 1f / (1f + movedLately);
             movedLately += 1f;
