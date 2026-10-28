@@ -101,6 +101,8 @@ public final class BrainManager {
         MotorCommand command = MotorCommand.IDLE;
         MotorCommand held;
         float lastHealth = -1f;
+        /** Where it stood last tick, to tell its own steps toward a threat. */
+        Vec3 lastPos;
         BlockPos goal;
         double lastGoalDist = -1;
         float lastGoalFacing = -2f;
@@ -442,6 +444,49 @@ public final class BrainManager {
         f.set(FeelChannel.THREAT_IN_REACH, !h.hands.screenOpen() && h.hands.threatInReach() ? 1f : 0f);
         if (h.age % 1200 == 0) {
             h.hands.threats.forgetOld(now);
+        }
+        // Its own steps toward the nearest threat in view.
+        Vec3 here = v.position();
+        if (h.lastPos != null) {
+            net.minecraft.world.entity.LivingEntity foe = nearestThreatInView(v, h, now);
+            if (foe != null) {
+                Vec3 to = foe.position().subtract(h.lastPos);
+                double flat = Math.sqrt(to.x * to.x + to.z * to.z);
+                if (flat > 1e-3) {
+                    Vec3 step = here.subtract(h.lastPos);
+                    double toward = (step.x * to.x + step.z * to.z) / flat;
+                    if (toward > 0) {
+                        h.hands.closedIn((float) toward);
+                    }
+                }
+            }
+        }
+        h.lastPos = here;
+    }
+
+    /** The nearest threat within sight range, inside the field of view and not behind a wall. */
+    private static net.minecraft.world.entity.LivingEntity nearestThreatInView(Villager v, Handle h, long now) {
+        double range = Config.VISION_RANGE.get();
+        net.minecraft.world.entity.LivingEntity best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (net.minecraft.world.entity.LivingEntity e : v.level().getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
+                v.getBoundingBox().inflate(range), e -> e != v && h.hands.threats.isThreat(e, now))) {
+            Vec3 to = e.getEyePosition().subtract(v.getEyePosition());
+            float bearing = Mth.wrapDegrees((float) (Mth.atan2(to.z, to.x) * Mth.RAD_TO_DEG) - 90f - v.getYRot());
+            double d = to.length();
+            if (Math.abs(bearing) < Senses.FOV_H / 2f && d < bestDist && v.hasLineOfSight(e)) {
+                best = e;
+                bestDist = d;
+            }
+        }
+        return best;
+    }
+
+    /** A brain villager caught a blow on its shield. */
+    public void blocked(Villager v) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.hands.blocked();
         }
     }
 

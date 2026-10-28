@@ -219,6 +219,10 @@ public final class Hands {
     /** Blows landed on threats this tick, each as a share of a fully recharged blow; and threats defeated. */
     private float hitThisTick;
     private int defeatedThisTick;
+    private int blockedThisTick;
+    private float closedInThisTick;
+    /** Diagnostics: blows caught on a shield. */
+    public int blockedTotal;
     /** Diagnostics for benchmarks: swings at creatures, blows landed on threats, their summed share, wins. */
     public int swingsAtCreatures;
     public int hitsOnThreats;
@@ -285,9 +289,12 @@ public final class Hands {
             pleasure += Motives.DIG_PER_TICK;
         }
         pleasure += placedThisTick * Motives.PLACE;
-        pleasure += hitThisTick * Motives.HIT + defeatedThisTick * Motives.DEFEAT;
+        pleasure += hitThisTick * Motives.HIT + defeatedThisTick * Motives.DEFEAT
+                + blockedThisTick * Motives.BLOCKED + closedInThisTick * Motives.CLOSE_IN;
         hitThisTick = 0f;
         defeatedThisTick = 0;
+        blockedThisTick = 0;
+        closedInThisTick = 0f;
         dugThisTick = false;
         placedThisTick = 0;
         return pleasure;
@@ -304,6 +311,17 @@ public final class Hands {
     /** True when the crosshair rests on a threat within reach. */
     public boolean threatInReach() {
         return target instanceof EntityHitResult hit && threats.isThreat(hit.getEntity(), body.level().getGameTime());
+    }
+
+    /** A blow was caught on its raised shield. */
+    public void blocked() {
+        blockedThisTick++;
+        blockedTotal++;
+    }
+
+    /** It stepped this far toward a threat it can see. */
+    public void closedIn(float blocks) {
+        closedInThisTick += blocks;
     }
 
     /** A threat it hurt lately died: the fight is won. */

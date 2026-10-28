@@ -59,6 +59,15 @@ public final class Motives {
     public static final float HIT = 0.4f;
     /** A threat it hurt lately dies: the fight is won. */
     public static final float DEFEAT = 1.0f;
+    /**
+     * Per block it moves toward a threat it can see: the pull to close in on a foe, as a child
+     * squares up to a bully. Only its own steps count, not the foe walking up to it, so standing
+     * still is not rewarded. Without it villagers never walked up to a skeleton shooting at them
+     * and lost every bout.
+     */
+    public static final float CLOSE_IN = 0.3f;
+    /** A blow caught on a raised shield: the relief of a parry. */
+    public static final float BLOCKED = 0.3f;
 
     private Motives() {}
 }

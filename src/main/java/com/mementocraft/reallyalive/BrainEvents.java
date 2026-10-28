@@ -94,6 +94,13 @@ public final class BrainEvents {
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void shieldBlock(net.neoforged.neoforge.event.entity.living.LivingShieldBlockEvent e) {
+        if (e.getBlocked() && !e.getEntity().level().isClientSide() && e.getEntity() instanceof Villager v && BrainManager.get() != null) {
+            BrainManager.get().blocked(v);
+        }
+    }
+
     @SubscribeEvent
     public static void death(LivingDeathEvent e) {
         if (!e.getEntity().level().isClientSide() && BrainManager.get() != null && !e.isCanceled()) {

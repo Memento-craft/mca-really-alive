@@ -49,8 +49,9 @@ public final class FightTests {
     private static final Logger LOG = LogUtils.getLogger();
     private static final String ARENA = "arena";
     static final int BOUT_TICKS = 400;
-    static final float LOSS_HEALTH = 6f;
-    private static final int BOUTS = 150;
+    /** Above the hardest blow in these fights (a stone sword's critical hit, 7.5), so no one dies. */
+    static final float LOSS_HEALTH = 8f;
+    private static final int BOUTS = 300;
     private static final int WINDOW = 25;
     /** Where the villager starts each bout, and its foe, five blocks apart in the pen. */
     private static final Vec3 HOME = new Vec3(2.5, 2, 12.5);
@@ -158,12 +159,16 @@ public final class FightTests {
             long now = h.getLevel().getGameTime();
             h.assertTrue(handle.hands().threats.isThreat(p, now), "the player who hit it is no threat");
             h.assertFalse(handle.hands().threats.isThreat(bystander, now), "a bystander is a threat");
-            // The one who hit it steps in front of it: a threat in reach, in the middle of the view.
+        });
+        h.runAtTickTime(20, () -> {
+            // Once the knockback has settled, the one who hit it steps in front of it: a threat in
+            // reach, in the middle of the view.
+            v.setDeltaMovement(Vec3.ZERO);
             Vec3 ahead = v.position().add(2.0, 0, 0);
             p.moveTo(ahead.x, ahead.y, ahead.z, 90f, 0f);
             v.setXRot(10f);
         });
-        h.runAtTickTime(12, () -> {
+        h.runAtTickTime(23, () -> {
             h.assertTrue(handle.frame().feel[FeelChannel.THREAT_IN_REACH.ordinal()] > 0.5f, "the threat in the crosshair is not felt: aiming at "
                     + handle.hands().target() + " with yaw " + v.getYRot() + ", pitch " + v.getXRot() + "; partner at " + p.position()
                     + ", villager at " + v.position());
@@ -237,6 +242,7 @@ public final class FightTests {
         p.moveTo(abs.x, abs.y, abs.z, 90f, 0f);
         p.arm(unbreakable(Items.WOODEN_SWORD));
         h.getLevel().addNewPlayer(p);
+        p.settleIn();
         return p;
     }
 
@@ -252,12 +258,15 @@ public final class FightTests {
         int swings;
         int shieldTicks;
         int unprovoked;
+        int inReach;
+        int readyInReach;
 
         String line() {
             return String.format("%d bouts: %d won, %d lost, %d drawn; %.1f hits a bout, mean blow %.2f of full, %.1f damage dealt"
-                            + " and %.1f taken a bout, %d swings at creatures, %d ticks blocking",
+                            + " and %.1f taken a bout, %d swings at creatures, %d ticks blocking; a threat in reach %d ticks, %d of them ready",
                     bouts, wins, losses, bouts - wins - losses, hits / (float) Math.max(1, bouts),
-                    share / Math.max(1, hits), dealt / Math.max(1, bouts), taken / Math.max(1, bouts), swings, shieldTicks);
+                    share / Math.max(1, hits), dealt / Math.max(1, bouts), taken / Math.max(1, bouts), swings, shieldTicks,
+                    inReach, readyInReach);
         }
     }
 
@@ -317,6 +326,10 @@ public final class FightTests {
             Tally t = windows[bout[0] / WINDOW];
             t.taken += Math.max(0f, lastHealth[0] - v.getHealth());
             lastHealth[0] = v.getHealth();
+            if (handle.frame().feel[FeelChannel.THREAT_IN_REACH.ordinal()] > 0.5f) {
+                t.inReach++;
+                t.readyInReach += hands.attackRecharge() >= 0.95f ? 1 : 0;
+            }
             Mob m = foe[0];
             if (m.isAlive() && m.getTarget() != v) {
                 // Skeletons go for players and golems; this one is set on the villager.
@@ -498,6 +511,10 @@ public final class FightTests {
             t.dealt += Math.max(0f, lastHealth[1] - p.getHealth());
             lastHealth[0] = v.getHealth();
             lastHealth[1] = p.getHealth();
+            if (handle.frame().feel[FeelChannel.THREAT_IN_REACH.ordinal()] > 0.5f) {
+                t.inReach++;
+                t.readyInReach += hands.attackRecharge() >= 0.95f ? 1 : 0;
+            }
             p.fight(v);
             boolean won = p.getHealth() <= LOSS_HEALTH;
             boolean lost = v.getHealth() <= LOSS_HEALTH;

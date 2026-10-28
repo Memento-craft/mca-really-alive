@@ -144,12 +144,27 @@ public final class Brain {
      * A threat in the crosshair within reach drives the left button: the inborn urge to strike back
      * at what attacks it. Learning can strengthen it, hold it back or time it.
      */
-    static final float STRIKE_WEIGHT = 1.0f;
+    static final float STRIKE_WEIGHT = 2.0f;
+    /**
+     * A blow from in front drives the right button a little: the flinch that throws an arm up,
+     * which with a shield in hand raises it. Learning can strengthen it where it helps.
+     */
+    static final float FLINCH_WEIGHT = 1.5f;
     /**
      * A left button held on a creature hits it once, as a player's does; it tires after this many
      * ticks and lets go, so the next press can hit again.
      */
     static final int STRIKE_HOLD_TICKS = 4;
+    /** How hard a tired button held on a threat is let go: past every reflex and urge on it. */
+    static final float STRIKE_RELEASE = 4f * BUTTON_RELEASE;
+    /**
+     * How hard a threat in reach drives the left button once the arm has recharged, as an urge
+     * learning cannot take away. The strike reflex alone was unlearned: blows came back after each
+     * swing, the pain weakened it, and a villager fighting a player swung less and less (7 wins in
+     * its first 25 bouts, 1 in its last). At half this strength a zombie stood in reach with the arm
+     * recharged for some 30 ticks a bout and was swung at once.
+     */
+    static final float STRIKE_URGE = 1.5f * BABBLE_GAIN;
     /** Curiosity about what it carries -> inventory key, to look it over. */
     static final float CURIOUS_WEIGHT = 0.6f;
     /**
@@ -355,6 +370,8 @@ public final class Brain {
     private int screenButtonHeld;
     /** Ticks the left button has been held on a threat in reach, in the world. */
     private int strikeHeld;
+    /** The held button has tired and is let go until it is up. */
+    private boolean strikeTired;
     /** Ticks of use pressed without pleasure, and ticks left of the urge to turn the wheel. */
     private int futileUse;
     private int tryAnother;
@@ -498,7 +515,7 @@ public final class Brain {
 
     /**
      * The reflexes of a fight, added in brain file version 12: a blow from one side turns the head
-     * toward it (from behind, right round), and a threat in the crosshair within reach drives the
+     * toward it (from behind, right round), a blow from in front makes it flinch (use), and a threat in the crosshair within reach drives the
      * left button.
      */
     private void wireFightReflexes(int i) {
@@ -509,6 +526,11 @@ public final class Brain {
         if (turn != null) {
             for (int m : motorPools[turn.ordinal()]) {
                 connect(i, m, HURT_TURN_WEIGHT);
+            }
+        }
+        if (slot == FeelChannel.HURT_FRONT.ordinal()) {
+            for (int m : motorPools[MotorChannel.USE.ordinal()]) {
+                connect(i, m, FLINCH_WEIGHT);
             }
         }
         if (slot == FeelChannel.THREAT_IN_REACH.ordinal()) {
@@ -1487,6 +1509,7 @@ public final class Brain {
         drivePoke(bored);
         driveButtonRelease(bored);
         driveStrikeRelease(bored);
+        driveStrike(bored);
         driveScreenSatiety(bored);
         driveTryAnother(bored);
         driveSpeechBabble(amp);
@@ -1531,9 +1554,32 @@ public final class Brain {
         boolean onCreature = screen <= 0f && input[IN_FEEL + FeelChannel.THREAT_IN_REACH.ordinal()] >= 0.5f;
         strikeHeld = onCreature && lastCommand.attack() ? strikeHeld + 1 : 0;
         if (strikeHeld > STRIKE_HOLD_TICKS) {
+            strikeTired = true;
+        }
+        if (!lastCommand.attack()) {
+            strikeTired = false;
+        }
+        // Held back until the button is really up: a gentler push let the strike reflex and the
+        // urge keep it down, and a villager swung at a zombie about once a bout.
+        if (strikeTired) {
             for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
-                extInput[i] -= BUTTON_RELEASE;
+                extInput[i] -= STRIKE_RELEASE;
             }
+        }
+    }
+
+    /**
+     * A threat in the crosshair within reach, with the arm recharged, gives an inborn urge to
+     * strike it. Learning adds to it or holds it back, but cannot wipe it out.
+     */
+    private void driveStrike(float screen) {
+        if (screen > 0f || strikeTired) {
+            return;
+        }
+        float ready = input[IN_FEEL + FeelChannel.ATTACK_READY.ordinal()];
+        float urge = STRIKE_URGE * input[IN_FEEL + FeelChannel.THREAT_IN_REACH.ordinal()] * ready * ready;
+        for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+            extInput[i] += urge;
         }
     }
 

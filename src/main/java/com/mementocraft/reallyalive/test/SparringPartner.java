@@ -70,6 +70,15 @@ final class SparringPartner extends FakePlayer {
         }
     }
 
+    /**
+     * A new player cannot be hurt for its first three seconds, a timer its own tick counts down;
+     * a fake player never ticks, so it would never be hurt at all.
+     */
+    void settleIn() {
+        net.neoforged.fml.util.ObfuscationReflectionHelper.setPrivateValue(
+                net.minecraft.server.level.ServerPlayer.class, this, 0, "spawnInvulnerableTime");
+    }
+
     @Override
     public boolean isInvulnerableTo(DamageSource source) {
         return false;
