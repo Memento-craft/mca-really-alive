@@ -175,6 +175,13 @@ It compares amounts, days and months: after "tom has three apples." "anna has fi
 has more apples?" is "anna has five apples ."; "how many more coins does lou have?" after "pia has
 4 coins." "lou has 9 coins." is "lou has five more coins ."; "which comes first, friday or sunday?"
 is "friday comes first ."; and "is four less than two?" is "no , four is more than two .".
+Every villager also knows what anyone learns growing up, from a shipped list of plain facts
+(`knowledge.txt`, about 300 lines): "how many legs does a spider have?" "a spider has eight legs .",
+"what is glass made from?" "glass is made from sand .", and of its own world, "do zombies burn in the
+sun?" "yes , zombies burn in the sun .". These are recalled like lines told long ago, but only when
+nothing it was told answers, and never for questions about the one talking or about now ("is it
+raining?"). A fact with a word the villager has never heard ("enderman") comes to mind once someone
+says it.
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

@@ -414,6 +414,27 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsWhatEveryoneKnows() {
+        // From growing up, not from this talk: {asked, right word}.
+        String[][] asked = {{"how many legs does a spider have?", "eight"}, {"do zombies burn in the sun?", "yes"},
+            {"what is glass made from?", "sand"}, {"what does a baker make?", "bread"}, {"what colour is a tomato?", "red"}};
+        int right = 0;
+        for (int i = 0; i < asked.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 950 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            List<String> said = talk(b, asked[i][0], new int[] {0, 0});
+            System.out.println("  player: " + asked[i][0] + "\n  villager: " + String.join(" ", said));
+            right += said.contains(asked[i][1]) ? 1 : 0;
+        }
+        assertTrue(Brain.knownToAll(Brain.create(Genome.defaults(), 1, 1f).language.vocabulary).size() > 250, "too few facts known");
+        System.out.printf("knew what everyone knows %d of %d%n", right, asked.length);
+        assertTrue(right >= asked.length - 1, "knew only " + right + " of " + asked.length);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},

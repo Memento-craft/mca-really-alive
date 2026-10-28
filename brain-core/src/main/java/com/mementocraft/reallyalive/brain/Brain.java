@@ -1230,7 +1230,16 @@ public final class Brain {
                 toldLines.add(old);
             }
         }
+        // Last, what everyone knows from growing up ("a spider has eight legs ."), only if
+        // nothing it was told answers.
+        int knownFrom = toldLines.size();
+        toldLines.addAll(knownToAll(language.vocabulary));
         for (int t = 0; t < toldLines.size(); t++) {
+            if (t == knownFrom && (best != null || saysAny(heard, OF_THE_MOMENT))) {
+                // What everyone knows is of kinds of things, not of the one talking or of now
+                // ("is it raining?", "what have you found out?").
+                break;
+            }
             int k = t < recent ? t + 2 : TOLD_LINES + 1;
             int[] told = toldLines.get(t);
             if (told.length == 0 || told.length > TOLD_LONGEST || told[told.length - 1] == ask
@@ -1301,6 +1310,11 @@ public final class Brain {
                 // About someone or something else, the question has to be mostly about what the
                 // line told ("where is the key?" after "the red key is under the bed."), and so
                 // does a line told long ago, maybe by someone else.
+                continue;
+            }
+            if (t >= knownFrom && !saysSome(heard, told, memory, tones)) {
+                // A fact has to say something the question says, not just something like it
+                // ("how's the weather?" is not about the seasons).
                 continue;
             }
             if (cue > bestCue + 1e-4f || cue > bestCue - 1e-4f && exact > bestExact) {
@@ -1689,6 +1703,55 @@ public final class Brain {
             return said[said.length - 2] < 0 ? null : said;
         }
         return null;
+    }
+
+    private static final Set<String> OF_THE_MOMENT = Set.of("it", "it's", "today", "now", "tonight", "you", "your",
+        "you're", "we", "our", "we're", "i", "my", "me", "us", "i'm", "this", "that", "here", "there", "any");
+
+    private static final String KNOWLEDGE = "/reallyalive/knowledge.txt";
+    private static List<String[]> knownLines;
+
+    /**
+     * What every villager knows from growing up, shipped as plain lines: everyday facts ("a
+     * spider has eight legs .", "a farmer grows crops .") and facts of the world it lives in
+     * ("zombies burn in the sun ."). Recalled like a line told long ago. A line comes to mind
+     * only once the villager knows all its words, so one it never heard ("enderman") waits until
+     * someone says it.
+     */
+    static List<int[]> knownToAll(Vocabulary v) {
+        List<int[]> lines = new ArrayList<>();
+        for (String[] line : knownLines()) {
+            int[] words = new int[line.length];
+            boolean all = true;
+            for (int i = 0; i < line.length && all; i++) {
+                words[i] = v.find(line[i]);
+                all = words[i] >= 0;
+            }
+            if (all) {
+                lines.add(words);
+            }
+        }
+        return lines;
+    }
+
+    private static synchronized List<String[]> knownLines() {
+        if (knownLines == null) {
+            List<String[]> lines = new ArrayList<>();
+            try (java.io.InputStream in = Brain.class.getResourceAsStream(KNOWLEDGE)) {
+                if (in != null) {
+                    for (String line : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+                        line = line.trim();
+                        if (!line.isEmpty() && !line.startsWith("#")) {
+                            lines.add(line.split(" "));
+                        }
+                    }
+                }
+            } catch (java.io.IOException e) {
+                lines.clear();
+            }
+            knownLines = List.copyOf(lines);
+        }
+        return knownLines;
     }
 
     private static final Set<String> MORE_WORDS = Set.of("more", "most", "bigger", "biggest", "greater", "larger",
