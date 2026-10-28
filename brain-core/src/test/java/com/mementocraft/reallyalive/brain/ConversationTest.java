@@ -355,6 +355,34 @@ class ConversationTest {
     }
 
     @Test
+    void villagerKnowsTheOrderOfEvents() {
+        // {told, told, told, asked, right, wrong}.
+        String[][] talks = {{"tom fed the pigs.", "then he milked the cow.", "then he went to the market.", "what did tom do first?", "pigs", "market"},
+            {"tom fed the pigs.", "then he milked the cow.", "then he went to the market.", "what did tom do after he fed the pigs?", "milked", "market"},
+            {"mia woke up.", "she ate breakfast.", "she walked to the mill.", "what did mia do after breakfast?", "mill", "woke"},
+            {"lars planted carrots.", "then he planted beans.", "the weather is nice today.", "did lars plant beans first?", "no", "yes"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 930 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 4; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            String want = talks[i][4];
+            boolean yesNo = want.equals("yes") || want.equals("no");
+            right += (yesNo ? !said.isEmpty() && said.get(0).equals(want) : said.contains(want)) && !said.contains(talks[i][5]) ? 1 : 0;
+        }
+        System.out.printf("knew the order of events %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "knew only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},

@@ -1106,6 +1106,14 @@ public final class Brain {
             meant = ofTheSame(plain);
         }
         int[] heard = meant != null ? meant : plain;
+        if (memory != null && heard.length > TOLD_QUESTION_WORDS && heard.length <= TOLD_QUESTION_WORDS + 4
+                && heard[heard.length - 1] == ask) {
+            // A longer question may still ask of the order of things ("what did the guard do
+            // before he went to sleep?").
+            toldLine = inOrder(heard);
+            toldLineAsHeard = null;
+            return new int[0];
+        }
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
@@ -1164,6 +1172,14 @@ public final class Brain {
             toldLine = near;
             toldLineAsHeard = null;
             toldInOwnWords = true;
+            return new int[0];
+        }
+        int[] ordered = inOrder(heard);
+        if (ordered != null) {
+            // "tom fed the pigs." "then he milked the cow.": "what did tom do first?" "tom fed
+            // the pigs ."; "what did he do after he fed the pigs?" "then he milked the cow ."
+            toldLine = ordered;
+            toldLineAsHeard = null;
             return new int[0];
         }
         int[] most = mostOf(heard);
@@ -2735,6 +2751,143 @@ public final class Brain {
             }
         }
         return -1;
+    }
+
+    private static final Set<String> NOT_OF_THE_EVENT = Set.of("did", "do", "does", "happened", "happen", "then",
+        "after", "before", "first", "last", "what", "where", "who", "go", "went", "the", "a", "an", "he", "she", "it",
+        "they", "we", "his", "her", "their", "?");
+
+    /**
+     * Questions about the order of what was told, from the lines told just before the question,
+     * in the order they were told: what someone did (or what happened) first or last, what came
+     * after or before something ("what did mia do after breakfast?"), and whether one thing came
+     * before another ("did ivo chop wood before he fixed the roof?" "no , ivo fixed the roof
+     * first ."). Null if the question asks none of these or the lines don't tell it.
+     */
+    private int[] inOrder(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        int ask = v.find("?");
+        List<int[]> story = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line == null || line.length == 0 || line[line.length - 1] == ask) {
+                break;
+            }
+            story.add(0, line);
+        }
+        if (story.size() < 2) {
+            return null;
+        }
+        int first = v.find("first"), last = v.find("last"), after = v.find("after"), before = v.find("before");
+        int end = heard.length - 1;
+        boolean yesNo = yesNoAsked(heard);
+        int split = Math.max(indexOf(heard, after, 1), indexOf(heard, before, 1));
+        if (split > 1 && split < end - 1) {
+            boolean isAfter = heard[split] == after;
+            int[] event = Arrays.copyOfRange(heard, split + 1, end);
+            int at = lineOf(story, event, -1);
+            if (at < 0) {
+                return null;
+            }
+            boolean told = false;
+            for (int[] line : story) {
+                told |= contains(line, after) || contains(line, before);
+            }
+            if (yesNo && told) {
+                // "the bell rang after the storm ." says the order itself, whenever it was told.
+                return null;
+            }
+            if (yesNo) {
+                // "did ivo chop wood before he fixed the roof?"
+                int doing = heard[1] >= 0 && Set.of("the", "a", "an", "my", "your").contains(v.word(heard[1])) ? 3 : 2;
+                int other = lineOf(story, Arrays.copyOfRange(heard, Math.min(doing, split), split), at);
+                if (other < 0) {
+                    return null;
+                }
+                boolean so = isAfter ? other > at : other < at;
+                return so ? withWord(v.find("yes"), story.get(other)) : firstOf(story.get(isAfter ? other : at), v);
+            }
+            int next = isAfter ? at + 1 : at - 1;
+            return next >= 0 && next < story.size() ? story.get(next) : null;
+        }
+        if (heard[end - 1] != first && heard[end - 1] != last) {
+            return null;
+        }
+        int[] asked = Arrays.copyOfRange(heard, 1, end - 1);
+        // Who did it is told in every line of theirs, so what they did tells the line ("did lars
+        // plant beans first?").
+        int doing = heard.length > 3 && heard[1] >= 0 && Set.of("the", "a", "an", "my", "your").contains(v.word(heard[1])) ? 3 : 2;
+        if (yesNo) {
+            // "did ivo fix the roof first?"
+            int at = lineOf(story, Arrays.copyOfRange(heard, Math.min(doing, end - 1), end - 1), -1);
+            if (at < 0 || heard[end - 1] != first) {
+                return null;
+            }
+            return at == 0 ? withWord(v.find("yes"), story.get(0)) : firstOf(story.get(0), v);
+        }
+        if (heard[0] < 0 || !Set.of("what", "where", "who").contains(v.word(heard[0]))) {
+            return null;
+        }
+        // Of whom: "what did tom do first?"; the lines that tell of them, or of what they did
+        // next ("then he milked the cow .").
+        List<int[]> theirs = new ArrayList<>();
+        boolean of = false;
+        for (int[] line : story) {
+            boolean says = false, some = false;
+            for (int w : asked) {
+                if (w >= 0 && !NOT_OF_THE_EVENT.contains(v.word(w)) && thingWord(w)) {
+                    some = true;
+                    says |= saidIn(line, w);
+                }
+            }
+            of = !some || says || of && (saysAny(line, AGAIN) || line[0] == v.find("then"));
+            if (of) {
+                theirs.add(line);
+            }
+        }
+        if (theirs.isEmpty()) {
+            return null;
+        }
+        return heard[end - 1] == first ? theirs.get(0) : theirs.get(theirs.size() - 1);
+    }
+
+    /** The line of a story that says most of what an event says (at least one telling word), other than skip; -1 if none. */
+    private int lineOf(List<int[]> story, int[] event, int skip) {
+        int best = -1, most = 0;
+        for (int i = 0; i < story.size(); i++) {
+            int says = 0;
+            for (int w : event) {
+                says += i != skip && w >= 0 && !NOT_OF_THE_EVENT.contains(language.vocabulary.word(w)) && thingWord(w)
+                        && saidIn(story.get(i), w) ? 1 : 0;
+            }
+            if (says > most) {
+                most = says;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private int[] withWord(int word, int[] line) {
+        int[] out = new int[line.length + 2];
+        out[0] = word;
+        out[1] = language.vocabulary.find(",");
+        System.arraycopy(line, 0, out, 2, line.length);
+        return out;
+    }
+
+    /** "no , ivo fixed the roof first ." from "ivo fixed the roof ." */
+    private static int[] firstOf(int[] line, Vocabulary v) {
+        int from = line.length > 1 && line[0] == v.find("then") ? 1 : 0;
+        int end = line.length > 0 && line[line.length - 1] >= 0 && !Character.isLetter(v.word(line[line.length - 1]).charAt(0))
+            ? line.length - 1 : line.length;
+        int[] out = new int[end - from + 4];
+        out[0] = v.find("no");
+        out[1] = v.find(",");
+        System.arraycopy(line, from, out, 2, end - from);
+        out[out.length - 2] = v.find("first");
+        out[out.length - 1] = v.find(".");
+        return out;
     }
 
     /** "bigger": "big", "larger": "large", "heavier": "heavy". */

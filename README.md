@@ -167,6 +167,10 @@ It knows what things are like from what it was told: told "pia has a red hat." i
 colour is pia's hat?", knows that "is the axe sharp?" is "no , the axe is dull ." (it knows the
 opposites of common qualities), and that "whose garden is bigger?" is answered by "hilda has a big
 garden .".
+It keeps the order of what it was told: after "tom fed the pigs." "then he milked the cow." "then
+he went to the market.", it answers "what did tom do first?" ("tom fed the pigs ."), "what did tom
+do after he fed the pigs?" ("then he milked the cow .") and "did tom go to the market first?" ("no ,
+tom fed the pigs first .").
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear
