@@ -130,6 +130,8 @@ public final class BrainManager {
         int placedSeen;
         /** How hungry the body is, 0..1: it grows while the villager lives and eating takes it down. */
         float hunger;
+        /** How tired the body is, 0..1: it grows while awake and sleeping takes it down. */
+        float tiredness;
         /** The line it is writing down, its own written words to feel, and how many lines it wrote. */
         final List<String> writtenLine = new ArrayList<>();
         final List<String> wroteWords = new ArrayList<>();
@@ -181,6 +183,14 @@ public final class BrainManager {
 
         public void setHunger(float hunger) {
             this.hunger = Math.max(0f, Math.min(1f, hunger));
+        }
+
+        public float tiredness() {
+            return tiredness;
+        }
+
+        public void setTiredness(float tiredness) {
+            this.tiredness = Math.max(0f, Math.min(1f, tiredness));
         }
 
         public MotorCommand command() {
@@ -307,6 +317,8 @@ public final class BrainManager {
         ((BrainDriven) v).reallyalive$setDriven(true);
         v.refreshDimensions();
         h.heard = Hearing.now();
+        h.hunger = data.hunger();
+        h.tiredness = data.tiredness();
         handles.put(v.getUUID(), h);
         return h;
     }
@@ -318,6 +330,7 @@ public final class BrainManager {
             return;
         }
         save(h);
+        v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness);
         h.hands.release();
         MobAccessor body = (MobAccessor) v;
         body.reallyalive$setMoveControl(h.originalMove);
@@ -390,6 +403,14 @@ public final class BrainManager {
         if (h != null && props != null) {
             h.setHunger(h.hunger - props.nutrition() / 20f);
             h.did.add("ate " + Hands.nameOf(food.getItem()));
+        }
+    }
+
+    /** A brain villager lay down in a bed. */
+    public void slept(Villager v) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.did.add("slept in bed");
         }
     }
 
@@ -469,6 +490,9 @@ public final class BrainManager {
     private static final int WATCH_INTERVAL = 4;
     /** Ticks for a fed villager to grow fully hungry, two game days; halfway it sets out to eat. */
     private static final int HUNGER_TICKS = 48_000;
+    /** Ticks awake for a rested villager to grow fully tired (a day), and asleep to rest fully (most of a night). */
+    private static final int AWAKE_TICKS = 24_000;
+    private static final int REST_TICKS = 8_000;
     /** Ticks between looks at what it carries. */
     private static final int CARRIED_INTERVAL = 10;
 
@@ -605,6 +629,20 @@ public final class BrainManager {
         Senses.feel(v, f);
         h.setHunger(h.hunger + 1f / HUNGER_TICKS);
         f.set(FeelChannel.HUNGER, h.hunger);
+        if (v.isSleeping()) {
+            h.setTiredness(h.tiredness - 1f / REST_TICKS);
+            f.doing.add("slept in bed");
+            // It wakes rested, or with the day, as a player is woken.
+            if (h.tiredness <= 0f || v.level().isDay()) {
+                v.stopSleeping();
+            }
+        } else {
+            h.setTiredness(h.tiredness + 1f / AWAKE_TICKS);
+        }
+        f.tiredness = h.tiredness;
+        if (h.age % 100 == 0) {
+            v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness);
+        }
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());

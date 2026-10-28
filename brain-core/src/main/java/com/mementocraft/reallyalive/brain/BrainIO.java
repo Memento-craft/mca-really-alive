@@ -98,6 +98,7 @@ public final class BrainIO {
         out.writeBoolean(c.hasLast);
         c.writeLast(out);
         writeLanguage(b, out);
+        b.links.ensureNeurons(b.lobe.length); // grown on the first step; a brain never stepped has none yet
         b.links.write(out, b.n);
         writeTalk(b, out);
         writePeople(b, out);

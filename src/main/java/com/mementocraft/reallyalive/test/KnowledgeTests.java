@@ -174,6 +174,89 @@ public final class KnowledgeTests {
         });
     }
 
+    /** Hunger and tiredness are the body's and are kept with it when the brain is put away and back. */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void hungerAndTirednessAreKept(GameTestHelper h) {
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        BrainManager.Handle handle = attach(h, v);
+        handle.setHunger(0.42f);
+        handle.setTiredness(0.37f);
+        h.runAfterDelay(10, () -> {
+            BrainManager.get().detach(v, true);
+            var data = net.minecraft.nbt.NbtOps.INSTANCE;
+            var saved = com.mementocraft.reallyalive.BrainData.CODEC.encodeStart(data, v.getData(com.mementocraft.reallyalive.Attachments.BRAIN)).getOrThrow();
+            var back = com.mementocraft.reallyalive.BrainData.CODEC.parse(data, saved).getOrThrow();
+            h.assertTrue(Math.abs(back.hunger() - 0.42f) < 0.01f && Math.abs(back.tiredness() - 0.37f) < 0.01f,
+                    "saved and read back, hunger " + back.hunger() + " tiredness " + back.tiredness());
+            BrainManager.Handle again = BrainManager.get().attach(v);
+            h.assertTrue(again != null && Math.abs(again.hunger() - 0.42f) < 0.01f, "brought back, hunger " + (again == null ? null : again.hunger()));
+            h.succeed();
+        });
+    }
+
+    /**
+     * Tiredness sets a villager's own goal too. Put to bed at night tired, it rests and learns that
+     * sleeping in a bed eases tiredness; tired again, it sets out to sleep in a bed and says so.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "knowledge_sleep")
+    public static void tirednessSetsTheGoalOfSleeping(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        long dayTime = h.getLevel().getDayTime();
+        h.getLevel().setDayTime(18_000); // midnight
+        BlockPos foot = new BlockPos(5, 2, 7);
+        var bed = Blocks.RED_BED.defaultBlockState().setValue(net.minecraft.world.level.block.BedBlock.FACING, net.minecraft.core.Direction.SOUTH);
+        h.setBlock(foot, bed.setValue(net.minecraft.world.level.block.BedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.FOOT));
+        h.setBlock(foot.south(), bed.setValue(net.minecraft.world.level.block.BedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.HEAD));
+        Villager v = named(h, new Vec3(5.5, 2, 5.5), "Misu");
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        MotorCommand use = new MotorCommand(0, 0, false, false, false, 0f, 0f, false, true);
+        Vec3 player = v.getEyePosition().add(1.5, 0, 0);
+        List<String> answers = new ArrayList<>();
+        int[] seen = {0};
+        float[] before = {0f};
+        h.onEachTick(() -> {
+            long t = h.getTick();
+            List<String> plan = handle.brain().plan();
+            if (t == 5) {
+                handle.setTiredness(0.6f);
+                Vec3 to = h.absoluteVec(new Vec3(5.5, 2.3, 7.5)).subtract(v.getEyePosition());
+                float yaw = (float) (net.minecraft.util.Mth.atan2(to.z, to.x) * net.minecraft.util.Mth.RAD_TO_DEG) - 90f;
+                v.setYRot(yaw);
+                v.setYHeadRot(yaw);
+                v.setXRot((float) -(net.minecraft.util.Mth.atan2(to.y, to.horizontalDistance()) * net.minecraft.util.Mth.RAD_TO_DEG));
+            } else if (t == 8) {
+                h.assertTrue(plan.isEmpty(), "knowing nothing that eases tiredness, it is after " + plan);
+                handle.hold(use);
+            } else if (t == 12) {
+                handle.hold(MotorCommand.IDLE);
+                h.assertTrue(v.isSleeping(), "use on the bed at night did not put it to bed");
+                before[0] = handle.tiredness();
+            } else if (t == 250) {
+                LOG.info("sleep: slept, tiredness {} -> {}, knows tiredness needs {}", before[0], handle.tiredness(),
+                        handle.brain().needsOf("tiredness"));
+                h.assertTrue(v.isSleeping(), "it did not stay asleep");
+                h.assertTrue(handle.tiredness() < before[0] - 0.02f, "sleep took tiredness only from " + before[0] + " to " + handle.tiredness());
+                h.assertTrue(handle.brain().needsOf("tiredness").contains("slept in bed"), "tiredness needs " + handle.brain().needsOf("tiredness"));
+                v.stopSleeping();
+                handle.setTiredness(0.7f);
+                handle.hold(null);
+            } else if (t == 270) {
+                h.assertTrue(plan.equals(List.of("slept in bed")), "tired again, it is after " + plan);
+                Speech.playerSays(h.getLevel(), player, "what are you doing?", "Steve");
+            } else if (t == 500) {
+                LOG.info("sleep: asked what it is doing, it said {}", answers);
+                h.getLevel().setDayTime(dayTime);
+                h.assertTrue(answers.stream().anyMatch(l -> l.contains("tired")), "asked what it is doing, it said " + answers);
+                h.succeed();
+            }
+            if (handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(t + ": " + handle.lastLine());
+            }
+        });
+    }
+
     /**
      * A villager that sees another die remembers the death and the dead by name; asked "what
      * happened to misu?" it says so. Runs in its own batch, away from other tests' chatter.

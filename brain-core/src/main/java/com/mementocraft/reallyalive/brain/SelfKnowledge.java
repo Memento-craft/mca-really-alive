@@ -71,8 +71,9 @@ public final class SelfKnowledge {
             return null;
         }
         String line = (Goals.isDeed(goal) ? "i want to " : "i want ") + thing(goal) + " .";
-        if ("hunger".equals(b.goals.because)) {
-            line = "i'm hungry . " + line;
+        String need = b.goals.because == null ? null : FELT.get(b.goals.because);
+        if (need != null) {
+            line = need + " . " + line;
         }
         String step = b.goals.nextStep();
         if (step != null && !step.equals(goal)) {
@@ -81,11 +82,15 @@ public final class SelfKnowledge {
         return line;
     }
 
+    /** How each need is said when it set the goal. */
+    static final java.util.Map<String, String> FELT = java.util.Map.of("hunger", "i'm hungry", "tiredness", "i'm tired");
+
     /** A thing or deed as said: "some bread", "break some wheat", "to place some dirt". */
     private static String thing(String t) {
         for (String[] d : Goals.DEEDS) {
             if (t.startsWith(d[0])) {
-                return d[1] + "some " + t.substring(d[0].length());
+                // One sleeps in a bed, but eats some bread.
+                return d[1] + (d[0].equals("slept in ") ? "a " : "some ") + t.substring(d[0].length());
             }
         }
         return "some " + t;

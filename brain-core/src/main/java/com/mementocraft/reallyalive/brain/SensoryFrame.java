@@ -37,6 +37,8 @@ public final class SensoryFrame {
     public final List<String> did = new ArrayList<>();
     /** Deeds under way this tick, named as they will be when done: a block cracking is "broke dirt". */
     public final List<String> doing = new ArrayList<>();
+    /** How tired the body is, 0..1: it grows while awake and sleep takes it down. */
+    public float tiredness;
     /** It holds something to write in (a book and quill with room left). */
     public boolean canWrite;
     /** People the villager saw die this tick, by name. */
@@ -123,6 +125,7 @@ public final class SensoryFrame {
         carried = null;
         did.clear();
         doing.clear();
+        tiredness = 0f;
         Arrays.fill(watched, 0f);
         died.clear();
         harvested.clear();

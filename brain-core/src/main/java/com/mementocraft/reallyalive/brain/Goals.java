@@ -47,7 +47,7 @@ final class Goals {
     /** A need that falls this much at once was eased by what was just done. */
     static final float EASED = 0.02f;
     /** Deeds as done and as said: "broke" is "break". */
-    static final String[][] DEEDS = {{"broke ", "break "}, {"placed ", "place "}, {"ate ", "eat "}};
+    static final String[][] DEEDS = {{"broke ", "break "}, {"placed ", "place "}, {"ate ", "eat "}, {"slept in ", "sleep in "}};
 
     /** For each thing, what getting it needs, and how surely. */
     final Map<String, Map<String, Float>> needs = new HashMap<>();
@@ -63,6 +63,8 @@ final class Goals {
     long lastProgress;
     /** How strongly each need ("hunger") was felt last tick. */
     private final Map<String, Float> felt = new HashMap<>();
+    /** Where each need stood when it last began to ease, or was last learned from. */
+    private final Map<String, Float> easedFrom = new HashMap<>();
     /** The need the goal held now serves, or null when it was asked for or there is none. */
     String because;
     /** Whether it has looked at what it carries yet: the first look is no getting of anything. */
@@ -125,9 +127,15 @@ final class Goals {
         float was = felt.getOrDefault(need, level);
         felt.put(need, level);
         float eased = was - level;
-        if (eased > EASED) {
+        // Easing is learned once it adds up: a meal at once, a night's sleep a little each tick.
+        float from = easedFrom.getOrDefault(need, level);
+        if (level > from) {
+            from = level;
+        } else if (from - level > EASED) {
             gained(need);
+            from = level;
         }
+        easedFrom.put(need, from);
         if (level >= WANT_AT && stack.isEmpty()) {
             String way = missing(need);
             if (way != null) {
@@ -186,6 +194,10 @@ final class Goals {
             looked = true;
         }
         // Deeds are what was done to get what is got now or soon after.
+        // What is under way (a block cracking, a night's sleep) counts as done lately while it goes on.
+        for (String d : doing) {
+            recent.add(new Object[] {tick, canonical(d)});
+        }
         for (String d : did) {
             String deed = canonical(d);
             got.add(deed);

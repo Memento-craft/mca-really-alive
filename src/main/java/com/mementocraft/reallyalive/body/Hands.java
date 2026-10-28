@@ -80,6 +80,9 @@ public final class Hands {
     public static final float POINTER_PER_DEGREE = 2f;
 
     private final Villager body;
+    /** Ticks sneak has been held in bed, and how many it takes to get up. */
+    private int sneakAsleep;
+    private static final int LEAVE_BED_TICKS = 10;
     private boolean attackWasDown;
     private boolean useWasDown;
     /**
@@ -245,6 +248,27 @@ public final class Hands {
         return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).getPath().replace('_', ' ');
     }
 
+    /**
+     * Right click on a bed: at night, a free bed is lain down in, as a player would. The villager
+     * sleeps in it itself (a stand-in player would set spawn points and count toward skipping the
+     * night). By day the bed does nothing.
+     */
+    private boolean sleepIn(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof net.minecraft.world.level.block.BedBlock)) {
+            return false;
+        }
+        if (level.isDay() || body.isSleeping() || state.getValue(net.minecraft.world.level.block.BedBlock.OCCUPIED)) {
+            return true;
+        }
+        BlockPos head = state.getValue(net.minecraft.world.level.block.BedBlock.PART) == net.minecraft.world.level.block.state.properties.BedPart.HEAD
+                ? pos : pos.relative(state.getValue(net.minecraft.world.level.block.BedBlock.FACING));
+        stopDigging();
+        body.startSleeping(head);
+        com.mementocraft.reallyalive.BrainManager.get().slept(body);
+        return true;
+    }
+
     /** How far digging the current block has got, 0..1. */
     public float digProgress() {
         return digging == null ? 0f : Math.min(1f, digProgress);
@@ -317,6 +341,15 @@ public final class Hands {
      */
     public void tick(MotorCommand keys) {
         ticksLived++;
+        if (body.isSleeping()) {
+            // Asleep the hands rest. Holding sneak a while gets it out of bed, as a player leaves one.
+            stopDigging();
+            sneakAsleep = keys.sneak() ? sneakAsleep + 1 : 0;
+            if (sneakAsleep >= LEAVE_BED_TICKS) {
+                body.stopSleeping();
+            }
+            return;
+        }
         movedLately *= (float) Math.pow(0.5, 1.0 / MOVED_HALF_LIFE);
         setGoingLately *= (float) Math.pow(0.5, 1.0 / SET_GOING_HALF_LIFE);
         if (ticksLived % SET_GOING_EVERY == 0 && !stillWorked.isEmpty()) {
@@ -812,11 +845,14 @@ public final class Hands {
         if (!(body.level() instanceof ServerLevel level)) {
             return;
         }
+        boolean onBlock = target instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK;
+        if (onBlock && sleepIn(level, ((BlockHitResult) target).getBlockPos())) {
+            return;
+        }
         StandIn p = standIn();
         p.follow(body);
         p.takeFrom(body);
         boolean grief = EventHooks.canEntityGrief(level, body);
-        boolean onBlock = target instanceof BlockHitResult b && b.getType() == HitResult.Type.BLOCK;
         if (p.getMainHandItem().getItem() instanceof BlockItem) {
             placeTries++;
             placeNoTarget += onBlock && grief ? 0 : 1;
