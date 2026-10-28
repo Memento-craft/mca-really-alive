@@ -38,6 +38,10 @@ neoForge {
             systemProperty 'reallyalive.benchmarks', project.findProperty('benchmarks') ?: ''
             // -PsameGenes gives every new brain the default genes (to measure spread between villagers).
             systemProperty 'reallyalive.sameGenes', project.hasProperty('sameGenes') ? 'true' : 'false'
+            // -PcraftTicks=N runs the crafting benchmarks for N ticks instead of 150000.
+            systemProperty 'reallyalive.craftTicks', project.findProperty('craftTicks') ?: '150000'
+            // -PtraceClicks logs every click villagers make on a screen.
+            systemProperty 'reallyalive.traceClicks', project.hasProperty('traceClicks') ? 'true' : 'false'
         }
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'

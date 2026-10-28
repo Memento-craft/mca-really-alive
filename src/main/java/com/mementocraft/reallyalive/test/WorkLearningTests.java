@@ -42,6 +42,8 @@ public final class WorkLearningTests {
     private static final int WINDOW = 10_000;
     /** Crafting takes a long chain of chance steps before the first success, so it gets longer. */
     private static final int CRAFT_TICKS = 150_000;
+    /** The longest a crafting benchmark may be asked to run with -PcraftTicks, for a lifetime's learning curve. */
+    private static final int CRAFT_TICKS_MAX = 1_000_000;
     /** Tilled ground goes back to dirt this often, so there is always something to till. */
     private static final int REGROW = 200;
     private static final int LITTER = 32;
@@ -141,6 +143,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (handle.hands().screenOpen()) {
                 screenTicks[0]++;
             }
@@ -269,10 +274,10 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
-            planted[0] = handle.hands().placedTotal;
             if (tick[0] % REGROW == 0) {
                 tidyLitter(h);
             }
+            planted[0] = handle.hands().placedTotal;
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 replant(h, v);
                 if (carried(v, Items.WHEAT_SEEDS) == 0) {
@@ -320,18 +325,18 @@ public final class WorkLearningTests {
         }
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void newbornCraftsPlanksOnItsOwn(GameTestHelper h) {
         craftBenchmark(h, "1");
     }
 
     /** Two more newborns, since whether one stumbles on crafting varies a lot from brain to brain. */
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void secondNewbornCraftsPlanksOnItsOwn(GameTestHelper h) {
         craftBenchmark(h, "2");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void thirdNewbornCraftsPlanksOnItsOwn(GameTestHelper h) {
         craftBenchmark(h, "3");
     }
@@ -382,47 +387,47 @@ public final class WorkLearningTests {
         craftBenchmark(h, which, "SHAFT2", alloy.get(), shaft.get(), null, 2);
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void newbornCraftsShaftsFromTwoAlloys(GameTestHelper h) {
         twoAlloysBenchmark(h, "1");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void secondNewbornCraftsShaftsFromTwoAlloys(GameTestHelper h) {
         twoAlloysBenchmark(h, "2");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void thirdNewbornCraftsShaftsFromTwoAlloys(GameTestHelper h) {
         twoAlloysBenchmark(h, "3");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void newbornCraftsShaftsWithABook(GameTestHelper h) {
         shaftBookBenchmark(h, "1");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void secondNewbornCraftsShaftsWithABook(GameTestHelper h) {
         shaftBookBenchmark(h, "2");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void thirdNewbornCraftsShaftsWithABook(GameTestHelper h) {
         shaftBookBenchmark(h, "3");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void newbornCraftsShaftsOnItsOwn(GameTestHelper h) {
         shaftBenchmark(h, "1");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void secondNewbornCraftsShaftsOnItsOwn(GameTestHelper h) {
         shaftBenchmark(h, "2");
     }
 
-    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS + 400, required = false)
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void thirdNewbornCraftsShaftsOnItsOwn(GameTestHelper h) {
         shaftBenchmark(h, "3");
     }
@@ -452,7 +457,8 @@ public final class WorkLearningTests {
         if (!selected(h, name)) {
             return;
         }
-        Villager v = pen(h, new ItemStack(from, count), CRAFT_TICKS);
+        int ticks = Math.min(CRAFT_TICKS_MAX, Integer.getInteger("reallyalive.craftTicks", CRAFT_TICKS));
+        Villager v = pen(h, new ItemStack(from, count), ticks);
         if (book != null) {
             v.getInventory().addItem(book.copy());
         }
@@ -565,10 +571,10 @@ public final class WorkLearningTests {
                         handle.hands().throwsTotal, handle.hands().placedTotal, handle.hands().recipesLearnt, handle.hands().matchedTotal, handle.hands().wheelTurns, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal,
                         handle.brain().neuronCount(), handle.brain().synapseCount());
             }
-            if (tick[0] == CRAFT_TICKS) {
+            if (tick[0] == ticks) {
                 String report = String.format(name + ": made %d things in %d ticks; opened its inventory %d times, open %d%% of the time,"
                                 + " with a stack on the pointer %d%% of that",
-                        handle.hands().madeTotal, CRAFT_TICKS, handle.hands().screensOpened, 100 * screenTicks[0] / CRAFT_TICKS,
+                        handle.hands().madeTotal, ticks, handle.hands().screensOpened, 100 * screenTicks[0] / ticks,
                         screenTicks[0] == 0 ? 0 : 100 * pointerHolding[0] / screenTicks[0]);
                 LOG.info(name + " newborn {} learning result: {}", which, report);
                 if (handle.hands().madeTotal >= 3) {
@@ -626,6 +632,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             var be = h.getBlockEntity(stand);
             if (!(be instanceof net.minecraft.world.level.block.entity.BrewingStandBlockEntity brewing)) {
                 // Something knocked the stand down; put it back.
@@ -671,9 +680,6 @@ public final class WorkLearningTests {
             if (handle.hands().target() instanceof BlockHitResult hit && hit.getBlockPos().equals(h.absolutePos(stand))) {
                 aimedAtStand[0]++;
                 usedOnStand[0] += handle.command().use() ? 1 : 0;
-            }
-            if (tick[0] % REGROW == 0) {
-                tidyLitter(h);
             }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 clearPen(h, stand);
@@ -796,6 +802,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (!h.getBlockState(at).is(motor.get())) {
                 h.setBlock(at, motorState);
             }
@@ -912,6 +921,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (!h.getBlockState(onto).is(depot.get())) {
                 h.setBlock(onto, depot.get());
             }
@@ -924,9 +936,6 @@ public final class WorkLearningTests {
             if (handle.hands().target() instanceof BlockHitResult hit && hit.getBlockPos().equals(h.absolutePos(onto))) {
                 aimedAtDepot[0]++;
                 usedOnDepot[0] += handle.command().use() ? 1 : 0;
-            }
-            if (tick[0] % REGROW == 0) {
-                tidyLitter(h);
             }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 clearPen(h, onto, pressAt, motorAt);
@@ -1045,6 +1054,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (!h.getBlockState(onto).is(depot.get())) {
                 h.setBlock(onto, depot.get());
             }
@@ -1061,9 +1073,6 @@ public final class WorkLearningTests {
             if (tick[0] % (REGROW * 12) == 0 && !handle.hands().screenOpen()) {
                 // The drive comes apart again, so there is always building to do.
                 h.setBlock(gap, Blocks.AIR);
-            }
-            if (tick[0] % REGROW == 0) {
-                tidyLitter(h);
             }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 clearPen(h, onto, pressAt, motorAt, gap);
@@ -1160,6 +1169,9 @@ public final class WorkLearningTests {
                 return;
             }
             tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
             if (!h.getBlockState(onto).is(depot.get())) {
                 h.setBlock(onto, depot.get());
             }
@@ -1170,9 +1182,6 @@ public final class WorkLearningTests {
             powered[0] += turning && !wasTurning[0] ? 1 : 0;
             pressTurning[0] += turning ? 1 : 0;
             wasTurning[0] = turning;
-            if (tick[0] % REGROW == 0) {
-                tidyLitter(h);
-            }
             if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
                 boolean crankInPen = false;
                 for (int x = 1; x <= 9; x++) {
