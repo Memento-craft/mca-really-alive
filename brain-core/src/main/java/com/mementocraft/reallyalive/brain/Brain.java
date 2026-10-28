@@ -1111,10 +1111,19 @@ public final class Brain {
             // A longer question may still ask of the order of things ("what did the guard do
             // before he went to sleep?").
             toldLine = inOrder(heard);
+            toldLine = toldLine != null ? toldLine : compared(heard);
             toldLineAsHeard = null;
             return new int[0];
         }
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
+            return new int[0];
+        }
+        int[] weighed = compared(heard);
+        if (weighed != null) {
+            // "who has more apples?" after "tom has three apples ." "anna has five apples .":
+            // "anna has five apples ."; "which comes first, friday or sunday?" "friday comes first ."
+            toldLine = weighed;
+            toldLineAsHeard = null;
             return new int[0];
         }
         int[] reckoned = worked(heard);
@@ -1680,6 +1689,165 @@ public final class Brain {
             return said[said.length - 2] < 0 ? null : said;
         }
         return null;
+    }
+
+    private static final Set<String> MORE_WORDS = Set.of("more", "most", "bigger", "biggest", "greater", "larger",
+        "older", "oldest", "deeper", "deepest", "higher", "highest", "longer", "longest", "taller", "tallest", "heavier",
+        "heaviest", "later", "last", "after");
+    private static final Set<String> LESS_WORDS = Set.of("fewer", "fewest", "less", "least", "smaller", "smallest",
+        "younger", "youngest", "shallower", "shorter", "shortest", "lower", "lowest", "lighter", "earlier", "first", "before");
+    /** Order words, which ask of the order things were told in, not of amounts told. */
+    private static final Set<String> ORDER_WORDS = Set.of("later", "last", "after", "earlier", "first", "before");
+
+    /** Where a word stands among numbers, days or months, as {kind, place}; null if it stands in none. */
+    private static int[] placeAmong(String w) {
+        return number(w) >= 0 ? new int[] {0, number(w)} : DAYS.contains(w) ? new int[] {1, DAYS.indexOf(w)}
+            : MONTHS.contains(w) ? new int[] {2, MONTHS.indexOf(w)} : null;
+    }
+
+    /**
+     * Amounts compared: of two numbers, days or months asked of ("which comes first, friday or
+     * sunday?" "friday comes first ."; "is tuesday before monday?" "no , tuesday comes after monday
+     * ."), or of what was told just before ("who has more apples?" after "tom has three apples ."
+     * "anna has five apples .": "anna has five apples ."; "how many more coins does lou have?"
+     * "lou has five more coins ."). Null if it is no such question.
+     */
+    private int[] compared(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        int n = heard.length;
+        String[] w = new String[n];
+        for (int i = 0; i < n; i++) {
+            w[i] = heard[i] < 0 ? "" : v.word(heard[i]);
+        }
+        int dir = 0, at = -1;
+        for (int i = 1; i < n && dir == 0; i++) {
+            dir = MORE_WORDS.contains(w[i]) ? 1 : LESS_WORDS.contains(w[i]) ? -1 : 0;
+            at = i;
+        }
+        if (dir == 0) {
+            return null;
+        }
+        String way = w[at];
+        // Two named: "friday or sunday", "is tuesday before monday?".
+        int or = Arrays.asList(w).indexOf("or");
+        int a = -1, b = -1;
+        if (or > 1 && or + 1 < n - 1) {
+            a = or - 1;
+            b = or + 1 + (w[or + 1].equals("the") && or + 2 < n - 1 ? 1 : 0);
+        } else if (yesNoAsked(heard) && at == 2 && n == 5) {
+            a = 1;
+            b = 3;
+        } else if (yesNoAsked(heard) && at == 2 && n == 6 && w[3].equals("than")) {
+            // "is four less than two?"
+            a = 1;
+            b = 4;
+        }
+        int[] pa = a < 0 ? null : placeAmong(w[a]), pb = b < 0 ? null : placeAmong(w[b]);
+        if (pa != null && pb != null && pa[0] == pb[0] && pa[1] != pb[1]) {
+            boolean aWins = dir > 0 ? pa[1] > pb[1] : pa[1] < pb[1];
+            String kindWay = pa[0] == 0 ? (ORDER_WORDS.contains(way) ? (dir > 0 ? "more" : "less") : way)
+                : dir > 0 ? (way.equals("after") || way.equals("later") ? way : "after") : (way.equals("before") || way.equals("earlier") ? way : "before");
+            String verb = pa[0] == 0 ? "is" : "comes";
+            String than = pa[0] == 0 ? " than " : " ";
+            if (yesNoAsked(heard)) {
+                String other = pa[0] == 0 ? (dir > 0 ? "less" : "more") : (dir > 0 ? "before" : "after");
+                return said((aWins ? "yes , " : "no , ") + w[a] + " " + verb + " " + (aWins ? kindWay : other) + than + w[b] + " .");
+            }
+            String win = aWins ? w[a] : w[b], lose = aWins ? w[b] : w[a];
+            if (pa[0] != 0 && (way.equals("first") || way.equals("last"))) {
+                return said(win + " comes " + way + " .");
+            }
+            return said(win + " " + verb + " " + kindWay + than + lose + " .");
+        }
+        if (ORDER_WORDS.contains(way)) {
+            return null;
+        }
+        // Amounts told: the lines just before with a count, of the thing asked of if it names one.
+        List<int[]> lines = new ArrayList<>();
+        List<Integer> counts = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line == null || line.length == 0 || line[line.length - 1] == v.find("?")) {
+                break;
+            }
+            for (int i = 1; i + 1 < line.length; i++) {
+                int c = line[i] < 0 ? -1 : number(v.word(line[i]));
+                if (c >= 0 && line[i + 1] >= 0 && Character.isLetter(v.word(line[i + 1]).charAt(0))) {
+                    lines.add(0, line);
+                    counts.add(0, c);
+                    break;
+                }
+            }
+        }
+        // Of the thing asked of ("apples"), if the question names a thing they count.
+        List<int[]> of = new ArrayList<>();
+        List<Integer> ofCounts = new ArrayList<>();
+        for (int j = 0; j < lines.size(); j++) {
+            boolean says = false;
+            for (int i = 1; i < n - 1; i++) {
+                says |= heard[i] >= 0 && thingWord(heard[i]) && !MORE_WORDS.contains(w[i]) && !LESS_WORDS.contains(w[i])
+                        && !ASKING_WORDS.contains(w[i]) && !Set.of("has", "have", "does", "do", "is", "are", "than", "many").contains(w[i])
+                        && saidIn(lines.get(j), heard[i]);
+            }
+            if (says) {
+                of.add(lines.get(j));
+                ofCounts.add(counts.get(j));
+            }
+        }
+        if (of.size() >= 2) {
+            lines = of;
+            counts = ofCounts;
+        }
+        if (lines.size() < 2) {
+            return null;
+        }
+        if (w[0].equals("how") && n > 3 && w[1].equals("many") && (w[2].equals("more") || w[2].equals("fewer"))) {
+            // "how many more coins does lou have?": lou's count less the other's.
+            int whose = -1;
+            for (int j = 0; j < lines.size() && whose < 0; j++) {
+                // Whose count it is: the one the line tells of first ("lou has 9 coins .").
+                int first = 0;
+                while (first < lines.get(j).length && Set.of("the", "a", "an", "my").contains(v.word(lines.get(j)[first]))) {
+                    first++;
+                }
+                whose = first < lines.get(j).length && contains(Arrays.copyOfRange(heard, 3, n), lines.get(j)[first]) ? j : -1;
+            }
+            if (whose < 0 || lines.size() != 2) {
+                return null;
+            }
+            int diff = Math.abs(counts.get(whose) - counts.get(1 - whose));
+            int[] line = lines.get(whose);
+            int c = 0;
+            while (c < line.length && (line[c] < 0 || number(v.word(line[c])) < 0)) {
+                c++;
+            }
+            return join(Arrays.copyOfRange(line, 0, c), new int[] {numberWord(diff), v.find(w[2])}, Arrays.copyOfRange(line, c + 1, line.length));
+        }
+        if (yesNoAsked(heard)) {
+            // "does tom have more apples than anna?"
+            int than = Arrays.asList(w).indexOf("than");
+            int mine = -1, theirs = -1;
+            for (int j = 0; j < lines.size(); j++) {
+                if (than > 1 && lines.get(j)[0] == heard[1]) {
+                    mine = j;
+                }
+                if (than > 1 && than + 1 < n && lines.get(j)[0] == heard[than + 1]) {
+                    theirs = j;
+                }
+            }
+            if (mine < 0 || theirs < 0) {
+                return null;
+            }
+            boolean so = dir > 0 ? counts.get(mine) > counts.get(theirs) : counts.get(mine) < counts.get(theirs);
+            return withWord(v.find(so ? "yes" : "no"), lines.get(so ? mine : theirs));
+        }
+        int best = 0;
+        boolean same = true;
+        for (int j = 1; j < lines.size(); j++) {
+            same &= counts.get(j).equals(counts.get(0));
+            best = dir > 0 ? (counts.get(j) > counts.get(best) ? j : best) : (counts.get(j) < counts.get(best) ? j : best);
+        }
+        return same ? said("they have the same .") : lines.get(best);
     }
 
     private int numberWord(int n) {

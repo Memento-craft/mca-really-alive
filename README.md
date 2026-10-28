@@ -171,6 +171,10 @@ It keeps the order of what it was told: after "tom fed the pigs." "then he milke
 he went to the market.", it answers "what did tom do first?" ("tom fed the pigs ."), "what did tom
 do after he fed the pigs?" ("then he milked the cow .") and "did tom go to the market first?" ("no ,
 tom fed the pigs first .").
+It compares amounts, days and months: after "tom has three apples." "anna has five apples.", "who
+has more apples?" is "anna has five apples ."; "how many more coins does lou have?" after "pia has
+4 coins." "lou has 9 coins." is "lou has five more coins ."; "which comes first, friday or sunday?"
+is "friday comes first ."; and "is four less than two?" is "no , four is more than two .".
 Each villager also keeps exchanges of its own (the last 256, saved with it): what it answered
 itself, so asked the same thing again, even days later, it gives the same answer ("i work as a
 mason."), what others answered its lines, and what it overheard players say to each other. Hear

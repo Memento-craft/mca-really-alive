@@ -383,6 +383,37 @@ class ConversationTest {
     }
 
     @Test
+    void villagerComparesAmounts() {
+        // {told, told, asked, right, wrong}; "-" tells nothing.
+        String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},
+            {"pia has 4 coins.", "lou has 9 coins.", "how many more coins does lou have?", "five", "-"},
+            {"-", "-", "which comes first, friday or sunday?", "friday", "sunday"},
+            {"-", "-", "is four less than two?", "no", "yes"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 940 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                if (!talks[i][k].equals("-")) {
+                    said = talk(b, talks[i][k], onScript);
+                    System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+                }
+            }
+            String want = talks[i][3];
+            boolean yesNo = want.equals("yes") || want.equals("no");
+            right += (yesNo ? !said.isEmpty() && said.get(0).equals(want) : said.contains(want))
+                    && (yesNo ? !said.get(0).equals(talks[i][4]) : !said.contains(talks[i][4]) || said.indexOf(want) < said.indexOf(talks[i][4])) ? 1 : 0;
+        }
+        System.out.printf("compared amounts %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "compared only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerWorksOutWhyAndWhatIf() {
         // A cause or a consequence from what was told: {told, told, asked, right word}.
         String[][] talks = {{"if it rains, the field floods.", "the sheep are in the pen.", "what happens if it rains?", "floods"},
