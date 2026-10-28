@@ -135,9 +135,11 @@ public final class Hands {
     /** Ticks after which a thing looked over is worth looking at again. */
     private static final long LOOK_AGAIN_TICKS = 6000L;
     /**
-     * A thing it has never made anything from is looked over again sooner, for its first screens
-     * of looking, as a child goes back to a puzzle it has not worked out. Newborns handed two
-     * alloys opened their inventory 2-5 times in 10000 ticks and made a shaft 1-4 times in all.
+     * A new thing is looked over again sooner for its first screens of looking, as a child goes
+     * back to a puzzle, and a thing it has made something from is looked over sooner for good, as
+     * a child goes back to a toy it knows how to work. Newborns handed two alloys opened their
+     * inventory 2-5 times in 10000 ticks and made a shaft 1-4 times in all; when only unworked
+     * things pulled, one that had made five shafts by tick 60000 made none in the 140000 after.
      */
     private static final long LOOK_AGAIN_UNSOLVED_TICKS = 1500L;
     private static final int UNSOLVED_LOOKS = 40;
@@ -415,7 +417,7 @@ public final class Hands {
         boolean[] curious = {false};
         forEachCarried(item -> {
             Long seen = lookedOver.get(item);
-            long again = !madeFrom.contains(item) && looks.getOrDefault(item, 0) < UNSOLVED_LOOKS
+            long again = madeFrom.contains(item) || looks.getOrDefault(item, 0) < UNSOLVED_LOOKS
                     ? LOOK_AGAIN_UNSOLVED_TICKS : LOOK_AGAIN_TICKS;
             curious[0] |= seen == null || ticksLived - seen > again;
         });
@@ -949,6 +951,17 @@ public final class Hands {
         }
     }
 
+    /** What is in a screen's work slots (not its pockets), for tracing. */
+    private static String gridOf(AbstractContainerMenu menu) {
+        StringBuilder out = new StringBuilder();
+        for (Slot s : menu.slots) {
+            if (!(s.container instanceof net.minecraft.world.entity.player.Inventory)) {
+                out.append(s.index).append('=').append(s.hasItem() ? s.getItem().getCount() + " " + s.getItem().getItem() : "-").append(' ');
+            }
+        }
+        return out.toString().trim();
+    }
+
     /** A recipe remembered from a book, and when it was last looked at. */
     private record RecipeMemory(net.minecraft.world.item.crafting.RecipeHolder<?> recipe, long seen) {}
 
@@ -1305,7 +1318,14 @@ public final class Hands {
         dragSlots.clear();
     }
 
+    private static final boolean TRACE_CLICKS = Boolean.getBoolean("reallyalive.traceClicks");
+    private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
+
     private void click(StandIn p, int slot, int button, ClickType type) {
+        if (TRACE_CLICKS) {
+            LOG.info("click {} {} button {} {} at tick {}, carrying {}, grid {}", body.getId(), type, button, slot < 0 ? "outside"
+                    : "slot " + slot + " " + screen.getSlot(slot).getItem(), ticksLived, screen.getCarried(), gridOf(screen));
+        }
         screenIdle = 0;
         if (slot >= 0 && screen.getSlot(slot).hasItem()) {
             clicksOnThings++;
