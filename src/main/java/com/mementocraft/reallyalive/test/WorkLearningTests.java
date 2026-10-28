@@ -215,7 +215,6 @@ public final class WorkLearningTests {
         return n + v.getInventory().countItem(item);
     }
 
-    /** Takes away whatever was put on the pen's floor, except the blocks to keep. */
     /**
      * Keeps a pen from filling with dropped things: past {@code LITTER} items lying about, the
      * oldest are cleared away, as they would be on a long day in a real village. Without this a
@@ -230,6 +229,7 @@ public final class WorkLearningTests {
         }
     }
 
+    /** Takes away whatever was put on the pen's floor, except the blocks to keep. */
     private static void clearPen(GameTestHelper h, BlockPos... keep) {
         for (int x = 1; x <= 9; x++) {
             for (int z = 8; z <= 16; z++) {
@@ -1221,6 +1221,134 @@ public final class WorkLearningTests {
                         powered[0], pressTurning[0], handle.hands().madeTotal);
                 LOG.info("CRANK newborn {} learning result: {}", which, report);
                 if (powered[0] >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsACrankAtATable(GameTestHelper h) {
+        tableCrankBenchmark(h, "1", false);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsACrankAtATable(GameTestHelper h) {
+        tableCrankBenchmark(h, "2", false);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void thirdNewbornCraftsACrankAtATable(GameTestHelper h) {
+        tableCrankBenchmark(h, "3", false);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsACrankWithABook(GameTestHelper h) {
+        tableCrankBenchmark(h, "1", true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsACrankWithABook(GameTestHelper h) {
+        tableCrankBenchmark(h, "2", true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void thirdNewbornCraftsACrankWithABook(GameTestHelper h) {
+        tableCrankBenchmark(h, "3", true);
+    }
+
+    /**
+     * With Create installed: a crafting table in the pen and a newborn carrying exactly what a
+     * hand crank takes, three planks and an andesite alloy, laid out as three planks in a row with
+     * the alloy under the first. The first power source made from scratch, and the first recipe
+     * that needs a table's 3x3 grid and two kinds of thing. TABLECRANKBOOK adds a picture book of
+     * the crank's recipe. Cranks it makes are taken from it and counted, and it is handed the
+     * planks and alloy again.
+     */
+    private static void tableCrankBenchmark(GameTestHelper h, String which, boolean withBook) {
+        String name = withBook ? "TABLECRANKBOOK" : "TABLECRANK";
+        if (!selected(h, name)) {
+            return;
+        }
+        var alloy = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "andesite_alloy"));
+        var crank = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "hand_crank"));
+        if (alloy.isEmpty() || crank.isEmpty()) {
+            LOG.info("{}: Create is not installed, nothing to learn", name);
+            h.succeed();
+            return;
+        }
+        int ticks = Math.min(CRAFT_TICKS_MAX, Integer.getInteger("reallyalive.craftTicks", CRAFT_TICKS));
+        Villager v = pen(h, new ItemStack(Items.OAK_PLANKS, 3), ticks);
+        v.getInventory().addItem(new ItemStack(alloy.get()));
+        ItemStack book = withBook ? com.mementocraft.reallyalive.body.RecipeBook.write(h.getLevel(), "Hand crank", List.of(crank.get())) : null;
+        if (book != null) {
+            v.getInventory().addItem(book.copy());
+        }
+        BlockPos table = new BlockPos(5, 2, 10);
+        h.setBlock(table, Blocks.CRAFTING_TABLE);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] cranks = {0};
+        int[] tableTicks = {0};
+        int[] tableOpened = {0};
+        boolean[] wasAtTable = {false};
+        int[] handedBack = {0};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (tick[0] % REGROW == 0) {
+                tidyLitter(h);
+            }
+            boolean atTable = handle.hands().screen() instanceof net.minecraft.world.inventory.CraftingMenu;
+            tableTicks[0] += atTable ? 1 : 0;
+            tableOpened[0] += atTable && !wasAtTable[0] ? 1 : 0;
+            wasAtTable[0] = atTable;
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                clearPen(h, table);
+                if (!h.getBlockState(table).is(Blocks.CRAFTING_TABLE)) {
+                    h.setBlock(table, Blocks.CRAFTING_TABLE);
+                }
+                regrow(h, v);
+                int made = carried(v, crank.get());
+                if (made > 0) {
+                    cranks[0] += made;
+                    v.getInventory().removeItemType(crank.get(), 64);
+                    if (v.getMainHandItem().is(crank.get())) {
+                        v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                    }
+                }
+                if (book != null && carried(v, book.getItem()) == 0) {
+                    v.getInventory().addItem(book.copy());
+                }
+                if (carried(v, Items.OAK_PLANKS) < 3 || carried(v, alloy.get()) < 1) {
+                    // Whatever was lost or turned into something else is handed over again.
+                    for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                        ItemStack s = v.getInventory().getItem(i);
+                        if (book == null || !com.mementocraft.reallyalive.body.RecipeBook.isRecipeBook(s)) {
+                            v.getInventory().setItem(i, ItemStack.EMPTY);
+                        }
+                    }
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.OAK_PLANKS, 3));
+                    v.getInventory().addItem(new ItemStack(alloy.get()));
+                    handedBack[0]++;
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("{} newborn {}: by tick {}: cranks made {}; at the table {} times, {} ticks; screens {}, clicks {}, results formed {}, made {};"
+                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}", name, which, tick[0], cranks[0],
+                        tableOpened[0], tableTicks[0], handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().formedTotal,
+                        handle.hands().madeTotal, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal, handle.hands().recipesLearnt,
+                        handle.hands().matchedTotal, handedBack[0]);
+            }
+            if (tick[0] == ticks) {
+                String report = String.format("%s: made %d hand cranks in %d ticks, at the table %d times", name, cranks[0], ticks, tableOpened[0]);
+                LOG.info("{} newborn {} learning result: {}", name, which, report);
+                if (cranks[0] >= 3) {
                     h.succeed();
                 } else {
                     h.fail("not learned yet: " + report);
