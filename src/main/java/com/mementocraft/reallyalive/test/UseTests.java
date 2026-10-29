@@ -910,6 +910,8 @@ public final class UseTests {
             }
         }
         h.setBlock(new BlockPos(9, 3, 13), Blocks.STONE_SLAB);
+        // A step to stand on to see the pipe's place over the slab, whatever the villager's height.
+        h.setBlock(new BlockPos(9, 2, 14), Blocks.STONE);
         // The water running into the gap reaches the pump's place too: floored and walled in.
         h.setBlock(new BlockPos(9, 2, 12), Blocks.STONE);
         h.setBlock(new BlockPos(8, 2, 12), Blocks.STONE);
@@ -927,7 +929,7 @@ public final class UseTests {
                 {new Vec3(6.5, 2, 11.2), new Vec3(6.5, 2.86, 12.5), new ItemStack(tank.get(), 2), false},
                 {new Vec3(7.5, 2, 11.2), new Vec3(7.5, 2.99, 12.5), new ItemStack(tank.get(), 1), false},
                 {new Vec3(9.6, 3, 12.5), new Vec3(8.02, 3.5, 12.5), new ItemStack(pump.get()), true},
-                {new Vec3(9.5, 2, 14.5), new Vec3(8.98, 3.7, 12.5), new ItemStack(pipe.get()), false},
+                {new Vec3(9.5, 3, 14.5), new Vec3(8.98, 3.7, 12.5), new ItemStack(pipe.get()), false},
                 {front, new Vec3(6.5, 2.5, 11.98), new ItemStack(Items.COAL, 8), false},
                 {front, new Vec3(6.5, 3.5, 11.98), new ItemStack(engine.get()), false},
                 {front, new Vec3(6.5, 3.5, 11.3), new ItemStack(shaft.get(), 4), false}};
@@ -1044,6 +1046,95 @@ public final class UseTests {
             LOG.info("drill: rotation {}, drill {} turning {}, mined {} times, set going {}", rotation, h.getBlockState(drillAt),
                     com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(drillAt)), mined[0], handle.hands().setGoingTotal);
             h.assertTrue(mined[0] >= 3, "the drill mined the stone " + mined[0] + " times");
+            h.succeed();
+        });
+    }
+
+    /**
+     * With Create installed: an automated line finished by hand. A chest of iron drops ingots
+     * through a funnel beneath it; two turning shafts lie below, and a press waits over the place
+     * between them. The villager joins the shafts with a belt connector (used on one shaft, then
+     * on the other) and the belt carries the ingots under the press, which flattens them into
+     * sheets, with no hand on any of it.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1600)
+    public static void joinsABeltThroughAPressIfCreateIsInstalled(GameTestHelper h) throws ReflectiveOperationException {
+        var create = (java.util.function.Function<String, ResourceLocation>) id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var shaft = BuiltInRegistries.BLOCK.getOptional(create.apply("shaft"));
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var funnel = BuiltInRegistries.BLOCK.getOptional(create.apply("andesite_funnel"));
+        var connector = BuiltInRegistries.ITEM.getOptional(create.apply("belt_connector"));
+        var sheet = BuiltInRegistries.ITEM.getOptional(create.apply("iron_sheet"));
+        if (motor.isEmpty() || shaft.isEmpty() || press.isEmpty() || funnel.isEmpty() || connector.isEmpty() || sheet.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        var rotation = h.getTestRotation();
+        var facing = net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING;
+        var axis = net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS;
+        BlockPos first = new BlockPos(6, 2, 10);
+        BlockPos last = new BlockPos(6, 2, 14);
+        for (BlockPos p : new BlockPos[] {first, last}) {
+            h.setBlock(p, shaft.get().defaultBlockState().setValue(axis, net.minecraft.core.Direction.Axis.X).rotate(rotation));
+        }
+        BlockPos beltMotor = first.west();
+        h.setBlock(beltMotor, motor.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.EAST).rotate(rotation));
+        BlockPos pressAt = new BlockPos(6, 4, 12);
+        h.setBlock(pressAt, press.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST)
+                .rotate(rotation));
+        BlockPos pressMotor = pressAt.east();
+        h.setBlock(pressMotor, motor.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.WEST).rotate(rotation));
+        for (BlockPos m : new BlockPos[] {beltMotor, pressMotor}) {
+            Object be = h.getLevel().getBlockEntity(h.absolutePos(m));
+            Object speed = be.getClass().getField("generatedSpeed").get(be);
+            speed.getClass().getMethod("setValue", int.class).invoke(speed, 64);
+        }
+        BlockPos chestAt = first.above(2);
+        h.setBlock(chestAt, Blocks.CHEST);
+        if (h.getBlockEntity(chestAt) instanceof net.minecraft.world.level.block.entity.ChestBlockEntity chest) {
+            chest.setItem(0, new ItemStack(Items.IRON_INGOT, 8));
+        }
+        h.setBlock(first.above(), withValue(funnel.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.DOWN), "extracting", "true"));
+        Villager v = spawnMcaVillager(h, new Vec3(8.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        Vec3[] shafts = {new Vec3(6.5, 2.5, 10.5), new Vec3(6.5, 2.5, 14.5)};
+        for (int i = 0; i < shafts.length; i++) {
+            int at = 40 + 40 * i;
+            Vec3 aimAt = shafts[i];
+            h.runAtTickTime(at - 4, () -> {
+                if (!v.getMainHandItem().is(connector.get())) {
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(connector.get()));
+                }
+                aim(h, v, aimAt);
+            });
+            h.runAtTickTime(at, () -> {
+                aim(h, v, aimAt);
+                handle.hold(USE);
+            });
+            h.runAtTickTime(at + 2, () -> handle.hold(MotorCommand.IDLE));
+            h.runAtTickTime(at + 10, () -> LOG.info("belt: after the connector on {}: hand {} {}, aimed at {}, between {}", aimAt, v.getMainHandItem(),
+                    v.getMainHandItem().getComponents(), handle.hands().target() instanceof net.minecraft.world.phys.BlockHitResult b
+                            ? h.getLevel().getBlockState(b.getBlockPos()) + " " + b.getDirection() : handle.hands().target(),
+                    h.getBlockState(new BlockPos(6, 2, 12))));
+        }
+        int[] sheets = {0};
+        h.onEachTick(() -> {
+            var box = new net.minecraft.world.phys.AABB(h.absolutePos(new BlockPos(2, 0, 6)).getCenter(), h.absolutePos(new BlockPos(10, 6, 18)).getCenter());
+            int n = 0;
+            for (var item : h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+                n += item.getItem().is(sheet.get()) ? item.getItem().getCount() : 0;
+            }
+            sheets[0] = Math.max(sheets[0], n);
+        });
+        h.runAtTickTime(1500, () -> {
+            LOG.info("belt: rotation {}, between {}, press turning {}, sheets {}, chest left {}", rotation, h.getBlockState(new BlockPos(6, 2, 12)),
+                    com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pressAt)), sheets[0],
+                    h.getBlockEntity(chestAt) instanceof net.minecraft.world.level.block.entity.ChestBlockEntity c ? c.getItem(0) : "?");
+            h.assertTrue(sheets[0] >= 1, "no sheet came off the belt");
             h.succeed();
         });
     }

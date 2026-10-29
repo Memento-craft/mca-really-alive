@@ -315,6 +315,11 @@ public final class Hands {
      */
     public void tick(MotorCommand keys) {
         ticksLived++;
+        if (standIn != null) {
+            // The stand-in is never ticked as a player is, so its item cooldowns (a belt
+            // connector's after its first shaft) would never run out.
+            standIn.getCooldowns().tick();
+        }
         movedLately *= (float) Math.pow(0.5, 1.0 / MOVED_HALF_LIFE);
         setGoingLately *= (float) Math.pow(0.5, 1.0 / SET_GOING_HALF_LIFE);
         if (ticksLived % SET_GOING_EVERY == 0 && !stillWorked.isEmpty()) {
@@ -610,6 +615,10 @@ public final class Hands {
         Vec3 blockEnd = eye.add(look.scale(BLOCK_REACH));
         BlockHitResult block = body.level().clip(new ClipContext(eye, blockEnd, ClipContext.Block.OUTLINE,
                 ClipContext.Fluid.NONE, body));
+        // The clip hands back the position it walked the ray with, still changeable; a player's
+        // click reaches the server as a fixed position, and blocks keep it (a belt connector
+        // remembers its first shaft by it), so it is fixed here too.
+        block = block.withPosition(block.getBlockPos().immutable());
         double blockDistSqr = block.getType() == HitResult.Type.MISS ? Double.MAX_VALUE : block.getLocation().distanceToSqr(eye);
 
         Vec3 entityEnd = eye.add(look.scale(ENTITY_REACH));
