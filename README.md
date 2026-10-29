@@ -209,6 +209,8 @@ It says how it feels and why, from its body and what it sees: "how do you feel?"
 is low is "i'm hurt , i need to rest ."; with a monster in sight, "i'm scared , there are two zombies
 around ."; at night, "i'm tired , it's late at night ."; "why are you scared?" "because there are
 two skeletons around .". "how are you?" gets its usual friendly reply unless something is wrong.
+Not heard, it says it again: "what?" repeats its last line, and "what did you say?" gets "i said
+...".
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

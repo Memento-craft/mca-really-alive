@@ -567,6 +567,23 @@ class ConversationTest {
     }
 
     @Test
+    void villagerSaysItAgainWhenNotHeard() {
+        Brain b = Brain.create(Genome.defaults(), 4100, 1f);
+        b.setBabbleScale(1f);
+        for (int t = 0; t < 300; t++) {
+            b.step(frame());
+        }
+        int[] onScript = {0, 0};
+        talk(b, "the cart is in the barn.", onScript);
+        List<String> first = talk(b, "where is the cart?", onScript);
+        List<String> again = talk(b, "what?", onScript);
+        List<String> what = talk(b, "what did you say?", onScript);
+        System.out.println("  " + first + " / " + again + " / " + what);
+        assertTrue(again.equals(first), "said " + again + " after " + first);
+        assertTrue(what.size() > 2 && what.get(0).equals("i") && what.get(1).equals("said"), "said " + what);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

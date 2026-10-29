@@ -1133,6 +1133,15 @@ public final class Brain {
             meant = ofItsKind(plain);
         }
         int[] heard = meant != null ? meant : plain;
+        int[] again = saidAgain(heard);
+        if (again != null) {
+            // "what did you say?" "i said we'll keep looking ."; "what?" says it again.
+            toldLine = again;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] odd = heard.length <= TOLD_LONGEST ? oddOneOut(heard) : null;
         if (odd != null) {
             // "which one is not a fruit, an apple, a pear or a stone?" "a stone is not a fruit ."
@@ -4193,6 +4202,25 @@ public final class Brain {
     }
 
     private boolean generalAsk;
+
+    private static final Set<String> SAY_AGAIN = Set.of("what ?", "huh ?", "pardon ?", "sorry ?", "come again ?",
+            "say that again ?", "can you say that again ?", "could you say that again ?", "can you repeat that ?",
+            "could you repeat that ?", "say that again .", "say it again .", "what was that ?");
+    private static final Set<String> WHAT_SAID = Set.of("what did you say ?", "what did you just say ?", "what was that you said ?");
+
+    /**
+     * Its last line again, when it wasn't heard: "what?" says it again, "what did you say?" "i said
+     * ..."; null if not asked or it said nothing yet.
+     */
+    private int[] saidAgain(int[] heard) {
+        String asked = String.join(" ", wordsOf(heard));
+        boolean again = SAY_AGAIN.contains(asked), what = WHAT_SAID.contains(asked);
+        int[] last = saidNext == 0 ? null : said[(saidNext - 1) % said.length];
+        if (!again && !what || last == null || last.length == 0) {
+            return null;
+        }
+        return what ? join(said("i said"), last) : last;
+    }
 
     private static final Set<String> NIGHT = Set.of("night", "midnight");
     /** Below this share of its health it feels hurt. */
