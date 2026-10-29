@@ -927,7 +927,7 @@ public final class UseTests {
                 {new Vec3(6.5, 2, 11.2), new Vec3(6.5, 2.86, 12.5), new ItemStack(tank.get(), 2), false},
                 {new Vec3(7.5, 2, 11.2), new Vec3(7.5, 2.99, 12.5), new ItemStack(tank.get(), 1), false},
                 {new Vec3(9.6, 3, 12.5), new Vec3(8.02, 3.5, 12.5), new ItemStack(pump.get()), true},
-                {new Vec3(9.5, 2, 14.5), new Vec3(8.98, 3.5, 12.5), new ItemStack(pipe.get()), false},
+                {new Vec3(9.5, 2, 14.5), new Vec3(8.98, 3.7, 12.5), new ItemStack(pipe.get()), false},
                 {front, new Vec3(6.5, 2.5, 11.98), new ItemStack(Items.COAL, 8), false},
                 {front, new Vec3(6.5, 3.5, 11.98), new ItemStack(engine.get()), false},
                 {front, new Vec3(6.5, 3.5, 11.3), new ItemStack(shaft.get(), 4), false}};

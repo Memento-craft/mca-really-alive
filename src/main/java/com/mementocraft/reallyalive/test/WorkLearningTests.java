@@ -1257,7 +1257,7 @@ public final class WorkLearningTests {
     }
 
     /**
-     * With Create installed: the CRANK pen with a stream running past the press's east side, and
+     * With Create installed: the CRANK pen with streams running past both sides of the press, and
      * a newborn carrying a water wheel as well as iron. A wheel set in the stream against the
      * press's side turns it for good, with no hand on it; anywhere else it does nothing. The
      * wheel is taken back now and then and handed over again, so it can be put somewhere better.
@@ -1279,28 +1279,47 @@ public final class WorkLearningTests {
         BlockPos onto = new BlockPos(5, 1, 9);
         BlockPos pressAt = onto.above(2);
         var pressState = press.get().defaultBlockState().setValue(
-                net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST);
+                net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.SOUTH).rotate(h.getTestRotation());
         net.minecraft.world.item.Item crankItem = crank.get().asItem();
         Villager v = pen(h, new ItemStack(crankItem), TICKS);
         v.getInventory().addItem(new ItemStack(Items.IRON_INGOT, 16));
         h.setBlock(onto, depot.get());
         h.setBlock(pressAt, pressState);
-        // The stream: a spring in a glass trough by the wall, running out over the place east of
-        // the press, where a wheel would catch it, and falling to the floor beyond.
-        BlockPos spring = pressAt.east().above().north();
-        BlockPos[] trough = {spring.west(), spring.east(), spring.below(), spring.south().west(), spring.south().east()};
-        for (BlockPos g : trough) {
-            h.setBlock(g, Blocks.GLASS);
+        // Two streams, one each side of the press where its shaft comes out: a spring in a glass
+        // trough, running out over the place by the press where a wheel would catch it. The
+        // press faces south, so its shaft comes out at the face newborns come up to and set their
+        // wheels on (with streams east and west only, they set them south of it, dry).
+        java.util.List<BlockPos> keepList = new java.util.ArrayList<>(java.util.List.of(onto, pressAt));
+        java.util.List<BlockPos> drains = new java.util.ArrayList<>();
+        java.util.List<BlockPos> springs = new java.util.ArrayList<>();
+        for (net.minecraft.core.Direction side : new net.minecraft.core.Direction[] {net.minecraft.core.Direction.SOUTH, net.minecraft.core.Direction.NORTH}) {
+            BlockPos spring = pressAt.relative(side).above().relative(side.getCounterClockWise());
+            var flow = side.getClockWise();
+            BlockPos[] trough = {spring.relative(side), spring.relative(side.getOpposite()), spring.below(),
+                    spring.relative(flow).relative(side), spring.relative(flow).relative(side.getOpposite())};
+            for (BlockPos g : trough) {
+                h.setBlock(g, Blocks.GLASS);
+                keepList.add(g);
+            }
+            h.setBlock(spring, Blocks.WATER);
+            keepList.add(spring);
+            springs.add(spring);
+            // A drain under the stream: water running out over the floor carried newborns off to
+            // the far corner, where they set their wheels down, nowhere near the press.
+            BlockPos drain = pressAt.relative(side).below(2);
+            h.setBlock(drain, Blocks.AIR);
+            drains.add(drain);
         }
-        h.setBlock(spring, Blocks.WATER);
-        BlockPos[] keep = java.util.stream.Stream.concat(java.util.stream.Stream.of(onto, pressAt, spring), java.util.Arrays.stream(trough))
-                .toArray(BlockPos[]::new);
+        BlockPos[] keep = keepList.toArray(BlockPos[]::new);
         BrainManager.Handle handle = BrainManager.get().handle(v);
         int[] tick = {0};
         int[] powered = {0};
         int[] pressTurning = {0};
         int[] cranksPlaced = {0};
         boolean[] wasTurning = {false};
+        BlockPos[] lastWheel = {null};
+        int[] rescued = {0};
+        int[] wheelsSeen = {0};
         h.onEachTick(() -> {
             if (!v.isAlive()) {
                 h.fail("the villager died at tick " + tick[0]);
@@ -1309,6 +1328,13 @@ public final class WorkLearningTests {
             tick[0]++;
             if (tick[0] % TIDY_EVERY == 0) {
                 tidyLitter(h);
+            }
+            if (h.relativePos(v.blockPosition()).getY() <= 1 && drains.contains(h.relativePos(v.blockPosition()))) {
+                // Fallen into a drain, under the falling water: a newborn cannot climb out and
+                // drowned there once. It is lifted out, as a parent would.
+                Vec3 out = h.absoluteVec(new Vec3(7.5, 2, 12.5));
+                v.teleportTo(out.x, out.y, out.z);
+                rescued[0]++;
             }
             if (!h.getBlockState(onto).is(depot.get())) {
                 h.setBlock(onto, depot.get());
@@ -1325,14 +1351,28 @@ public final class WorkLearningTests {
                 for (int x = 1; x <= 9; x++) {
                     for (int z = 8; z <= 16; z++) {
                         for (int y = 2; y <= 4; y++) {
-                            crankInPen |= h.getBlockState(new BlockPos(x, y, z)).is(crank.get());
+                            BlockPos p = new BlockPos(x, y, z);
+                            if (h.getBlockState(p).is(crank.get())) {
+                                crankInPen = true;
+                                if (!p.equals(lastWheel[0]) && wheelsSeen[0]++ < 40) {
+                                    // Where the wheels go: what keeps them from the press's side.
+                                    LOG.info("WHEEL newborn {}: wheel at {} {}, turning {}, by the press {}", which, p, h.getBlockState(p),
+                                            com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(p)),
+                                            p.equals(pressAt.south()) || p.equals(pressAt.north()));
+                                }
+                                lastWheel[0] = p;
+                            }
                         }
                     }
                 }
-                if (tick[0] % (REGROW * 12) == 0 || !crankInPen && carried(v, crankItem) == 0) {
+                // A wheel set down where it turns nothing comes back sooner, for another try.
+                if (tick[0] % (REGROW * 12) == 0 || tick[0] % (REGROW * 3) == 0 && !turning || !crankInPen && carried(v, crankItem) == 0) {
                     // The wheel comes back to its hands, to put somewhere (maybe better) again.
                     clearPen(h, keep);
                     regrow(h, v);
+                    drains.forEach(d -> h.setBlock(d, Blocks.AIR));
+                    // A wheel set into a spring took its place: the spring comes back.
+                    springs.forEach(sp -> h.setBlock(sp, Blocks.WATER));
                     if (carried(v, crankItem) == 0) {
                         v.getInventory().addItem(new ItemStack(crankItem));
                         cranksPlaced[0]++;
@@ -1350,9 +1390,9 @@ public final class WorkLearningTests {
             }
             if (tick[0] % WINDOW == 0) {
                 LOG.info("WHEEL newborn {}: by tick {}: press powered {} times, turning {} ticks; took sheets {} times; set going {}, placed {};"
-                                + " wheels handed back {}; in hand {}; wheel turned {} times", which, tick[0], powered[0], pressTurning[0],
+                                + " wheels handed back {}; in hand {}; wheel turned {} times; lifted out of a drain {} times", which, tick[0], powered[0], pressTurning[0],
                         handle.hands().madeTotal, handle.hands().setGoingTotal, handle.hands().placedTotal, cranksPlaced[0],
-                        v.getMainHandItem(), handle.hands().wheelTurns);
+                        v.getMainHandItem(), handle.hands().wheelTurns, rescued[0]);
             }
             if (tick[0] == TICKS) {
                 String report = String.format("WHEEL: powered the press %d times (%d ticks), took sheets %d times",
