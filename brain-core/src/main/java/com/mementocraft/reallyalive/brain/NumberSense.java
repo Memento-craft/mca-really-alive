@@ -34,7 +34,7 @@ final class NumberSense {
     private static final Set<String> HAVING = Set.of("have", "has", "had");
     /** Doings after which someone has what they did it to ("we baked 20 cookies ."). */
     private static final Set<String> GETTING = Set.of("baked", "bought", "made", "caught", "found", "picked", "collected",
-            "got", "gathered", "grew", "built");
+            "got", "gathered", "grew", "built", "planted", "sowed", "hatched");
 
     /** Measures of things: thing -> measure -> value. */
     private final Map<String, Map<String, Integer>> measured = new HashMap<>();
@@ -46,6 +46,24 @@ final class NumberSense {
     private final Map<String, Object[]> prices = new HashMap<>();
     /** Which counts were worked out rather than told. */
     private final Set<String> derived = new java.util.HashSet<>();
+    /** "three of them did not grow .": {who had them, thing, how many, whether not, doing}. */
+    private final List<Object[]> ofThem = new ArrayList<>();
+    private static final Map<String, String> PAST = Map.of("grew", "grow", "ate", "eat", "came", "come", "ran", "run",
+            "broke", "break", "flew", "fly", "fell", "fall", "froze", "freeze", "sold", "sell", "won", "win");
+
+    /** "grew" and "grow", "hatched" and "hatch": the doing without its ending. */
+    private static String plainVerb(String v) {
+        if (PAST.containsKey(v)) {
+            return PAST.get(v);
+        }
+        for (String end : new String[] {"ed", "d", "s"}) {
+            if (v.endsWith(end) && v.length() > end.length() + 2) {
+                return v.substring(0, v.length() - end.length());
+            }
+        }
+        return v;
+    }
+
     /** Counts told against another's, worked out once that is known: {who, thing, times, whose}. */
     private final List<Object[]> pending = new ArrayList<>();
     private String lastSubject;
@@ -281,6 +299,13 @@ final class NumberSense {
             prices.put(what, new Object[] {number(w.get(costs + 1)), unit});
             return;
         }
+        if (w.size() >= 4 && number(w.get(0)) >= 0 && w.get(1).equals("of") && w.get(2).equals("them") && lastThing != null) {
+            // "three of them did not grow .", "two of them hatched ."
+            boolean not = w.size() >= 6 && w.get(3).equals("did") && w.get(4).equals("not") || w.get(3).equals("didn't");
+            String verb = w.get(w.size() - 1);
+            ofThem.add(new Object[] {lastHaver, lastThing, number(w.get(0)), not, plainVerb(verb)});
+            return;
+        }
         if (w.contains("half") && w.contains("of") && lastHaver != null && lastThing != null) {
             Integer before = counts.getOrDefault(lastHaver, new LinkedHashMap<>()).get(lastThing);
             if (before != null) {
@@ -433,6 +458,16 @@ final class NumberSense {
     private List<String> howMany(List<String> q) {
         String what = q.get(2);
         String who;
+        if (q.size() == 4 && !HAVING.contains(q.get(3))) {
+            // "how many seeds grew?" after "i planted ten seeds ." "three of them did not grow ."
+            for (Object[] o : ofThem) {
+                Integer all = counts.getOrDefault((String) o[0], new LinkedHashMap<>()).get((String) o[1]);
+                if (o[1].equals(what) && o[4].equals(plainVerb(q.get(3))) && all != null) {
+                    int n = (boolean) o[3] ? all - (int) o[2] : (int) o[2];
+                    return List.of(say(n), what, q.get(3), ".");
+                }
+            }
+        }
         if (q.size() == 7 && Set.of("do").contains(q.get(3)) && Set.of("they", "we", "you").contains(q.get(4))
                 && HAVING.contains(q.get(5)) && q.get(6).equals("together")) {
             // "how many sheep do they have together?": all the counts of it told.

@@ -5169,6 +5169,12 @@ public final class Brain {
     private int[] isItSafe(int[] heard) {
         Vocabulary v = language.vocabulary;
         String asked = String.join(" ", wordsOf(heard));
+        java.util.regex.Matcher after = java.util.regex.Pattern.compile("(.+) if (it is|it's|there is an?|there are) ([a-z]+) \\?").matcher(asked);
+        if (after.matches()) {
+            // "is it safe outside if there are skeletons?" supposes the same as "if there are
+            // skeletons , is it safe outside ?".
+            asked = "if " + after.group(2) + " " + after.group(3) + " , " + after.group(1) + " ?";
+        }
         java.util.regex.Matcher supposed = java.util.regex.Pattern.compile("if (it is|it's|it was|there is an?|there are) ([a-z]+) , (.*)").matcher(asked);
         if (supposed.matches() && safeNow(supposed.group(3)) != null) {
             // "if it is night, should i go outside?": what it supposes, not what is so now.

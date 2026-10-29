@@ -406,3 +406,11 @@ the opposite of rich is poor .
 the opposite of north is south .
 the opposite of east is west .
 a whale is a sea animal , not a fish .
+summer comes after spring .
+autumn comes after summer .
+winter comes after autumn .
+spring comes after winter .
+autumn comes before winter .
+spring comes before summer .
+summer comes before autumn .
+winter comes before spring .
