@@ -111,6 +111,50 @@ public final class BrainEvents {
     public static void serverTick(ServerTickEvent.Post e) {
         BrainCommand.tickWatchers(e.getServer());
         playerSteps(e);
+        if (WATCH_LITTER && e.getServer().getTickCount() % 200 == 0) {
+            watchLitter(e.getServer());
+        }
+    }
+
+    /** -PwatchLitter (on in game tests): report where a flood of dropped items is coming from. */
+    private static final boolean WATCH_LITTER = Boolean.getBoolean("reallyalive.watchLitter");
+    private static final int LITTER_FLOOD = 2000;
+    private static final org.slf4j.Logger LITTER_LOG = com.mojang.logging.LogUtils.getLogger();
+    private static int litterReports;
+
+    /**
+     * Benchmarks once froze the server under hundreds of thousands of dropped items, made faster
+     * than anything a villager could throw. Past {@code LITTER_FLOOD} item entities in a level,
+     * the kinds and places with the most are logged (a few times only), so the source shows.
+     */
+    private static void watchLitter(net.minecraft.server.MinecraftServer server) {
+        if (litterReports >= 5) {
+            return;
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            Map<String, Integer> byKind = new HashMap<>();
+            Map<net.minecraft.world.level.ChunkPos, Integer> byChunk = new HashMap<>();
+            int n = 0;
+            for (var entity : level.getAllEntities()) {
+                if (entity instanceof net.minecraft.world.entity.item.ItemEntity item) {
+                    n++;
+                    byKind.merge(item.getItem().getItem().toString(), 1, Integer::sum);
+                    byChunk.merge(item.chunkPosition(), 1, Integer::sum);
+                }
+            }
+            if (n < LITTER_FLOOD) {
+                continue;
+            }
+            litterReports++;
+            var kinds = byKind.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(5).toList();
+            var chunks = byChunk.entrySet().stream().sorted(Map.Entry.<net.minecraft.world.level.ChunkPos, Integer>comparingByValue().reversed()).limit(3)
+                    .map(c -> c.getKey().getMiddleBlockPosition(0) + "=" + c.getValue()).toList();
+            var nearest = chunks.isEmpty() ? null : byChunk.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
+            String villagers = nearest == null ? "" : level.getEntitiesOfClass(net.minecraft.world.entity.npc.Villager.class,
+                    new net.minecraft.world.phys.AABB(nearest.getMiddleBlockPosition(-64)).inflate(24, 400, 24)).stream()
+                    .map(v -> v.getName().getString() + " holding " + v.getMainHandItem()).toList().toString();
+            LITTER_LOG.warn("{} dropped items in {}: kinds {}, chunks {}, villagers there {}", n, level.dimension().location(), kinds, chunks, villagers);
+        }
     }
 
     // ---------------------------------------------------------------- hearing
@@ -187,6 +231,39 @@ public final class BrainEvents {
     @SubscribeEvent
     public static void crafted(PlayerEvent.ItemCraftedEvent e) {
         made(e.getEntity());
+        if (e.getInventory() instanceof net.minecraft.world.inventory.CraftingContainer grid
+                && e.getEntity().level() instanceof net.minecraft.server.level.ServerLevel level && BrainManager.get() != null) {
+            level.getRecipeManager().getRecipeFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING, grid.asCraftInput(), level)
+                    .ifPresent(recipe -> seenCrafting(level, e.getEntity(), recipe));
+        }
+    }
+
+    /** How far off a villager can watch someone craft and make out the grid. */
+    private static final double WATCH_RANGE = 6.0;
+    /** How squarely a villager must be looking at the crafter to see it: the cosine of the angle off. */
+    private static final double WATCH_FACING = 0.7;
+
+    /**
+     * Someone (a player, or a villager's stand-in) took what a crafting grid made: brain villagers
+     * close by and looking at them see the grid laid out as it was, and remember it as they would
+     * a page of a recipe book. Watching shows what goes where, never how to get it there.
+     */
+    public static void seenCrafting(net.minecraft.server.level.ServerLevel level, net.minecraft.world.entity.LivingEntity crafter,
+                                     net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
+        Hands own = StandIn.owner(crafter);
+        net.minecraft.world.phys.Vec3 at = crafter.getEyePosition();
+        for (Villager v : level.getEntitiesOfClass(Villager.class, crafter.getBoundingBox().inflate(WATCH_RANGE))) {
+            BrainManager.Handle h = BrainManager.get().handle(v);
+            if (h == null || h.hands() == own) {
+                continue;
+            }
+            net.minecraft.world.phys.Vec3 to = at.subtract(v.getEyePosition());
+            if (to.length() > WATCH_RANGE || to.length() < 1e-3 || v.getViewVector(1f).dot(to.normalize()) < WATCH_FACING
+                    || !v.hasLineOfSight(crafter)) {
+                continue;
+            }
+            h.hands().sawCrafted(recipe);
+        }
     }
 
     @SubscribeEvent

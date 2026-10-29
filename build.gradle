@@ -42,6 +42,8 @@ neoForge {
             systemProperty 'reallyalive.craftTicks', project.findProperty('craftTicks') ?: '150000'
             // -PtraceClicks logs every click villagers make on a screen.
             systemProperty 'reallyalive.traceClicks', project.hasProperty('traceClicks') ? 'true' : 'false'
+            // Reports where a flood of dropped items comes from, should one start.
+            systemProperty 'reallyalive.watchLitter', 'true'
         }
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'

@@ -218,6 +218,8 @@ public final class Hands {
     public int formedTotal;
     /** Drags let go over more than one slot, sharing a stack out; and single right clicks putting one thing into a workstation. */
     public int sharedOutTotal;
+    /** Times it watched someone craft something and remembered the grid. */
+    public int sawCraftedTotal;
     public int dealtOneTotal;
 
     public Hands(Villager body) {
@@ -1028,19 +1030,29 @@ public final class Hands {
     private record RecipeMemory(net.minecraft.world.item.crafting.RecipeHolder<?> recipe, long seen) {}
 
     /** Looking at a page of a recipe book long enough remembers the recipe on it. */
+    /** Watched someone take what a crafting grid made: the grid is remembered as a book page is. */
+    public void sawCrafted(net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
+        sawCraftedTotal++;
+        remember(recipe);
+    }
+
+    private void remember(net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
+        if (recipesSeen.remove(recipe.id()) == null) {
+            recipesLearnt++;
+        }
+        recipesSeen.put(recipe.id(), new RecipeMemory(recipe, ticksLived));
+        while (recipesSeen.size() > RECIPES_REMEMBERED) {
+            recipesSeen.remove(recipesSeen.keySet().iterator().next());
+        }
+    }
+
     private void lookAtPage(RecipeBook.Menu book) {
         var shown = book.shown().orElse(null);
         net.minecraft.resources.ResourceLocation id = shown == null ? null : shown.id();
         onPageFor = java.util.Objects.equals(id, onPage) ? onPageFor + 1 : 0;
         onPage = id;
         if (shown != null && onPageFor >= PAGE_LOOK_TICKS) {
-            if (recipesSeen.remove(id) == null) {
-                recipesLearnt++;
-            }
-            recipesSeen.put(id, new RecipeMemory(shown, ticksLived));
-            while (recipesSeen.size() > RECIPES_REMEMBERED) {
-                recipesSeen.remove(recipesSeen.keySet().iterator().next());
-            }
+            remember(shown);
         }
     }
 
