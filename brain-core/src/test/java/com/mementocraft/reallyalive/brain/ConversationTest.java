@@ -607,6 +607,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerGeneralisesFromCases() {
+        // {told, asked, a word the answer says, a word it must not start with}
+        String[][] talks = {{"tom's goat is brown.|ben's goat is brown.|ana's goat is brown.", "what colour are goats?", "each", "-"},
+            {"tom's goat is brown.|ben's goat is white.|ana's goat is brown.", "are all goats brown?", "white", "yes"},
+            {"the first glimberry was sweet.|the second glimberry was sweet.|the third glimberry was sweet.",
+                "are glimberries sweet?", "yes", "no"}};
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 5100 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            for (String told : talks[i][0].split("\\|")) {
+                talk(b, told, onScript);
+            }
+            List<String> said = talk(b, talks[i][1], onScript);
+            System.out.println("  " + talks[i][1] + " -> " + String.join(" ", said));
+            assertTrue(said.contains(talks[i][2]) && !said.get(0).equals(talks[i][3]), talks[i][1] + " -> " + said);
+        }
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

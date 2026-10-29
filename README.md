@@ -216,6 +216,11 @@ one: "tom went to the mill." "where is he?" is "where is tom?"; "the guards are 
 "where are they?" gives "the guards are at the gate .". With no one told of at all, it asks:
 "where is he?" gets "who do you mean ?" and "what does it do?" gets "what do you mean ?"; an "it"
 that stands for nothing ("what time is it?", "is it raining?") is answered as before.
+It generalises from cases told alike: after "tom's goat is brown.", "ben's goat is brown." and
+"ana's goat is brown.", "what colour are goats?" is "each goat i heard of is brown ."; "the miller
+woke early on monday / tuesday / wednesday." makes "when does the miller wake up?" "the miller woke
+early each day i heard of ."; one case against it is named ("are all goats brown?" "no , ben's goat
+is white ."; "are the stones heavy?" "most were , but the third stone was light .").
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

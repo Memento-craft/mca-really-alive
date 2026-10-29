@@ -1175,6 +1175,17 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] general = generalised(heard);
+        if (general != null) {
+            // "tom's goat is brown." "ben's goat is brown." "ana's goat is brown.": "what colour
+            // are goats?" "each goat i heard of is brown ."; "are all goats brown?" after one white
+            // goat: "no , ben's goat is white ."
+            toldLine = general;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] feeling = feelingNow(heard);
         if (feeling != null) {
             // "how do you feel?" when hurt: "i'm hurt ."; "why are you scared?" "because there is
@@ -4155,6 +4166,153 @@ public final class Brain {
             }
         }
         return null;
+    }
+
+    private static final Set<String> ALL_OF = Set.of("all", "every", "always", "each");
+    private static final Set<String> YES_NO = Set.of("is", "are", "was", "were", "do", "does", "did", "can", "will");
+    /** Words of a question that say nothing of what it is about. */
+    private static final Set<String> ONLY_ASKING = Set.of("colour", "color", "kind", "usually", "often", "like", "up",
+            "all", "every", "always", "each", "any", "most");
+
+    /**
+     * What several told lines alike say together, when a question asks of them all: three lines
+     * the same but for whose goat or which day ("tom's goat is brown .", "ben's goat is brown .",
+     * "ana's goat is brown .") make "what colour are goats?" "each goat i heard of is brown ."; a
+     * line that differs in one more word is a case against it ("are all goats brown?" "no , ben's
+     * goat is white ."; "are the stones heavy?" "most were , but the third stone was light .").
+     * Null when no three lines are alike so, or the question names one of them or asks of
+     * something else.
+     */
+    private int[] generalised(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<List<String>> told = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line != null && line.length >= 4 && line.length <= TOLD_LONGEST && line[line.length - 1] == v.find(".")) {
+                told.add(wordsOf(line));
+            }
+        }
+        List<String> q = wordsOf(heard);
+        if (told.size() < 3 || q.size() < 3 || !q.get(q.size() - 1).equals("?")) {
+            return null;
+        }
+        for (List<String> base : told) {
+            int n = base.size();
+            for (int slot = -1; slot < n - 1; slot++) {
+                List<List<String>> alike = new ArrayList<>(), against = new ArrayList<>();
+                int otherAt = -1;
+                Set<String> named = new java.util.HashSet<>();
+                for (List<String> line : told) {
+                    if (line.size() != n) {
+                        continue;
+                    }
+                    List<Integer> differ = new ArrayList<>();
+                    for (int i = 0; i < n; i++) {
+                        if (i != slot && !line.get(i).equals(base.get(i))) {
+                            differ.add(i);
+                        }
+                    }
+                    if (differ.isEmpty()) {
+                        alike.add(line);
+                        named.add(slot < 0 ? "" : line.get(slot));
+                    } else if (differ.size() == 1 && (otherAt < 0 || otherAt == differ.get(0))) {
+                        otherAt = differ.get(0);
+                        against.add(line);
+                        named.add(slot < 0 ? "" : line.get(slot));
+                    }
+                }
+                if (alike.size() < 2 || alike.size() + against.size() < 3 || alike.size() <= against.size()
+                        || slot >= 0 && named.size() < alike.size() + against.size()) {
+                    continue;
+                }
+                int[] said = generalSaid(base, slot, otherAt, alike, against, q, named);
+                if (said != null) {
+                    return said;
+                }
+            }
+        }
+        return null;
+    }
+
+    private int[] generalSaid(List<String> base, int slot, int otherAt, List<List<String>> alike,
+            List<List<String>> against, List<String> q, Set<String> named) {
+        int n = base.size();
+        // The question asks of them all: it names none of them, and what it is about was told.
+        if (q.stream().anyMatch(named::contains)) {
+            return null;
+        }
+        int about = 0, off = 0;
+        boolean saysValue = otherAt < 0;
+        for (int i = 0; i < q.size() - 1; i++) {
+            String w = q.get(i);
+            int id = language.vocabulary.find(w);
+            if (id < 0 || !thingWord(id) || ASKING_WORDS.contains(w) || ONLY_ASKING.contains(w) || YES_NO.contains(w)) {
+                continue;
+            }
+            int at = -1;
+            for (int j = 0; j < n && at < 0; j++) {
+                if (j != slot && (sameDoing(w, base.get(j)) || w.endsWith("ies") && base.get(j).equals(w.substring(0, w.length() - 3) + "y"))) {
+                    at = j;
+                }
+            }
+            if (at < 0) {
+                off++;
+            } else {
+                about++;
+                saysValue |= at == otherAt;
+            }
+        }
+        if (about == 0 || off > about) {
+            return null;
+        }
+        // Said of them all: "each goat i heard of is brown .", "the miller woke early each day i heard of .",
+        // "the red mushroom made everyone sick .", "the blue flowers grew in the shade every time ."
+        List<String> all = new ArrayList<>();
+        String head = slot >= 0 && slot + 1 < n ? base.get(slot + 1) : "";
+        String which = slot >= 0 ? base.get(slot) : "";
+        boolean before = slot >= 0 && !head.isEmpty() && !AFTER_WHO.contains(head) && (which.endsWith("'s")
+                || Set.of("my", "your", "his", "her", "our", "their").contains(which) || slot > 0 && base.get(slot - 1).equals("the"));
+        for (int i = 0; i < n - 1; i++) {
+            String w = base.get(i);
+            if (i == slot) {
+                if (DAYS.contains(w) && i > 0 && base.get(i - 1).equals("on")) {
+                    all.remove(all.size() - 1);
+                    all.addAll(List.of("each", "day", "i", "heard", "of"));
+                } else if (before) {
+                    if (!all.isEmpty() && all.get(all.size() - 1).equals("the")) {
+                        all.remove(all.size() - 1);
+                    }
+                    boolean many = head.endsWith("s") && !head.endsWith("ss");
+                    all.addAll(many ? List.of("all", "the", head, "i", "heard", "of") : List.of("each", head, "i", "heard", "of"));
+                    i++;
+                } else {
+                    all.add("everyone");
+                }
+            } else {
+                all.add(w);
+            }
+        }
+        if (slot < 0) {
+            all.addAll(List.of("every", "time"));
+        }
+        all.add(".");
+        boolean yesNo = YES_NO.contains(q.get(0)), ofAll = q.stream().anyMatch(ALL_OF::contains);
+        List<String> out = new ArrayList<>();
+        if (!against.isEmpty()) {
+            if (yesNo && ofAll) {
+                out.addAll(List.of("no", ","));
+            } else {
+                String aux = Set.of("is", "are", "was", "were").contains(base.get(slot + 1 < n && slot + 2 < n ? slot + 2 : 0)) ? "were" : "did";
+                out.addAll(List.of("most", aux, ",", "but"));
+            }
+            out.addAll(against.get(0));
+            return said(String.join(" ", out));
+        }
+        if (yesNo && saysValue && off == 0) {
+            out.addAll(List.of("yes", ","));
+        }
+        out.addAll(all);
+        return said(String.join(" ", out));
     }
 
     /** "rains" and "raining", "rang" and "rings": the same doing. */
