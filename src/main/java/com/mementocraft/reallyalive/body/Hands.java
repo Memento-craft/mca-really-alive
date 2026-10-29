@@ -800,7 +800,7 @@ public final class Hands {
         Hearing.sound(level, Vec3.atCenterOf(pos), SoundChannel.DIGGING, 1f);
         if (harvests) {
             for (ItemStack drop : Block.getDrops(state, level, pos, blockEntity, body, tool)) {
-                take(drop);
+                takeOrDrop(drop);
             }
             state.spawnAfterBreak(level, pos, tool, true);
         }
@@ -810,7 +810,24 @@ public final class Hands {
         digging = null;
     }
 
-    /** Picks up an item like a player does: into the hand if it is free or holds the same, then the inventory. */
+    /**
+     * Takes a block's drops like a player does: what does not fit falls at its feet. Never for
+     * an item picked up off the ground: the rest of that stays where it lies, or a full villager
+     * standing on a stack dropped a copy of it every tick and the copies multiplied into the
+     * hundreds of thousands.
+     */
+    private void takeOrDrop(ItemStack stack) {
+        take(stack);
+        if (!stack.isEmpty()) {
+            body.level().addFreshEntity(new ItemEntity(body.level(), body.getX(), body.getY(), body.getZ(), stack.copy()));
+            stack.setCount(0);
+        }
+    }
+
+    /**
+     * Picks up an item like a player does: into the hand if it is free or holds the same, then the
+     * inventory. What does not fit is left in the stack.
+     */
     private void take(ItemStack stack) {
         ItemStack hand = body.getMainHandItem();
         if (hand.isEmpty()) {
@@ -823,9 +840,7 @@ public final class Hands {
         }
         if (!stack.isEmpty()) {
             ItemStack left = body.getInventory().addItem(stack);
-            if (!left.isEmpty()) {
-                body.level().addFreshEntity(new ItemEntity(body.level(), body.getX(), body.getY(), body.getZ(), left));
-            }
+            stack.setCount(left.getCount());
         }
     }
 
