@@ -544,6 +544,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerSaysHowItFeelsAndWhy() {
+        // {time, seen kind or "-", asked, right}
+        String[][] talks = {{"noon", "-", "how do you feel?", "good"}, {"noon", "zombie", "how are you feeling?", "scared"},
+            {"night", "-", "are you tired?", "yes"}, {"noon", "skeleton", "why are you scared?", "skeletons"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 3900 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            SelfKnowledge.tell(b, "Pedro", "farmer", false, List.of());
+            SelfKnowledge.world(b, talks[i][0], "sunny", "plains");
+            SelfKnowledge.around(b, talks[i][1].equals("-") ? List.of() : List.of(java.util.Map.entry(talks[i][1], 2)));
+            List<String> said = talk(b, talks[i][2], new int[] {0, 0});
+            System.out.println("  " + talks[i][0] + ", " + talks[i][1] + ": " + talks[i][2] + " " + String.join(" ", said));
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("said how it feels %d of %d%n", right, talks.length);
+        assertTrue(right == talks.length, "said only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

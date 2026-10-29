@@ -205,6 +205,10 @@ It judges whether it is safe out from what the game tells it: "is it safe to go 
 is "no , it's night , and monsters come out at night ."; with zombies in sight, "no , there are two
 zombies around ." (it knows from the facts which creatures are dangerous); in a storm, "no , there's
 a storm ."; otherwise "yes , it looks safe .".
+It says how it feels and why, from its body and what it sees: "how do you feel?" when its health
+is low is "i'm hurt , i need to rest ."; with a monster in sight, "i'm scared , there are two zombies
+around ."; at night, "i'm tired , it's late at night ."; "why are you scared?" "because there are
+two skeletons around .". "how are you?" gets its usual friendly reply unless something is wrong.
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

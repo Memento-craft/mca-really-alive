@@ -1154,6 +1154,16 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] feeling = feelingNow(heard);
+        if (feeling != null) {
+            // "how do you feel?" when hurt: "i'm hurt ."; "why are you scared?" "because there is
+            // a zombie around ."
+            toldLine = feeling;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] safe = isItSafe(heard);
         if (safe != null) {
             // "is it safe to go outside?" at night: "no , it's night , and monsters come out at
@@ -4181,6 +4191,68 @@ public final class Brain {
     private boolean generalAsk;
 
     private static final Set<String> NIGHT = Set.of("night", "midnight");
+    /** Below this share of its health it feels hurt. */
+    static final float HURT = 0.5f;
+
+    /** The dangerous creature in sight, as "a zombie" or "two zombies"; null if none. */
+    private String dangerSeen() {
+        Vocabulary v = language.vocabulary;
+        List<int[]> facts = knownToAll(v);
+        for (Carried seen : around) {
+            String kind = v.word(seen.name()[seen.name().length - 1]);
+            for (int[] fact : facts) {
+                List<String> f = wordsOf(fact);
+                if ((f.contains(kind) || f.contains(kind + "s")) && f.contains("dangerous") && !f.contains("not")) {
+                    String name = String.join(" ", wordsOf(seen.name()));
+                    return seen.count() == 1 ? ("aeiou".indexOf(name.charAt(0)) >= 0 ? "an " : "a ") + name
+                        : NUMBERS.get(Math.min(seen.count(), 20)) + " " + name + "s";
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * How it feels, from its body and what it sees: hurt when its health is low, scared with a
+     * dangerous creature in sight, tired at night, fine otherwise. Answers "how do you feel?",
+     * "are you hurt / scared / tired?" and "why are you ...?"; "how are you?" only when something
+     * is wrong, as the greeting it usually is gets a greeting back. Null if not asked.
+     */
+    private int[] feelingNow(int[] heard) {
+        String asked = String.join(" ", wordsOf(heard));
+        float health = input[IN_FEEL + FeelChannel.HEALTH.ordinal()];
+        boolean hurt = health > 0f && health < HURT;
+        String danger = toldAround ? dangerSeen() : null;
+        boolean tired = timeNow != null && NIGHT.contains(timeNow);
+        String state = hurt ? "hurt" : danger != null ? "scared" : tired ? "tired" : null;
+        String because = hurt ? "i need to rest" : danger != null ? "there " + (danger.startsWith("a ") || danger.startsWith("an ")
+                ? "is " : "are ") + danger + " around" : tired ? "it's late at night" : null;
+        String line = null;
+        if (Set.of("how do you feel ?", "how are you feeling ?", "how do you feel today ?", "how are you feeling today ?",
+                "are you okay ?", "are you ok ?", "are you alright ?", "are you all right ?").contains(asked)) {
+            line = state == null ? (asked.startsWith("are") ? "yes , i'm fine ." : "i feel good .")
+                : (asked.startsWith("are") ? "no , " : "") + "i'm " + state + " , " + because + " .";
+        } else if (asked.equals("how are you ?") && state != null) {
+            line = "not great , i'm " + state + " , " + because + " .";
+        } else if (asked.matches("are you (hurt|scared|afraid|tired) \\?")) {
+            String q = asked.split(" ")[2];
+            String st = q.equals("afraid") ? "scared" : q;
+            line = st.equals(state) || st.equals("scared") && danger != null || st.equals("tired") && tired || st.equals("hurt") && hurt
+                ? "yes , " + (st.equals("hurt") ? "i got hurt ." : st.equals("scared") ? "there " + (danger.startsWith("a") ? "is " : "are ") + danger + " around ." : "it's late at night .")
+                : "no , i'm not " + q + " .";
+        } else if (asked.matches("why are you (hurt|scared|afraid|tired) \\?")) {
+            String q = asked.split(" ")[3];
+            String st = q.equals("afraid") ? "scared" : q;
+            line = st.equals("scared") && danger != null ? "because there " + (danger.startsWith("a") ? "is " : "are ") + danger + " around ."
+                : st.equals("tired") && tired ? "because it's late at night ." : st.equals("hurt") && hurt ? "i got hurt , i need to rest ."
+                : "i'm not " + q + " .";
+        }
+        if (line == null) {
+            return null;
+        }
+        int[] said = said(line);
+        return Arrays.stream(said).anyMatch(w -> w < 0) ? null : said;
+    }
 
     /**
      * Whether it is safe out, from what it sees and knows: monsters around that it knows are
