@@ -245,6 +245,9 @@ dangerous .". "sara is taller than tim." "who is shorter?" gives "tim is shorter
 line told in steps ("i woke up, then i ate breakfast, then i went to work.") answers "what did i do
 after breakfast?" with "you went to work ."; and "is a carrot a fruit or a vegetable?" is answered
 without a "yes".
+Counts told against another's work in either order ("tom has twice as many sheep as ben." "ben has
+four sheep." "how many sheep does tom have?" "tom has eight sheep ."), and "how many sheep do they
+have together?" adds them up.
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

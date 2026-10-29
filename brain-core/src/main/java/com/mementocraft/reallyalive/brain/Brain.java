@@ -1245,6 +1245,14 @@ public final class Brain {
             toldSure = true;
             return new int[0];
         }
+        int[] oldest = mostOf(heard);
+        if (oldest != null) {
+            // "who is the youngest?" from "lia is older than kai ." "kai is older than bo .", before
+            // any count told lately is taken for it.
+            toldLine = oldest;
+            toldLineAsHeard = null;
+            return new int[] {oldest[oldest.length - 5]};
+        }
         int[] weighed = compared(heard);
         if (weighed == null && !ofAllAsked) {
             weighed = whichOfTwo(heard);
@@ -2025,7 +2033,8 @@ public final class Brain {
     private int[] ofItsKind(int[] heard) {
         Vocabulary v = language.vocabulary;
         int ask = v.find("?"), is = v.find("is");
-        if (heard[heard.length - 1] != ask) {
+        if (heard[heard.length - 1] != ask || heard[0] == v.find("if") || saysAny(heard, IT_OF_NOTHING)) {
+            // "if it is midnight, ..." and "is it raining?" ask of no thing told.
             return null;
         }
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
@@ -2933,6 +2942,10 @@ public final class Brain {
         List<int[]> more = new ArrayList<>();
         for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
             int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line.length > 0 && line[line.length - 1] == language.vocabulary.find("?")) {
+                // "is bo older than lia?" asks, it doesn't tell.
+                continue;
+            }
             for (int i = 1; i < line.length; i++) {
                 if (line[i] == than && line[i - 1] >= 0 && language.vocabulary.word(line[i - 1]).equals(moreWord)) {
                     int one = thingAt(line, i - 2, -1), other = thingAt(line, i + 1, 1);
@@ -3237,7 +3250,8 @@ public final class Brain {
     private int[] ofTheSame(int[] heard) {
         int ask = language.vocabulary.find("?");
         if (heard[heard.length - 1] != ask || !saysAny(heard, AGAIN) || heardLinesNext < 2
-                || heard[0] == language.vocabulary.find("if") || saysAny(heard, IT_OF_NOTHING)
+                || heard[0] == language.vocabulary.find("if") || saysAny(heard, Set.of("together", "both"))
+                || saysAny(heard, IT_OF_NOTHING)
                 && !saysAny(heard, Set.of("he", "she", "they", "him", "her", "them", "his", "its", "their"))) {
             // "if it is sunny, ..." and "is it raining?" ask of no thing told before.
             return null;
@@ -4940,7 +4954,7 @@ public final class Brain {
             "she's", "they're", "it's", "his", "their", "its");
     /** Words around "it" that make it stand for nothing ("what time is it?", "is it raining?"). */
     private static final Set<String> IT_OF_NOTHING = Set.of("time", "day", "raining", "snowing", "sunny", "stormy",
-            "night", "morning", "evening", "afternoon", "noon", "late", "early", "cold", "hot", "warm", "dark", "light",
+            "night", "midnight", "dusk", "dawn", "morning", "evening", "afternoon", "noon", "late", "early", "cold", "hot", "warm", "dark", "light",
             "safe", "going", "outside", "far", "windy", "cloudy", "foggy", "true", "possible", "worth", "fine", "okay");
     /** Words of greeting and small talk, which tell of no one. */
     private static final Set<String> SMALL_TALK = Set.of("hello", "hi", "hey", "good", "morning", "evening",
@@ -4970,7 +4984,7 @@ public final class Brain {
         Vocabulary v = language.vocabulary;
         List<String> w = wordsOf(heard);
         int n = w.size();
-        if (n < 3 || n > TOLD_QUESTION_WORDS || !w.get(n - 1).equals("?")) {
+        if (n < 3 || n > TOLD_QUESTION_WORDS || !w.get(n - 1).equals("?") || w.get(0).equals("if")) {
             return null;
         }
         int at = -1;

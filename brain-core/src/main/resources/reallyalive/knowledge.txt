@@ -405,3 +405,4 @@ the opposite of good is bad .
 the opposite of rich is poor .
 the opposite of north is south .
 the opposite of east is west .
+a whale is a sea animal , not a fish .

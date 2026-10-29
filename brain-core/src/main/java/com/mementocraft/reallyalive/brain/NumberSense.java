@@ -46,6 +46,8 @@ final class NumberSense {
     private final Map<String, Object[]> prices = new HashMap<>();
     /** Which counts were worked out rather than told. */
     private final Set<String> derived = new java.util.HashSet<>();
+    /** Counts told against another's, worked out once that is known: {who, thing, times, whose}. */
+    private final List<Object[]> pending = new ArrayList<>();
     private String lastSubject;
     private String lastThing;
     private String lastHaver;
@@ -55,6 +57,15 @@ final class NumberSense {
         NumberSense sense = new NumberSense();
         for (List<String> line : told) {
             sense.read(line);
+        }
+        for (int round = 0; round < 3; round++) {
+            for (Object[] p : sense.pending) {
+                Integer of = sense.counts.getOrDefault((String) p[3], new LinkedHashMap<>()).get((String) p[1]);
+                if (of != null && !sense.counts.getOrDefault((String) p[0], new LinkedHashMap<>()).containsKey((String) p[1])) {
+                    sense.count((String) p[0], (String) p[1], (int) Math.round(of * (double) p[2]));
+                    sense.derived.add(p[0] + " " + p[1]);
+                }
+            }
         }
         return sense.ask(question);
     }
@@ -129,8 +140,11 @@ final class NumberSense {
 
     /** "lisa is 8 .", "the wall is 6 blocks high .", "her brother is 3 years older .", "anna is older than tom ." */
     private void readMeasure(List<String> w, int is) {
-        String who = thing(w.subList(0, is));
         List<String> rest = w.subList(is + 1, w.size());
+        // "it is eight now ." tells the time, whoever was told of before.
+        boolean time = is == 1 && w.get(0).equals("it") && !rest.isEmpty() && (hour(rest.get(0)) >= 0 || SEASONS.contains(rest.get(0)))
+                && rest.contains("now");
+        String who = time ? "it" : thing(w.subList(0, is));
         if (who.equals("there")) {
             // "there are 3 houses ."
             if (rest.size() >= 2 && number(rest.get(0)) >= 0) {
@@ -193,6 +207,19 @@ final class NumberSense {
         boolean each = w.get(0).equals("each");
         String who = thing(w.subList(each ? 1 : 0, has));
         List<String> rest = w.subList(has + 1, w.size());
+        int as = rest.lastIndexOf("as");
+        if (rest.size() >= 5 && Set.of("twice", "half").contains(rest.get(0)) && rest.contains("many") && as > 2
+                && as + 1 < rest.size()) {
+            // "tom has twice as many sheep as ben .", told before or after what ben has.
+            int many = rest.indexOf("many");
+            String what = many + 1 < as ? rest.get(many + 1) : lastThing;
+            if (what != null) {
+                pending.add(new Object[] {who, what, rest.get(0).equals("twice") ? 2.0 : 0.5, thing(rest.subList(as + 1, rest.size()))});
+                lastHaver = who;
+                lastThing = what;
+                return;
+            }
+        }
         if (rest.size() >= 3 && Set.of("twice", "half").contains(rest.get(0)) && rest.contains("many")
                 && lastHaver != null && lastThing != null) {
             Integer before = counts.getOrDefault(lastHaver, new LinkedHashMap<>()).get(lastThing);
@@ -406,6 +433,19 @@ final class NumberSense {
     private List<String> howMany(List<String> q) {
         String what = q.get(2);
         String who;
+        if (q.size() == 7 && Set.of("do").contains(q.get(3)) && Set.of("they", "we", "you").contains(q.get(4))
+                && HAVING.contains(q.get(5)) && q.get(6).equals("together")) {
+            // "how many sheep do they have together?": all the counts of it told.
+            int all = 0, many = 0;
+            for (LinkedHashMap<String, Integer> c : counts.values()) {
+                if (c.containsKey(what)) {
+                    all += c.get(what);
+                    many++;
+                }
+            }
+            return many < 2 ? null : List.of(q.get(4).equals("we") ? "we" : q.get(4).equals("you") ? "we" : "they", "have", say(all), what,
+                    "together", ".");
+        }
         if (q.size() >= 5 && Set.of("do", "does").contains(q.get(3)) && HAVING.contains(q.get(q.size() - 1))) {
             who = thing(q.subList(4, q.size() - 1));
         } else if (q.size() == 5 && q.get(3).equals("are") && Set.of("there", "left").contains(q.get(4))) {
