@@ -521,6 +521,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerJudgesWhetherItIsSafeOut() {
+        // {time, weather, seen kind or "-", right}
+        String[][] talks = {{"night", "sunny", "-", "no"}, {"noon", "sunny", "cow", "yes"}, {"noon", "sunny", "zombie", "no"},
+            {"morning", "stormy", "-", "no"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 3700 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            SelfKnowledge.tell(b, "Pedro", "farmer", false, List.of());
+            SelfKnowledge.world(b, talks[i][0], talks[i][1], "plains");
+            SelfKnowledge.around(b, talks[i][2].equals("-") ? List.of() : List.of(java.util.Map.entry(talks[i][2], 2)));
+            List<String> said = talk(b, "is it safe to go outside?", new int[] {0, 0});
+            System.out.println("  " + talks[i][0] + ", " + talks[i][1] + ", " + talks[i][2] + ": " + String.join(" ", said));
+            right += !said.isEmpty() && said.get(0).equals(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("judged whether it is safe %d of %d%n", right, talks.length);
+        assertTrue(right == talks.length, "judged only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

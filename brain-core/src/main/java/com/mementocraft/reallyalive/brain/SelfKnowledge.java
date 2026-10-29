@@ -35,6 +35,8 @@ public final class SelfKnowledge {
      */
     public static void world(Brain b, String time, String weather, String land) {
         b.talk.forgetAround();
+        b.timeNow = time;
+        b.weatherNow = weather;
         if (time != null) {
             know(b, ASK_TIME, "time day night", "it's " + time + ".", false);
         }

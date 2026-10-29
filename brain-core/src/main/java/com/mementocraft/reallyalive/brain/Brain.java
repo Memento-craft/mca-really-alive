@@ -1154,6 +1154,16 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] safe = isItSafe(heard);
+        if (safe != null) {
+            // "is it safe to go outside?" at night: "no , it's night , and monsters come out at
+            // night ."
+            toldLine = safe;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] reckonedHere = numbersTold(heard);
         if (reckonedHere != null) {
             // "how old is lisa's brother?" after "lisa is 8." "her brother is 3 years older.":
@@ -2471,6 +2481,9 @@ public final class Brain {
     /** The creatures it sees around it, by kind, and how many; as the game tells it, not saved. */
     final List<Carried> around = new ArrayList<>();
     boolean toldAround;
+    /** The time of day and the weather as the game last told them ("night", "stormy"); null if not told. */
+    String timeNow;
+    String weatherNow;
     /** The last words of the names of the kinds of creature there are ("cow", "golem"), from the game. */
     static final Set<String> CREATURES = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
@@ -4166,6 +4179,55 @@ public final class Brain {
     }
 
     private boolean generalAsk;
+
+    private static final Set<String> NIGHT = Set.of("night", "midnight");
+
+    /**
+     * Whether it is safe out, from what it sees and knows: monsters around that it knows are
+     * dangerous ("creepers are dangerous ."), the night, or a storm. "is it safe to go outside?"
+     * "no , there are two zombies around ."; "should i go out?" "yes , it looks safe .". Null if
+     * it is no such question or the game told it nothing of the world around.
+     */
+    private int[] isItSafe(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 3 || heard[0] < 0 || !toldAround && timeNow == null && weatherNow == null) {
+            return null;
+        }
+        String asked = String.join(" ", wordsOf(heard));
+        int[] answer = safeNow(asked);
+        return answer == null || Arrays.stream(answer).anyMatch(w -> w < 0) ? null : answer;
+    }
+
+    private int[] safeNow(String asked) {
+        Vocabulary v = language.vocabulary;
+        boolean safeAsked = asked.startsWith("is it safe") || asked.matches("(should|can) (i|we) go (out|outside)( now| today)? \\?");
+        if (!safeAsked) {
+            return null;
+        }
+        List<int[]> facts = knownToAll(v);
+        for (Carried seen : around) {
+            String kind = v.word(seen.name()[seen.name().length - 1]);
+            boolean dangerous = false;
+            for (int[] fact : facts) {
+                List<String> f = wordsOf(fact);
+                if ((f.contains(kind) || f.contains(kind + "s")) && f.contains("dangerous") && !f.contains("not")) {
+                    dangerous = true;
+                }
+            }
+            if (dangerous) {
+                String many = seen.count() == 1 ? "there is a" : "there are " + NUMBERS.get(Math.min(seen.count(), 20));
+                String name = String.join(" ", wordsOf(seen.name())) + (seen.count() == 1 ? "" : "s");
+                return said("no , " + many + " " + name + " around .");
+            }
+        }
+        if (weatherNow != null && weatherNow.equals("stormy")) {
+            return said("no , there's a storm .");
+        }
+        if (timeNow != null && NIGHT.contains(timeNow)) {
+            return said("no , it's night , and monsters come out at night .");
+        }
+        return said("yes , it looks safe .");
+    }
 
     /**
      * "how do i get iron?" or "what should i do if i am hungry?" as asked of anyone, "how do you
