@@ -1172,6 +1172,15 @@ public final class Brain {
             toldInOwnWords = true;
             return new int[0];
         }
+        int[] notSo = notSo(heard);
+        if (notSo != null) {
+            // "the sky is green." "no , the sky is blue ."
+            toldLine = notSo;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] against = saidOtherwise(heard);
         if (against != null) {
             // "the cart is red." then "the cart is blue.": "wait , you said the cart is red ."
@@ -4483,6 +4492,60 @@ public final class Brain {
             }
             if (against(was, now) || against(now, was) && was.size() != n) {
                 return join(said("wait , you said"), toldBack(line));
+            }
+        }
+        return null;
+    }
+
+    /** "pigs" and "a pig", "the sky" and "sky": the same kind of thing. */
+    private static boolean sameKind(List<String> a, List<String> b) {
+        List<String> x = a.stream().filter(w -> !Set.of("a", "an", "the").contains(w)).toList();
+        List<String> y = b.stream().filter(w -> !Set.of("a", "an", "the").contains(w)).toList();
+        if (x.size() != y.size() || x.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < x.size(); i++) {
+            String p = x.get(i), q = y.get(i);
+            if (!p.equals(q) && !(i == x.size() - 1 && (ofKind(p, q) || ofKind(q, p)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * What it knows goes against a line it was told, said back: "the sky is green ." "no , the sky
+     * is blue ."; "pigs can fly ." "no , pigs can't fly ."; "birds can't fly ." "no , birds can
+     * fly .". Only of kinds of things it knows facts of, never of the speaker's own things or of
+     * someone named. Null if nothing it knows says otherwise.
+     */
+    private int[] notSo(int[] heard) {
+        List<String> now = wordsOf(heard);
+        int n = now.size();
+        if (n < 4 || n > 8 || !now.get(n - 1).equals(".") || OF_THE_MOMENT.contains(now.get(0))
+                || Set.of("his", "her", "their").contains(now.get(0))) {
+            return null;
+        }
+        int is = now.indexOf("is") >= 0 ? now.indexOf("is") : now.indexOf("are");
+        int can = now.indexOf("can") >= 0 ? now.indexOf("can") : now.indexOf("can't");
+        for (int[] fact : knownToAll(language.vocabulary)) {
+            List<String> f = wordsOf(fact);
+            if (f.contains("or") || f.contains(",") || f.size() > 8) {
+                continue;
+            }
+            if (is > 0 && is + 2 == n - 1 && COLOURS.contains(now.get(is + 1))) {
+                int fis = f.indexOf("is") >= 0 ? f.indexOf("is") : f.indexOf("are");
+                if (fis > 0 && fis + 2 == f.size() - 1 && COLOURS.contains(f.get(fis + 1)) && !f.get(fis + 1).equals(now.get(is + 1))
+                        && sameKind(now.subList(0, is), f.subList(0, fis))) {
+                    return join(said("no ,"), fact);
+                }
+            }
+            if (can > 0 && can + 2 == n - 1) {
+                int fcan = f.indexOf("can") >= 0 ? f.indexOf("can") : f.indexOf("can't");
+                if (fcan > 0 && fcan + 2 == f.size() - 1 && f.get(fcan + 1).equals(now.get(can + 1))
+                        && !f.get(fcan).equals(now.get(can)) && sameKind(now.subList(0, can), f.subList(0, fcan))) {
+                    return join(said("no ,"), fact);
+                }
             }
         }
         return null;

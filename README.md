@@ -254,6 +254,10 @@ emeralds do i need?" "you need four more emeralds ."; "the path to the mine is b
 the mine by the path?" "no , the path to the mine is blocked ."; "why do we need wood?" after "we need
 wood to fix the roof." is "to fix the roof ."; and "i had twelve arrows." "i shot five of them." leaves
 seven.
+It corrects what goes against what it knows: "the sky is green." gets "no , the sky is blue ."; "pigs
+can fly." gets "no , pigs can't fly ."; "birds can't fly." gets "no , a bird can fly .". It does
+this only for kinds of things it knows facts about, never for the speaker's own things ("my hat is
+green.") or someone named ("tom can fly.").
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."
