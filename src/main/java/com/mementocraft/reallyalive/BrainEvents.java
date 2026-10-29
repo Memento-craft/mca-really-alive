@@ -116,6 +116,28 @@ public final class BrainEvents {
     private static final org.slf4j.Logger LITTER_LOG = com.mojang.logging.LogUtils.getLogger();
     private static int litterReports;
 
+    private static long joinTick = -1;
+    private static int joinsThisTick;
+
+    /**
+     * The flood comes in a burst too fast for the sweep above: the server froze within a minute.
+     * The 500th item to appear in one tick is logged with where it came from (the call stack).
+     */
+    @SubscribeEvent
+    public static void itemJoined(net.neoforged.neoforge.event.entity.EntityJoinLevelEvent e) {
+        if (!WATCH_LITTER || !(e.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity item) || e.getLevel().isClientSide()
+                || litterReports >= 5) {
+            return;
+        }
+        long now = e.getLevel().getGameTime();
+        joinsThisTick = now == joinTick ? joinsThisTick + 1 : 1;
+        joinTick = now;
+        if (joinsThisTick == 500) {
+            litterReports++;
+            LITTER_LOG.warn("500 items appeared in one tick, such as {} at {}", item.getItem(), item.blockPosition(), new Throwable("where they come from"));
+        }
+    }
+
     /**
      * Benchmarks once froze the server under hundreds of thousands of dropped items, made faster
      * than anything a villager could throw. Past {@code LITTER_FLOOD} item entities in a level,

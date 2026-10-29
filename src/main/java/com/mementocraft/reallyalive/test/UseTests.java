@@ -603,6 +603,41 @@ public final class UseTests {
     }
 
     /**
+     * Walking over things with the hand full of something else puts them in the pockets, once; and
+     * with the pockets full too they stay where they lie. Taking them once copied them into the
+     * pockets and left them on the ground, and a full villager dropped a fresh copy every tick:
+     * hundreds of thousands of items froze the server.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 100)
+    public static void picksUpThingsWithoutCopyingThem(GameTestHelper h) {
+        Villager v = worker(h, new ItemStack(Items.COBBLESTONE, 64));
+        Villager full = spawnMcaVillager(h, new Vec3(3.5, 2, 15.5));
+        full.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.COBBLESTONE, 64));
+        for (int i = 0; i < full.getInventory().getContainerSize(); i++) {
+            full.getInventory().setItem(i, new ItemStack(Items.STONE, 64));
+        }
+        attach(h, full).hold(MotorCommand.IDLE);
+        for (Villager at : List.of(v, full)) {
+            var item = new net.minecraft.world.entity.item.ItemEntity(h.getLevel(), at.getX(), at.getY(), at.getZ(), new ItemStack(Items.DIRT, 5));
+            item.setNoPickUpDelay();
+            h.getLevel().addFreshEntity(item);
+        }
+        h.runAtTickTime(40, () -> {
+            var box = new net.minecraft.world.phys.AABB(h.absolutePos(new BlockPos(0, 0, 9))).inflate(0, 0, 0)
+                    .minmax(new net.minecraft.world.phys.AABB(h.absolutePos(new BlockPos(8, 5, 18))));
+            int lying = 0;
+            for (var item : h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+                lying += item.getItem().is(Items.DIRT) ? item.getItem().getCount() : 0;
+            }
+            int pocketed = count(v, Items.DIRT);
+            LOG.info("dirt: pocketed {}, by the full villager {}, lying {}", pocketed, count(full, Items.DIRT), lying);
+            h.assertTrue(pocketed == 5, "the villager with room did not pocket the 5 dirt exactly once: " + pocketed);
+            h.assertTrue(count(full, Items.DIRT) == 0 && lying == 5, "the full villager's dirt was not left lying as it was: " + lying + " lying");
+            h.succeed();
+        });
+    }
+
+    /**
      * Watching someone craft is remembered as a book page is: someone in front of a villager
      * takes sticks from a grid (planks one above the other), and the villager's own grid then
      * marks those two places. A villager facing the other way sees nothing.
