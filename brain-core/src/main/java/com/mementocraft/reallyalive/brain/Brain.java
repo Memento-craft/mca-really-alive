@@ -4155,6 +4155,10 @@ public final class Brain {
                 forms.add(p.substring(0, p.length() - end.length()));
             }
         }
+        if (p.endsWith("ing") && p.length() > 5) {
+            // "coming" "come"
+            forms.add(p.substring(0, p.length() - 3) + "e");
+        }
         return forms;
     }
 
@@ -4405,6 +4409,21 @@ public final class Brain {
                 single = thing;
             }
         }
+        if (not && fits == 0 && knownOf == things.size() - 1) {
+            // "a cow is an animal ." "a pig is an animal .": the stone is the one that is not.
+            for (int[] thing : things) {
+                int head = thing[thing.length - 1];
+                boolean known = false;
+                for (int[] fact : facts) {
+                    int at = indexOf(fact, head, 0), verb = indexOf(fact, v.find("is"), 0);
+                    known |= at >= 0 && verb > at && indexOf(fact, kindWord, 0) > verb;
+                }
+                if (!known) {
+                    single = thing;
+                    fits = 1;
+                }
+            }
+        }
         if (fits != 1 || knownOf < things.size() - 1) {
             return null;
         }
@@ -4566,6 +4585,12 @@ public final class Brain {
             for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
                 int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
                 if (line != null && line.length > 0 && line[line.length - 1] != v.find("?") && saidIn(line, w)) {
+                    return true;
+                }
+            }
+            for (int[] line : talk.toldLines()) {
+                // Or told of longer ago ("the shed is behind the mill .").
+                if (line.length > 0 && line[line.length - 1] != v.find("?") && saidIn(line, w)) {
                     return true;
                 }
             }
