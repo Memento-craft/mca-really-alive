@@ -211,6 +211,11 @@ around ."; at night, "i'm tired , it's late at night ."; "why are you scared?" "
 two skeletons around .". "how are you?" gets its usual friendly reply unless something is wrong.
 Not heard, it says it again: "what?" repeats its last line, and "what did you say?" gets "i said
 ...".
+It works out who "he", "she", "they" and "it" stand for from the latest line that tells of such a
+one: "tom went to the mill." "where is he?" is "where is tom?"; "the guards are at the gate."
+"where are they?" gives "the guards are at the gate .". With no one told of at all, it asks:
+"where is he?" gets "who do you mean ?" and "what does it do?" gets "what do you mean ?"; an "it"
+that stands for nothing ("what time is it?", "is it raining?") is answered as before.
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

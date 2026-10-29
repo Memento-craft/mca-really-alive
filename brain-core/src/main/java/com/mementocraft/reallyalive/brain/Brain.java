@@ -1132,6 +1132,18 @@ public final class Brain {
             // "how many legs does rex have?" after "rex is a dog .": what is so of dogs.
             meant = ofItsKind(plain);
         }
+        if (meant == null && plain.length > 0) {
+            // "where is he?" after "tom went to the mill .": "where is tom?"; with no one told
+            // of at all, it asks who is meant.
+            meant = ofWhoIsMeant(plain);
+            if (meant != null && meant.length == 0) {
+                toldLine = said(unclear);
+                toldLineAsHeard = null;
+                toldInOwnWords = true;
+                toldSure = true;
+                return new int[0];
+            }
+        }
         int[] heard = meant != null ? meant : plain;
         int[] again = saidAgain(heard);
         if (again != null) {
@@ -4202,6 +4214,136 @@ public final class Brain {
     }
 
     private boolean generalAsk;
+
+    /** Who "he", "she" and "they" stand for, and what "it" does; "him", "her" and "them" too. */
+    private static final Set<String> SOMEONE = Set.of("he", "she", "him", "her"), SOME = Set.of("they", "them"),
+            PRONOUNS = Set.of("he", "she", "him", "her", "they", "them", "it");
+    private static final Set<String> STANDS_FOR = Set.of("he", "she", "him", "her", "they", "them", "it", "he's",
+            "she's", "they're", "it's", "his", "their", "its");
+    /** Words around "it" that make it stand for nothing ("what time is it?", "is it raining?"). */
+    private static final Set<String> IT_OF_NOTHING = Set.of("time", "day", "raining", "snowing", "sunny", "stormy",
+            "night", "morning", "evening", "afternoon", "noon", "late", "early", "cold", "hot", "warm", "dark", "light",
+            "safe", "going", "outside", "far", "windy", "cloudy", "foggy", "true", "possible", "worth", "fine", "okay");
+    /** Words of greeting and small talk, which tell of no one. */
+    private static final Set<String> SMALL_TALK = Set.of("hello", "hi", "hey", "good", "morning", "evening",
+            "afternoon", "night", "day", "how", "are", "doing", "fine", "well", "thanks", "thank", "okay", "ok", "yes",
+            "no", "yeah", "nice", "great", "bye", "see", "later", "what's", "up", "name", "sir", "friend", "again",
+            "sure", "alright", "what", "who", "where", "why", "am", "i'm", "you're", "your", "my", "greetings", "howdy");
+    /** Words that end who a line tells of ("the old miller went ..."). */
+    private static final Set<String> AFTER_WHO = Set.of("is", "are", "was", "were", "has", "have", "had", "can", "will",
+            "did", "does", "do", "went", "came", "ran", "saw", "took", "lost", "found", "left", "made", "said", "got",
+            "gave", "fell", "sat", "ate", "flew", "swam", "sold", "bought", "caught", "wrote", "told", "in", "on", "at",
+            "to", "of", "with", "by", "and", ",", ".", "?", "!", "'s", "isn't", "wasn't", "won't", "can't", "likes", "lives");
+    /** Words for more than one that don't end in "s". */
+    private static final Set<String> MANY_OF_THEM = Set.of("children", "people", "men", "women", "folk", "geese", "mice",
+            "sheep", "cattle", "police", "oxen");
+    private static final Set<String> WHOSE = Set.of("the", "a", "an", "my", "your", "his", "her", "our", "their");
+    /** What it asks back when a question's "he" or "it" stands for nothing told. */
+    private String unclear;
+
+    /**
+     * A question about "he", "she", "it" or "they" asked of what they stand for: the one the
+     * latest line that tells of such a one names ("tom went to the mill ." makes "where is he?"
+     * "where is tom ?"). An empty line when nothing was told of anyone at all, so it should ask
+     * who is meant ("who do you mean ?", "what do you mean ?"); null when the question has no such
+     * word or what it stands for can't be told.
+     */
+    private int[] ofWhoIsMeant(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<String> w = wordsOf(heard);
+        int n = w.size();
+        if (n < 3 || n > TOLD_QUESTION_WORDS || !w.get(n - 1).equals("?")) {
+            return null;
+        }
+        int at = -1;
+        for (int i = 0; i < n - 1; i++) {
+            String word = w.get(i);
+            boolean possessive = word.equals("her") && i + 2 < n && !AFTER_WHO.contains(w.get(i + 1));
+            if (PRONOUNS.contains(word) && !possessive) {
+                at = i;
+                break;
+            }
+        }
+        if (at < 0) {
+            return null;
+        }
+        String pronoun = w.get(at);
+        if (pronoun.equals("it") && w.stream().anyMatch(IT_OF_NOTHING::contains)) {
+            return null;
+        }
+        for (int i = 1; i < at; i++) {
+            if (heard[i] >= 0 && thingWord(heard[i]) && !SMALL_TALK.contains(w.get(i)) && !PRONOUNS.contains(w.get(i))
+                    && BEFORE_A_THING.contains(w.get(i - 1))) {
+                // "what does the mayor do when he is angry?": "he" is the mayor.
+                return null;
+            }
+        }
+        boolean many = SOME.contains(pronoun), person = SOMEONE.contains(pronoun);
+        boolean toldOfAny = false;
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line == null) {
+                continue;
+            }
+            for (int x : line) {
+                toldOfAny |= x >= 0 && thingWord(x) && !SMALL_TALK.contains(v.word(x));
+            }
+            int[] who = whoLineTellsOf(line);
+            if (who == null && (line.length > TOLD_LONGEST || saysAny(line, STANDS_FOR))) {
+                // A long line, or one that itself says "he" of someone it doesn't name: who that
+                // is can't be told for sure.
+                return null;
+            }
+            if (who == null) {
+                continue;
+            }
+            String head = v.word(who[who.length - 1]);
+            boolean plural = (head.endsWith("s") && !head.endsWith("ss") || MANY_OF_THEM.contains(head)) && who.length > 1;
+            boolean thing = WHOSE.contains(v.word(who[0]));
+            if (many ? plural : !plural && (person || thing)) {
+                int[] meant = new int[heard.length - 1 + who.length];
+                System.arraycopy(heard, 0, meant, 0, at);
+                System.arraycopy(who, 0, meant, at, who.length);
+                System.arraycopy(heard, at + 1, meant, at + who.length, heard.length - at - 1);
+                return meant;
+            }
+        }
+        if (toldOfAny || toldAround && !around.isEmpty() && !person) {
+            return null;
+        }
+        unclear = pronoun.equals("it") ? "what do you mean ?" : "who do you mean ?";
+        return new int[0];
+    }
+
+    /**
+     * Who or what a line tells of, as the words that name it: "tom" in "tom went to the mill .",
+     * "the old miller" in "the old miller sold his cart .", "tom" in "where is tom ?". Null for
+     * a line about the speaker or the listener, or one that tells of no one.
+     */
+    private int[] whoLineTellsOf(int[] line) {
+        Vocabulary v = language.vocabulary;
+        int i = 0;
+        while (i < line.length && line[i] >= 0 && (ASKING_WORDS.contains(v.word(line[i]))
+                || Set.of("is", "are", "was", "were", "did", "does", "do", "can", "will", "has", "have").contains(v.word(line[i])))) {
+            i++;
+        }
+        if (i >= line.length || line[i] < 0) {
+            return null;
+        }
+        String first = v.word(line[i]);
+        if (WHOSE.contains(first)) {
+            int end = i + 1;
+            while (end < line.length && end < i + 4 && line[end] >= 0 && !AFTER_WHO.contains(v.word(line[end]))) {
+                end++;
+            }
+            return end > i + 1 ? Arrays.copyOfRange(line, i, end) : null;
+        }
+        if (!thingWord(line[i]) || SMALL_TALK.contains(first) || PRONOUNS.contains(first) || first.endsWith("ing")
+                || i + 1 >= line.length || line[i + 1] < 0 || !AFTER_WHO.contains(v.word(line[i + 1]))) {
+            return null;
+        }
+        return new int[] {line[i]};
+    }
 
     private static final Set<String> SAY_AGAIN = Set.of("what ?", "huh ?", "pardon ?", "sorry ?", "come again ?",
             "say that again ?", "can you say that again ?", "could you say that again ?", "can you repeat that ?",

@@ -584,6 +584,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerAsksWhoIsMeant() {
+        // {told, asked, a word the answer says; "?" when it should ask who or what is meant}
+        String[][] talks = {{"hello.", "where is he?", "?"}, {"hey.", "what does it do?", "?"},
+            {"tom went to the mill.", "where is he?", "mill"}, {"the miners went to the cave.", "where did they go?", "cave"},
+            {"hello.", "what time is it?", "!"}};
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 4100 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            talk(b, talks[i][0], onScript);
+            List<String> said = talk(b, talks[i][1], onScript);
+            String line = String.join(" ", said);
+            boolean asks = line.endsWith("do you mean ?");
+            System.out.println("  " + talks[i][1] + " -> " + line);
+            assertTrue(talks[i][2].equals("?") ? asks : talks[i][2].equals("!") ? !asks : said.contains(talks[i][2]),
+                talks[i][1] + " -> " + line);
+        }
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},
