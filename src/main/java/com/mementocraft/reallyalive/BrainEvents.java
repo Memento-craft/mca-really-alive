@@ -173,6 +173,39 @@ public final class BrainEvents {
     @SubscribeEvent
     public static void crafted(PlayerEvent.ItemCraftedEvent e) {
         made(e.getEntity());
+        if (e.getInventory() instanceof net.minecraft.world.inventory.CraftingContainer grid
+                && e.getEntity().level() instanceof net.minecraft.server.level.ServerLevel level && BrainManager.get() != null) {
+            level.getRecipeManager().getRecipeFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING, grid.asCraftInput(), level)
+                    .ifPresent(recipe -> seenCrafting(level, e.getEntity(), recipe));
+        }
+    }
+
+    /** How far off a villager can watch someone craft and make out the grid. */
+    private static final double WATCH_RANGE = 6.0;
+    /** How squarely a villager must be looking at the crafter to see it: the cosine of the angle off. */
+    private static final double WATCH_FACING = 0.7;
+
+    /**
+     * Someone (a player, or a villager's stand-in) took what a crafting grid made: brain villagers
+     * close by and looking at them see the grid laid out as it was, and remember it as they would
+     * a page of a recipe book. Watching shows what goes where, never how to get it there.
+     */
+    public static void seenCrafting(net.minecraft.server.level.ServerLevel level, net.minecraft.world.entity.LivingEntity crafter,
+                                     net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
+        Hands own = StandIn.owner(crafter);
+        net.minecraft.world.phys.Vec3 at = crafter.getEyePosition();
+        for (Villager v : level.getEntitiesOfClass(Villager.class, crafter.getBoundingBox().inflate(WATCH_RANGE))) {
+            BrainManager.Handle h = BrainManager.get().handle(v);
+            if (h == null || h.hands() == own) {
+                continue;
+            }
+            net.minecraft.world.phys.Vec3 to = at.subtract(v.getEyePosition());
+            if (to.length() > WATCH_RANGE || to.length() < 1e-3 || v.getViewVector(1f).dot(to.normalize()) < WATCH_FACING
+                    || !v.hasLineOfSight(crafter)) {
+                continue;
+            }
+            h.hands().sawCrafted(recipe);
+        }
     }
 
     @SubscribeEvent

@@ -603,6 +603,95 @@ public final class UseTests {
     }
 
     /**
+     * Watching someone craft is remembered as a book page is: someone in front of a villager
+     * takes sticks from a grid (planks one above the other), and the villager's own grid then
+     * marks those two places. A villager facing the other way sees nothing.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 200)
+    public static void remembersARecipeItWatchedBeingCrafted(GameTestHelper h) {
+        Villager watcher = worker(h, new ItemStack(Items.OAK_PLANKS, 4));
+        Villager away = spawnMcaVillager(h, new Vec3(3.5, 2, 14.5));
+        attach(h, away).hold(MotorCommand.IDLE);
+        BrainManager.Handle handle = handle(watcher);
+        // Someone at work in front of it: a villager without a brain, standing in for a player.
+        Villager crafter = spawnMcaVillager(h, new Vec3(6.5, 2, 12.5));
+        h.runAtTickTime(5, () -> {
+            aim(h, watcher, new Vec3(6.5, 3.5, 12.5));
+            aim(h, away, new Vec3(0.5, 3.5, 14.5));
+        });
+        h.runAtTickTime(8, () -> {
+            aim(h, watcher, new Vec3(6.5, 3.5, 12.5));
+            aim(h, away, new Vec3(0.5, 3.5, 14.5));
+            var sticks = h.getLevel().getRecipeManager().byKey(ResourceLocation.withDefaultNamespace("stick")).orElseThrow();
+            com.mementocraft.reallyalive.BrainEvents.seenCrafting(h.getLevel(), crafter, sticks);
+            LOG.info("watched: {} times, learnt {}; facing away: {} times", handle.hands().sawCraftedTotal, handle.hands().recipesLearnt,
+                    handle(away).hands().sawCraftedTotal);
+            h.assertTrue(handle.hands().sawCraftedTotal == 1, "the villager looking at the crafter did not see the sticks made");
+            h.assertTrue(handle(away).hands().sawCraftedTotal == 0, "a villager looking away saw the crafting");
+        });
+        new MouseScript()
+                .waitTicks(10)
+                .key(INVENTORY)
+                .play(h, handle, 12, () -> {
+                    var hint = handle.hands().recipeHint(handle.hands().screen());
+                    LOG.info("watched recipe hint {}", hint == null ? null : hint.want().keySet());
+                    h.assertTrue(handle.hands().screen() instanceof InventoryMenu, "its own inventory is not open");
+                    h.assertTrue(hint != null && hint.want().keySet().equals(java.util.Set.of(1, 3)),
+                            "the watched stick recipe did not mark the two grid places one above the other: " + (hint == null ? null : hint.want().keySet()));
+                });
+    }
+
+    /**
+     * With Create installed: a water wheel put against the side of a press, where a stream of
+     * water runs past, turns the press. Placing it is an ordinary use on the press's side, and
+     * the press it set going is felt.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 200)
+    public static void setsAPressGoingWithAWaterWheelIfCreateIsInstalled(GameTestHelper h) {
+        var create = (java.util.function.Function<String, ResourceLocation>) id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var depot = BuiltInRegistries.BLOCK.getOptional(create.apply("depot"));
+        var wheel = BuiltInRegistries.ITEM.getOptional(create.apply("water_wheel"));
+        if (press.isEmpty() || depot.isEmpty() || wheel.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos onto = new BlockPos(6, 2, 12);
+        h.setBlock(onto, depot.get());
+        BlockPos pressAt = onto.above(2);
+        h.setBlock(pressAt, press.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST));
+        // A stream: a spring in a glass trough above where the wheel goes, running off past it.
+        BlockPos spring = new BlockPos(7, 5, 11);
+        for (BlockPos g : List.of(spring.west(), spring.east(), spring.north(), spring.below(), spring.south().west(), spring.south().east())) {
+            h.setBlock(g, Blocks.GLASS);
+        }
+        h.setBlock(spring, Blocks.WATER);
+        BlockPos wheelAt = pressAt.east();
+        Villager v = spawnMcaVillager(h, new Vec3(9.5, 2, 12.5));
+        v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(wheel.get()));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        Vec3 side = new Vec3(7.02, 4.5, 12.5);
+        h.runAtTickTime(28, () -> aim(h, v, side));
+        h.runAtTickTime(30, () -> {
+            aim(h, v, side);
+            handle.hold(USE);
+        });
+        h.runAtTickTime(32, () -> handle.hold(MotorCommand.IDLE));
+        h.runAtTickTime(120, () -> {
+            boolean turning = com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pressAt));
+            LOG.info("water wheel: {} at the press's side, press turning {}, set going {}, hand {}", h.getBlockState(wheelAt), turning,
+                    handle.hands().setGoingTotal, v.getMainHandItem());
+            h.assertTrue(h.getBlockState(wheelAt).getBlock().asItem() == wheel.get(), "the wheel was not placed at the press's side: " + h.getBlockState(wheelAt));
+            h.assertTrue(turning, "the water wheel does not turn the press");
+            h.assertTrue(handle.hands().setGoingTotal >= 1, "setting the press going with the wheel was not felt");
+            h.succeed();
+        });
+    }
+
+    /**
      * With Create installed: holding use on a hand crank turns it, and the shaft behind it, as a
      * player's held right button does. The shaft it drives is felt set going; the crank itself,
      * turning only under the hand, is not.
