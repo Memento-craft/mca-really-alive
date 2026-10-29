@@ -1348,6 +1348,15 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[] {most[most.length - 5]};
         }
+        int[] more = moreOfTwo(heard);
+        if (more != null) {
+            // "sara is taller than tim .": "who is shorter?" "tim is shorter than sara ."
+            toldLine = more;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] anyone = generalAsk ? null : askedOfAnyone(heard);
         if (anyone != null) {
             // "how do i get iron?" asks what anyone does: "to get iron , you mine iron ore with a
@@ -1633,6 +1642,10 @@ public final class Brain {
             answer = state < 0 ? placeAnswer(heard, best) : saysOpposite(best, state) ? language.vocabulary.find("no")
                     : (changed ? saidIn(best, state) : best[end] == state) ? language.vocabulary.find("yes") : -1;
         }
+        if (answer >= 0 && contains(heard, language.vocabulary.find("or"))) {
+            // "is a carrot a fruit or a vegetable?" asks which, not yes or no.
+            answer = -1;
+        }
         if (answer >= 0) {
             // "is the baker sick?" asks yes or no: "yes , the baker is sick today ."
             toldLine = new int[best.length + 2];
@@ -1907,6 +1920,34 @@ public final class Brain {
         said[named.length + 2] = heard[at];
         said[named.length + 3] = language.vocabulary.find(".");
         return said;
+    }
+
+    /**
+     * "who is shorter?" after "sara is taller than tim .": of two things compared, the one that
+     * is so, said as "tim is shorter than sara ."; null if it is no such question or not two.
+     */
+    private int[] moreOfTwo(int[] heard) {
+        List<String> q = wordsOf(heard);
+        if (q.size() != 4 || !Set.of("who", "which", "what").contains(q.get(0)) || !Set.of("is", "was", "are").contains(q.get(1))
+                || !q.get(2).endsWith("er") || !q.get(3).equals("?")) {
+            return null;
+        }
+        String word = q.get(2);
+        phrases.clear();
+        List<int[]> more = comparisons(word);
+        for (String other : List.of(OPPOSITE.getOrDefault(word, ""), word.equals("shorter") ? "longer" : "")) {
+            if (more.isEmpty() && !other.isEmpty()) {
+                for (int[] m : comparisons(other)) {
+                    more.add(new int[] {m[1], m[0]});
+                }
+            }
+        }
+        if (more.size() != 1) {
+            return null;
+        }
+        int[] one = phrases.getOrDefault(more.get(0)[0], new int[] {more.get(0)[0]});
+        int[] other = phrases.getOrDefault(more.get(0)[1], new int[] {more.get(0)[1]});
+        return join(one, said("is " + word + " than"), other, said("."));
     }
 
     private static final List<String> NUMBERS = List.of("zero", "one", "two", "three", "four", "five", "six", "seven",
@@ -3195,7 +3236,10 @@ public final class Brain {
      */
     private int[] ofTheSame(int[] heard) {
         int ask = language.vocabulary.find("?");
-        if (heard[heard.length - 1] != ask || !saysAny(heard, AGAIN) || heardLinesNext < 2) {
+        if (heard[heard.length - 1] != ask || !saysAny(heard, AGAIN) || heardLinesNext < 2
+                || heard[0] == language.vocabulary.find("if") || saysAny(heard, IT_OF_NOTHING)
+                && !saysAny(heard, Set.of("he", "she", "they", "him", "her", "them", "his", "its", "their"))) {
+            // "if it is sunny, ..." and "is it raining?" ask of no thing told before.
             return null;
         }
         int[] before = heardLines[(heardLinesNext - 2) % heardLines.length];
@@ -3400,6 +3444,29 @@ public final class Brain {
      * before another ("did ivo chop wood before he fixed the roof?" "no , ivo fixed the roof
      * first ."). Null if the question asks none of these or the lines don't tell it.
      */
+    /**
+     * A line that tells several things in turn, as one line for each: "i woke up , then i ate
+     * breakfast , then i went to work ." as "i woke up .", "then i ate breakfast .", "then i went
+     * to work ."; any other line as it is.
+     */
+    private List<int[]> steps(int[] line) {
+        Vocabulary v = language.vocabulary;
+        int comma = v.find(","), then = v.find("then"), stop = v.find(".");
+        List<int[]> steps = new ArrayList<>();
+        int from = 0;
+        for (int i = 1; i + 1 < line.length; i++) {
+            if (line[i] == comma && line[i + 1] == then && i - from >= 2) {
+                steps.add(join(Arrays.copyOfRange(line, from, i), new int[] {stop}));
+                from = i + 1;
+            }
+        }
+        if (steps.isEmpty() || stop < 0) {
+            return List.of(line);
+        }
+        steps.add(Arrays.copyOfRange(line, from, line.length));
+        return steps;
+    }
+
     private int[] inOrder(int[] heard) {
         Vocabulary v = language.vocabulary;
         int ask = v.find("?");
@@ -3421,7 +3488,7 @@ public final class Brain {
                 }
                 break;
             }
-            story.add(0, line);
+            story.addAll(0, steps(line));
         }
         if (story.size() < 2) {
             return null;
@@ -5087,12 +5154,35 @@ public final class Brain {
      */
     private int[] isItSafe(int[] heard) {
         Vocabulary v = language.vocabulary;
+        String asked = String.join(" ", wordsOf(heard));
+        java.util.regex.Matcher supposed = java.util.regex.Pattern.compile("if (it is|it's|it was|there is an?|there are) ([a-z]+) , (.*)").matcher(asked);
+        if (supposed.matches() && safeNow(supposed.group(3)) != null) {
+            // "if it is night, should i go outside?": what it supposes, not what is so now.
+            String what = supposed.group(2);
+            String line = NIGHT.contains(what) || what.equals("dark") ? "no , not at night , monsters come out at night ."
+                    : Set.of("stormy", "storm").contains(what) ? "no , not in a storm ."
+                    : Set.of("day", "daytime", "morning", "noon", "afternoon", "sunny").contains(what) ? "yes , it should be safe then ."
+                    : dangerous(what) ? "no , " + what + (what.endsWith("s") ? " are" : " is") + " dangerous ." : null;
+            int[] said = line == null ? null : said(line);
+            return said == null || Arrays.stream(said).anyMatch(w -> w < 0) ? null : said;
+        }
         if (heard.length < 3 || heard[0] < 0 || !toldAround && timeNow == null && weatherNow == null) {
             return null;
         }
-        String asked = String.join(" ", wordsOf(heard));
         int[] answer = safeNow(asked);
         return answer == null || Arrays.stream(answer).anyMatch(w -> w < 0) ? null : answer;
+    }
+
+    /** Whether the facts it knows say a kind of creature is dangerous ("zombies are dangerous ."). */
+    private boolean dangerous(String kind) {
+        String one = kind.endsWith("s") ? kind.substring(0, kind.length() - 1) : kind;
+        for (int[] fact : knownToAll(language.vocabulary)) {
+            List<String> f = wordsOf(fact);
+            if ((f.contains(one) || f.contains(one + "s")) && f.contains("dangerous") && !f.contains("not")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int[] safeNow(String asked) {

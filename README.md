@@ -239,6 +239,12 @@ then "the cart is blue." gets "wait , you said the cart is red ."; so do two cou
 apples." "tom has five apples."), two names, two kinds ("tom is a baker." "tom is a farmer."), a line
 and its "not", and a comparison turned round. Moving somewhere or a state that changes ("the gate is
 open." "the gate is closed.") is not taken as a contradiction.
+It answers what it is asked to suppose: "if it is night, should i go outside?" "no , not at night ,
+monsters come out at night ."; "if there are zombies, is it safe outside?" "no , zombies are
+dangerous .". "sara is taller than tim." "who is shorter?" gives "tim is shorter than sara ."; one
+line told in steps ("i woke up, then i ate breakfast, then i went to work.") answers "what did i do
+after breakfast?" with "you went to work ."; and "is a carrot a fruit or a vegetable?" is answered
+without a "yes".
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

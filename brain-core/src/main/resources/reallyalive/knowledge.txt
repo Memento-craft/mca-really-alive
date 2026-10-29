@@ -386,3 +386,22 @@ if it gets dark , you should go inside .
 if you see a creeper , you should run away .
 if you are thirsty , you should drink some water .
 you need a bed to sleep at night .
+the opposite of hot is cold .
+the opposite of up is down .
+the opposite of big is small .
+the opposite of old is young .
+the opposite of day is night .
+the opposite of left is right .
+the opposite of fast is slow .
+the opposite of happy is sad .
+the opposite of open is closed .
+the opposite of light is dark .
+the opposite of full is empty .
+the opposite of yes is no .
+the opposite of in is out .
+the opposite of wet is dry .
+the opposite of tall is short .
+the opposite of good is bad .
+the opposite of rich is poor .
+the opposite of north is south .
+the opposite of east is west .
