@@ -1478,7 +1478,7 @@ public final class Brain {
         }
         // "mary went to the garden .", not "then mary went to the garden ."
         best = withoutThen(best);
-        if (!answersAsked(heard, best)) {
+        if (!answersAsked(heard, bestSeen != null ? join(best, bestSeen) : best)) {
             int[] ofKind = ofAllAsked ? null : ofTheNamed(heard, best);
             if (ofKind != null) {
                 // "how many legs does rex have?" after "i have a dog called rex .": what is so of
@@ -4131,7 +4131,17 @@ public final class Brain {
         String first = v.word(heard[0]), second = v.word(heard[1]);
         String doing = heard[heard.length - 2] < 0 ? "" : v.word(heard[heard.length - 2]);
         if (saysAny(heard, COLOURS_ASKED)) {
-            return saysAny(told, COLOURS);
+            // And of the thing asked of: "pia has a red hat ." is no answer to "what colour is
+            // my cat?".
+            boolean of = false, some = false;
+            for (int w : heard) {
+                if (w >= 0 && thingWord(w) && !COLOURS_ASKED.contains(v.word(w)) && !ASKING_WORDS.contains(v.word(w))
+                        && !NOT_A_DOING.contains(v.word(w)) && !Set.of("my", "your", "what's").contains(v.word(w))) {
+                    some = true;
+                    of |= saidIn(told, w);
+                }
+            }
+            return saysAny(told, COLOURS) && (of || !some);
         }
         if (contains(heard, v.find("name")) && Set.of("what", "what's").contains(first)) {
             // "my dog is called rex .", "i have a dog named rex .", "hi, i'm josh ."
