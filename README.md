@@ -248,6 +248,12 @@ without a "yes".
 Counts told against another's work in either order ("tom has twice as many sheep as ben." "ben has
 four sheep." "how many sheep does tom have?" "tom has eight sheep ."), and "how many sheep do they
 have together?" adds them up.
+It reasons about what it can and can't do: "a sword costs ten emeralds." "i have six emeralds." "can i
+buy a sword?" gives "no , a sword costs ten emeralds , and you only have six ."; "how many more
+emeralds do i need?" "you need four more emeralds ."; "the path to the mine is blocked." "can i get to
+the mine by the path?" "no , the path to the mine is blocked ."; "why do we need wood?" after "we need
+wood to fix the roof." is "to fix the roof ."; and "i had twelve arrows." "i shot five of them." leaves
+seven.
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."

@@ -1204,6 +1204,16 @@ public final class Brain {
             toldSure = true;
             return new int[0];
         }
+        int[] stopped = blockedWay(heard);
+        if (stopped != null) {
+            // "the path to the mine is blocked .": "can i get to the mine by the path?" "no , the
+            // path to the mine is blocked ."
+            toldLine = stopped;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] general = generalised(heard);
         if (general != null) {
             // "tom's goat is brown." "ben's goat is brown." "ana's goat is brown.": "what colour
@@ -4763,6 +4773,34 @@ public final class Brain {
         return of ? Arrays.copyOfRange(told, to, told.length) : null;
     }
 
+    private static final Set<String> IN_THE_WAY = Set.of("blocked", "closed", "locked", "broken", "flooded", "shut",
+            "collapsed");
+
+    /**
+     * "can i get to the mine by the path?" after "the path to the mine is blocked .": "no , the path to
+     * the mine is blocked ."; null unless a told line says the way asked of is blocked, closed or
+     * broken.
+     */
+    private int[] blockedWay(int[] heard) {
+        List<String> q = wordsOf(heard);
+        if (q.size() < 5 || !q.get(0).equals("can") || !Set.of("i", "we", "you").contains(q.get(1)) || !q.get(q.size() - 1).equals("?")) {
+            return null;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            List<String> w = line == null ? List.of() : wordsOf(line);
+            if (w.size() < 4 || !w.get(w.size() - 1).equals(".") || w.contains("not") || w.stream().noneMatch(IN_THE_WAY::contains)) {
+                continue;
+            }
+            long shared = w.stream().filter(x -> !IN_THE_WAY.contains(x) && q.contains(x) && language.vocabulary.find(x) >= 0
+                    && thingWord(language.vocabulary.find(x)) && !BEFORE_A_THING.contains(x)).distinct().count();
+            if (shared >= 2) {
+                return join(said("no ,"), toldBack(line));
+            }
+        }
+        return null;
+    }
+
     /** A rule told of a kind: "all blicks are furry .", "no glorps can fly .", "some vims are green ." */
     private record KindRule(String kind, String how, List<String> does, List<String> line) {}
 
@@ -5291,8 +5329,9 @@ public final class Brain {
         boolean should = first.equals("what") && Set.of("should", "can", "do").contains(second) && third.equals("i")
                 && (contains(heard, v.find("if")) || contains(heard, v.find("when")));
         if (first.equals("what") && Set.of("do", "does").contains(second) && third.equals("you") && heard.length > 5
-                && heard[3] == v.find("need") && heard[4] == v.find("to")) {
-            // "what do you need to sleep at night?" asks what anyone needs.
+                && (heard[3] == v.find("need") || heard[3] == v.find("use")) && heard[4] == v.find("to")) {
+            // "what do you need to sleep at night?" asks what anyone needs; "what do you use to
+            // dig?" what anyone uses.
             return heard;
         }
         if (!how && !should) {

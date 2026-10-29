@@ -415,3 +415,12 @@ spring comes before summer .
 summer comes before autumn .
 winter comes before spring .
 snow is cold .
+you use a shovel to dig .
+you use a knife to cut bread .
+you use an axe to chop wood .
+you use a pickaxe to mine stone .
+you use a hoe to till the soil .
+you use a bucket to carry water .
+you use a bow to shoot arrows .
+you use a fishing rod to catch fish .
+you use shears to cut wool from sheep .

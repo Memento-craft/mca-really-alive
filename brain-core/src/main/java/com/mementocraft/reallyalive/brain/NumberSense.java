@@ -155,6 +155,10 @@ final class NumberSense {
         } else if (has > 0) {
             readCounts(w, has);
         } else {
+            if (Set.of("my", "your", "the", "our").contains(w.get(0))) {
+                // "my sister lives in the next village .": "she" after it is my sister.
+                lastSubject = thing(w.subList(0, 2));
+            }
             readOther(w);
         }
     }
@@ -375,6 +379,9 @@ final class NumberSense {
         if (first.equals("how") && second.equals("much") && q.size() >= 5) {
             return howMuch(q);
         }
+        if (first.equals("can") && Set.of("i", "we").contains(second) && q.size() >= 4 && Set.of("buy", "afford").contains(q.get(2))) {
+            return canBuy(q);
+        }
         if (first.equals("is") && q.size() == 3 && q.get(1).equals("it") && SEASONS.contains(q.get(2)) && seasonNow != null) {
             // "is it spring?" "no , it is winter ."
             return seasonNow.equals(q.get(2)) ? List.of("yes", ",", "it", "is", seasonNow, ".")
@@ -470,6 +477,19 @@ final class NumberSense {
 
     /** "how many animals do i have?", "how many apples does mia have?", "how many doors are there?", "how many eggs are left?" */
     private List<String> howMany(List<String> q) {
+        if (q.size() == 7 && q.get(2).equals("more") && q.get(4).equals("do") && Set.of("i", "we").contains(q.get(5))
+                && q.get(6).equals("need")) {
+            // "how many more emeralds do i need?" after "a sword costs ten emeralds ." "i have six emeralds ."
+            Integer have = counts.getOrDefault(q.get(5), new LinkedHashMap<>()).get(q.get(3));
+            String unit = q.get(3);
+            List<Integer> prices = this.prices.values().stream().filter(p -> unit.equals(p[1])).map(p -> (Integer) p[0]).toList();
+            if (have == null || prices.size() != 1) {
+                return null;
+            }
+            String you = q.get(5).equals("i") ? "you" : "we";
+            int need = prices.get(0) - have;
+            return need <= 0 ? List.of(you, "have", "enough", ".") : List.of(you, "need", say(need), "more", q.get(3), ".");
+        }
         if (q.size() >= 6 && Set.of("left", "now").contains(q.get(q.size() - 1)) && HAVING.contains(q.get(q.size() - 2))) {
             // "how many arrows do i have left?"
             q = q.subList(0, q.size() - 1);
@@ -530,13 +550,47 @@ final class NumberSense {
         if (who.equals("there")) {
             said.addAll(List.of("there", "are"));
         } else {
-            said.addAll(who.equals("i") ? List.of("you") : who.equals("we") ? List.of("we") : List.of(who.split(" ")));
+            said.addAll(who.equals("i") ? List.of("you") : who.equals("we") ? List.of("we")
+                    : List.of(who.replaceFirst("^my ", "your ").split(" ")));
             said.add(Set.of("i", "we", "you", "they").contains(who) ? "have" : "has");
         }
         said.add(say(n));
         said.add(what);
         said.add(".");
         return said;
+    }
+
+    /** "can i buy a sword?" after "a sword costs ten emeralds ." "i have six emeralds .": no. */
+    private List<String> canBuy(List<String> q) {
+        int many = number(q.get(3));
+        boolean one = ARTICLES.contains(q.get(3));
+        if (!one && many < 0 || q.size() < 5) {
+            return null;
+        }
+        String what = q.get(4);
+        for (Map.Entry<String, Object[]> e : prices.entrySet()) {
+            String sold = e.getKey();
+            if (!what.startsWith(sold.substring(0, Math.max(1, sold.length() - 1)))) {
+                continue;
+            }
+            int each = (Integer) e.getValue()[0];
+            String unit = (String) e.getValue()[1];
+            Integer have = counts.getOrDefault(q.get(1), new LinkedHashMap<>()).get(unit);
+            if (unit.isEmpty() || have == null) {
+                return null;
+            }
+            int price = each * (one ? 1 : many);
+            String you = q.get(1).equals("i") ? "you" : "we";
+            List<String> said = new ArrayList<>(List.of(have >= price ? "yes" : "no", ","));
+            said.addAll(List.of((one ? q.get(3) + " " + what : say(many) + " " + what).split(" ")));
+            said.addAll(List.of(one ? "costs" : "cost", say(price), unit, ",", "and", you, "have"));
+            if (have < price) {
+                said.add(said.size() - 1, "only");
+            }
+            said.addAll(List.of(say(have), "."));
+            return said;
+        }
+        return null;
     }
 
     /** "how much do three loaves cost?" */
