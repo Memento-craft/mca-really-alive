@@ -727,6 +727,135 @@ public final class UseTests {
     }
 
     /**
+     * With Create installed: a steam engine finished by hand, as a player finishes one. A boiler
+     * needs water coming in, not water standing in it, and a bucket cannot fill a tank outside
+     * creative mode, so the plumbing is there already: a fluid tank on a blaze burner, fed by a
+     * pump (turned by a motor through a cogwheel) from a pool. (A magma block's passive heat ran
+     * the boiler but turned no engine.) The villager feeds the burner coal, puts a steam engine
+     * on the tank's side and a shaft into the engine, and the shaft turns.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1100)
+    public static void finishesASteamEngineIfCreateIsInstalled(GameTestHelper h) throws ReflectiveOperationException {
+        var create = (java.util.function.Function<String, ResourceLocation>) id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var tank = BuiltInRegistries.BLOCK.getOptional(create.apply("fluid_tank"));
+        var pump = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_pump"));
+        var pipe = BuiltInRegistries.BLOCK.getOptional(create.apply("fluid_pipe"));
+        var cog = BuiltInRegistries.BLOCK.getOptional(create.apply("cogwheel"));
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var engine = BuiltInRegistries.ITEM.getOptional(create.apply("steam_engine"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(create.apply("shaft"));
+        if (tank.isEmpty() || pump.isEmpty() || pipe.isEmpty() || cog.isEmpty() || motor.isEmpty() || engine.isEmpty() || shaft.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos tankAt = new BlockPos(6, 3, 12);
+        var burner = BuiltInRegistries.BLOCK.getOptional(create.apply("blaze_burner")).orElseThrow();
+        h.setBlock(tankAt.below(), withValue(burner.defaultBlockState(), "blaze", "smouldering"));
+        // A boiler warms one heat level for every four blocks of tank, so a one-block tank turns
+        // nothing: the tank stands four high, as a player's smallest working boiler does.
+        for (int y = 0; y < 4; y++) {
+            h.setBlock(tankAt.above(y), tank.get());
+        }
+        BlockPos pumpAt = tankAt.south();
+        h.setBlock(pumpAt.below(), Blocks.STONE);
+        h.setBlock(pumpAt, pump.get().defaultBlockState().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.NORTH).rotate(h.getTestRotation()));
+        // A pool of springs that fill in again, walled in with glass so it cannot flood the place
+        // (loose water washed the villager away), with the pump's pipe running into it.
+        for (int x = 4; x <= 8; x++) {
+            for (int z = 14; z <= 17; z++) {
+                boolean wall = x == 4 || x == 8 || z == 14 || z == 17;
+                h.setBlock(new BlockPos(x, 2, z), Blocks.STONE);
+                h.setBlock(new BlockPos(x, 3, z), wall ? Blocks.GLASS : Blocks.WATER);
+            }
+        }
+        BlockPos pipeAt = pumpAt.south();
+        h.setBlock(pipeAt, pipe.get());
+        // Set down as a player places it: joined to the pump, open to the pool.
+        BlockPos pipeAbs = h.absolutePos(pipeAt);
+        h.getLevel().setBlockAndUpdate(pipeAbs, net.minecraft.world.level.block.Block.updateFromNeighbourShapes(h.getLevel().getBlockState(pipeAbs), h.getLevel(), pipeAbs));
+        BlockPos cogAt = pumpAt.east();
+        h.setBlock(cogAt, cog.get().defaultBlockState().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.Z).rotate(h.getTestRotation()));
+        h.setBlock(cogAt.south(), motor.get().defaultBlockState().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.NORTH).rotate(h.getTestRotation()));
+        // A boiler also wants ten units of water a tick for each heat level: the motor runs fast
+        // enough for the pump to bring that much.
+        Object motorBe = h.getLevel().getBlockEntity(h.absolutePos(cogAt.south()));
+        Object speed = motorBe.getClass().getField("generatedSpeed").get(motorBe);
+        speed.getClass().getMethod("setValue", int.class).invoke(speed, 128);
+        BlockPos engineAt = tankAt.north();
+        Villager v = spawnMcaVillager(h, new Vec3(6.5, 2, 8.5));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        Vec3 tankSide = new Vec3(6.5, 3.5, 11.98);
+        Vec3 engineFront = new Vec3(6.5, 3.5, 11.3);
+        Class<?> engineBlock = Class.forName("com.simibubi.create.content.kinetics.steamEngine.SteamEngineBlock");
+        java.lang.reflect.Method shaftPos = engineBlock.getMethod("getShaftPos", net.minecraft.world.level.block.state.BlockState.class, BlockPos.class);
+        // Where the engine wants its shaft, in the world's own coordinates.
+        BlockPos[] shaftAt = {null};
+        // The burner's side shows past the tank's: the villager feeds it coal there first.
+        Vec3 burnerSide = new Vec3(6.5, 2.5, 11.98);
+        Object[][] steps = {{60, burnerSide, new ItemStack(Items.COAL, 8)}, {100, tankSide, new ItemStack(engine.get())},
+                {140, engineFront, new ItemStack(shaft.get(), 4)}};
+        for (Object[] step : steps) {
+            int at = (int) step[0];
+            Vec3 aimAt = (Vec3) step[1];
+            ItemStack give = (ItemStack) step[2];
+            h.runAtTickTime(at - 4, () -> {
+                v.setItemSlot(EquipmentSlot.MAINHAND, give);
+                aim(h, v, aimAt);
+            });
+            h.runAtTickTime(at, () -> {
+                aim(h, v, aimAt);
+                handle.hold(USE);
+                LOG.info("steam engine step at tick {}: villager at {} looking {} {}, aimed at {}", at, h.relativeVec(v.position()), v.getYRot(), v.getXRot(), handle.hands().target() instanceof net.minecraft.world.phys.BlockHitResult b
+                        ? h.getBlockState(h.relativePos(b.getBlockPos())) + " at " + h.relativePos(b.getBlockPos()) + " face " + b.getDirection() : handle.hands().target());
+            });
+            h.runAtTickTime(at + 2, () -> handle.hold(MotorCommand.IDLE));
+            h.runAtTickTime(at + 10, () -> {
+                var state = h.getBlockState(engineAt);
+                if (state.getBlock().asItem() == engine.get() && shaftAt[0] == null) {
+                    try {
+                        shaftAt[0] = ((BlockPos) shaftPos.invoke(null, state, h.absolutePos(engineAt))).immutable();
+                    } catch (ReflectiveOperationException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+                LOG.info("steam engine step at tick {}: hand {}, pump turning {}, engine place {}, shaft place {} {}", at, v.getMainHandItem(),
+                        com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(pumpAt)), state, shaftAt[0],
+                        shaftAt[0] == null ? "" : h.getLevel().getBlockState(shaftAt[0]));
+            });
+        }
+        for (int t = 200; t <= 1000; t += 200) {
+            int when = t;
+            h.runAtTickTime(t, () -> {
+                try {
+                    Object be = h.getLevel().getBlockEntity(h.absolutePos(tankAt));
+                    Object boiler = be.getClass().getField("boiler").get(be);
+                    LOG.info("steam engine boiler at tick {}: burner {}, passive heat {}, active heat {}, water supply {}, shaft turning {}", when,
+                            h.getBlockState(tankAt.below()),
+                            boiler.getClass().getField("passiveHeat").get(boiler), boiler.getClass().getField("activeHeat").get(boiler),
+                            boiler.getClass().getField("waterSupply").get(boiler),
+                            shaftAt[0] != null && com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), shaftAt[0]));
+                } catch (ReflectiveOperationException e) {
+                    LOG.info("steam engine boiler: {}", e.toString());
+                }
+            });
+        }
+        h.runAtTickTime(1000, () -> {
+            boolean turning = shaftAt[0] != null && com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), shaftAt[0]);
+            LOG.info("steam engine: rotation {}, pump {}, pipe {}, engine {}, shaft {} turning {}, set going {}, tank {}", h.getTestRotation(),
+                    h.getBlockState(pumpAt), h.getBlockState(pipeAt), h.getBlockState(engineAt),
+                    shaftAt[0] == null ? null : h.getLevel().getBlockState(shaftAt[0]), turning, handle.hands().setGoingTotal,
+                    h.getLevel().getCapability(net.neoforged.neoforge.capabilities.Capabilities.FluidHandler.BLOCK, h.absolutePos(tankAt), null) instanceof
+                            net.neoforged.neoforge.fluids.capability.IFluidHandler f ? f.getFluidInTank(0).getAmount() + " mB" : "?");
+            h.assertTrue(h.getBlockState(engineAt).getBlock().asItem() == engine.get(), "the engine is not on the tank's side: " + h.getBlockState(engineAt));
+            h.assertTrue(shaftAt[0] != null && !h.getLevel().getBlockState(shaftAt[0]).isAir(), "no shaft went into the engine");
+            h.assertTrue(turning, "the steam engine does not turn its shaft");
+            h.succeed();
+        });
+    }
+
+    /**
      * With Create installed: holding use on a hand crank turns it, and the shaft behind it, as a
      * player's held right button does. The shaft it drives is felt set going; the crank itself,
      * turning only under the hand, is not.
@@ -763,6 +892,14 @@ public final class UseTests {
                     + handle.hands().setGoingTotal + " times, not once");
             h.succeed();
         });
+    }
+
+    /** A block state with a property set by name, for blocks of mods the tests do not link against. */
+    private static <T extends Comparable<T>> net.minecraft.world.level.block.state.BlockState withValue(
+            net.minecraft.world.level.block.state.BlockState state, String property, String value) {
+        @SuppressWarnings("unchecked")
+        var p = (net.minecraft.world.level.block.state.properties.Property<T>) state.getBlock().getStateDefinition().getProperty(property);
+        return p == null ? state : p.getValue(value).map(v -> state.setValue(p, v)).orElse(state);
     }
 
     private static int count(Villager v, net.minecraft.world.item.Item item) {
