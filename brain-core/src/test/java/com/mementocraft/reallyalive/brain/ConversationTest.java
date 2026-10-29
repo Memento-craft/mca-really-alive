@@ -473,6 +473,34 @@ class ConversationTest {
     }
 
     @Test
+    void villagerWorksWithNumbersItWasTold() {
+        // {told, told, asked, right}; "-" tells nothing.
+        String[][] talks = {{"lisa is 8.", "her brother is 3 years older.", "how old is lisa's brother?", "eleven"},
+            {"i have 3 cows and 4 pigs.", "-", "how many animals do i have?", "seven"},
+            {"kai has 5 apples.", "mia has twice as many.", "how many apples does mia have?", "ten"},
+            {"the shop opens at nine.", "it is eight now.", "is the shop open?", "no"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 2900 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                if (!talks[i][k].equals("-")) {
+                    said = talk(b, talks[i][k], onScript);
+                    System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+                }
+            }
+            right += said.contains(talks[i][3]) ? 1 : 0;
+        }
+        System.out.printf("worked with numbers %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "worked only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

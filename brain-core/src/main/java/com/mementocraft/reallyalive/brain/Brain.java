@@ -1146,6 +1146,16 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] reckonedHere = numbersTold(heard);
+        if (reckonedHere != null) {
+            // "how old is lisa's brother?" after "lisa is 8." "her brother is 3 years older.":
+            // "lisa's brother is eleven ."
+            toldLine = reckonedHere;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] weighed = compared(heard);
         if (weighed == null && !ofAllAsked) {
             weighed = whichOfTwo(heard);
@@ -4091,6 +4101,36 @@ public final class Brain {
             }
         }
         return forms;
+    }
+
+    /** What follows from numbers told lately ({@link NumberSense}), in words it knows; null if nothing does. */
+    private int[] numbersTold(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<List<String>> told = new ArrayList<>();
+        for (int k = TOLD_LINES; k >= 2; k--) {
+            if (k > heardLinesNext) {
+                continue;
+            }
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line == null || line.length == 0 || line[line.length - 1] == v.find("?")) {
+                continue;
+            }
+            told.add(wordsOf(line));
+        }
+        List<String> said = NumberSense.answer(told, wordsOf(heard));
+        if (said == null) {
+            return null;
+        }
+        int[] line = said.stream().mapToInt(v::find).toArray();
+        return Arrays.stream(line).anyMatch(w -> w < 0) ? null : line;
+    }
+
+    private List<String> wordsOf(int[] line) {
+        List<String> words = new ArrayList<>();
+        for (int w : line) {
+            words.add(w < 0 ? "" : language.vocabulary.word(w));
+        }
+        return words;
     }
 
     /** The answer when nothing it knows tells what is asked. */

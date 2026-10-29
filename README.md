@@ -196,6 +196,11 @@ answer "what do we do?" with "we stay home ."; "no zombie can swim." makes the z
 unable to swim; "the rat took the cheese." moves the cheese. It does not take "the gates opened."
 with "when the horn sounds, the gates open." as proof that the horn sounded: it says it doesn't
 know.
+It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
+older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
+animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."
+prices three loaves; "the shop opens at nine." "it is eight now." makes "is the shop open?" a no;
+"the trip takes three days." "we left on monday." arrives on thursday.
 When nothing it knows tells what is asked, it says "i don't know ." rather than repeat a line
 that is only about the same thing: "what colour is my cat?" after "i have a cat.", "who bought the
 sword?" after "the blacksmith made a sword.", "why is the farmer sick?" after only "the farmer is
