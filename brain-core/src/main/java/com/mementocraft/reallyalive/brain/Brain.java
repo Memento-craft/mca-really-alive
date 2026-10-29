@@ -1172,6 +1172,15 @@ public final class Brain {
             toldInOwnWords = true;
             return new int[0];
         }
+        int[] against = saidOtherwise(heard);
+        if (against != null) {
+            // "the cart is red." then "the cart is blue.": "wait , you said the cart is red ."
+            toldLine = against;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         if (memory != null && heard.length > TOLD_QUESTION_WORDS && heard.length <= TOLD_QUESTION_WORDS + 4
                 && heard[heard.length - 1] == ask) {
             // A longer question may still ask of the order of things ("what did the guard do
@@ -4341,6 +4350,75 @@ public final class Brain {
             new int[] {2, -1}, "above", new int[] {3, 1}, "over", new int[] {3, 1}, "below", new int[] {3, -1}, "under",
             new int[] {3, -1});
     private static final String[][] WAY_WORDS = {{"north", "south"}, {"east", "west"}, {"right", "left"}, {"above", "below"}};
+
+    /**
+     * The earlier told line a told line goes against, said back as "wait , you said the cart is red
+     * ."; what can't be so of one thing at once: two colours, two counts, two names, two kinds
+     * ("tom is a baker ." "tom is a farmer ."), a line and its "not", a comparison turned round.
+     * Where someone is, what they did and states that change ("the gate is open .") are not
+     * against what was said before. Null if nothing told lately is gone against.
+     */
+    private int[] saidOtherwise(int[] heard) {
+        List<String> now = wordsOf(heard);
+        int n = now.size();
+        if (n < 4 || n > TOLD_LONGEST || !now.get(n - 1).equals(".")) {
+            return null;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            List<String> was = line == null ? List.of() : wordsOf(line);
+            if (was.size() < 4 || was.size() > TOLD_LONGEST || !was.get(was.size() - 1).equals(".") || was.equals(now)) {
+                continue;
+            }
+            if (against(was, now) || against(now, was) && was.size() != n) {
+                return join(said("wait , you said"), toldBack(line));
+            }
+        }
+        return null;
+    }
+
+    /** Whether a told line goes against an earlier one; see {@link #saidOtherwise}. */
+    private static boolean against(List<String> was, List<String> now) {
+        if (was.size() + 1 == now.size()) {
+            // "the well is dry ." "the well is not dry ."
+            for (int i = 1; i < was.size(); i++) {
+                if (now.get(i).equals("not") && Set.of("is", "are", "was", "were").contains(was.get(i - 1))
+                        && now.subList(0, i).equals(was.subList(0, i)) && now.subList(i + 1, now.size()).equals(was.subList(i, was.size()))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (was.size() != now.size()) {
+            return false;
+        }
+        List<Integer> differ = new ArrayList<>();
+        for (int i = 0; i < was.size(); i++) {
+            if (!was.get(i).equals(now.get(i))) {
+                differ.add(i);
+            }
+        }
+        if (differ.size() == 2 && was.contains("than")) {
+            // "tom is older than ben ." "ben is older than tom ."
+            int a = differ.get(0), b = differ.get(1);
+            return was.get(a).equals(now.get(b)) && was.get(b).equals(now.get(a)) && a < was.indexOf("than") && b > was.indexOf("than");
+        }
+        if (differ.size() != 1) {
+            return false;
+        }
+        int i = differ.get(0);
+        String a = was.get(i), b = now.get(i), before = i > 0 ? was.get(i - 1) : "";
+        if (i == 0 || was.contains("in") || was.contains("at") || was.contains("to")) {
+            // A different one, or where it is: no contradiction.
+            return false;
+        }
+        boolean has = Set.of("has", "have", "had").contains(before);
+        boolean isIt = Set.of("is", "are", "was", "were").contains(before);
+        return COLOURS.contains(a) && COLOURS.contains(b) && isIt
+                || (number(a) >= 0 && number(b) >= 0) && has
+                || Set.of("called", "named").contains(before)
+                || Set.of("a", "an").contains(before) && i == was.size() - 2 && i >= 3 && Set.of("is", "was").contains(was.get(i - 2));
+    }
 
     /** One told "the well is north of the mill .": the things, the way, and the line. */
     private record Lies(String a, String b, String way, String line) {}

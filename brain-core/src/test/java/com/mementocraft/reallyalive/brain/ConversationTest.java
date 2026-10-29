@@ -677,6 +677,26 @@ class ConversationTest {
     }
 
     @Test
+    void villagerNoticesWhenToldOtherwise() {
+        // {told, then told, whether it goes against it}
+        String[][] talks = {{"the cart is red.", "the cart is blue.", "1"}, {"tom is older than ben.", "ben is older than tom.", "1"},
+            {"the well is dry.", "the well is not dry.", "1"}, {"anna is in the kitchen.", "anna is in the garden.", "0"},
+            {"the gate is open.", "the gate is closed.", "0"}};
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 8100 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            talk(b, talks[i][0], onScript);
+            String said = String.join(" ", talk(b, talks[i][1], onScript));
+            System.out.println("  " + talks[i][1] + " -> " + said);
+            assertTrue(said.contains("you said") == talks[i][2].equals("1"), talks[i][1] + " -> " + said);
+        }
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},
