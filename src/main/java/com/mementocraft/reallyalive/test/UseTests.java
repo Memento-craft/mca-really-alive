@@ -856,6 +856,143 @@ public final class UseTests {
     }
 
     /**
+     * With Create installed: a whole steam boiler built by hand, as a player builds one. Only the
+     * stone footing, springs and a motor turning a cogwheel are there. The villager sets a blaze
+     * burner on the ground and four fluid tanks over it and the footing, a pump against the tank
+     * (sneaking, so it pushes towards the tank, not away), a pipe out to the springs, then feeds the
+     * burner coal, puts a steam engine on the tank and a shaft into the engine, and the shaft turns.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1600)
+    public static void buildsASteamBoilerIfCreateIsInstalled(GameTestHelper h) throws ReflectiveOperationException {
+        var create = (java.util.function.Function<String, ResourceLocation>) id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var tank = BuiltInRegistries.ITEM.getOptional(create.apply("fluid_tank"));
+        var pump = BuiltInRegistries.ITEM.getOptional(create.apply("mechanical_pump"));
+        var pipe = BuiltInRegistries.ITEM.getOptional(create.apply("fluid_pipe"));
+        var burner = BuiltInRegistries.ITEM.getOptional(create.apply("blaze_burner"));
+        var cog = BuiltInRegistries.BLOCK.getOptional(create.apply("cogwheel"));
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var engine = BuiltInRegistries.ITEM.getOptional(create.apply("steam_engine"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(create.apply("shaft"));
+        if (tank.isEmpty() || pump.isEmpty() || pipe.isEmpty() || burner.isEmpty() || cog.isEmpty() || motor.isEmpty() || engine.isEmpty()
+                || shaft.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        var rotation = h.getTestRotation();
+        var facing = net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING;
+        // Footing for the three tanks not over the burner.
+        for (BlockPos p : new BlockPos[] {new BlockPos(7, 2, 12), new BlockPos(6, 2, 13), new BlockPos(7, 2, 13)}) {
+            h.setBlock(p, Blocks.STONE);
+        }
+        // The motor, set fast enough for the pump to bring the boiler its water, turns a cogwheel
+        // beside where the pump goes.
+        BlockPos cogAt = new BlockPos(8, 3, 11);
+        h.setBlock(cogAt, cog.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.X).rotate(rotation));
+        h.setBlock(cogAt.east(), motor.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.WEST).rotate(rotation));
+        Object motorBe = h.getLevel().getBlockEntity(h.absolutePos(cogAt.east()));
+        Object speed = motorBe.getClass().getField("generatedSpeed").get(motorBe);
+        speed.getClass().getMethod("setValue", int.class).invoke(speed, 128);
+        // Springs beside where the pump goes, six of them so they fill in again as the pump draws,
+        // walled in glass; one runs out west into the gap the pipe will fill. A slab, low enough to
+        // see the pipe's place over, keeps the water from the gap's south side.
+        for (int x = 9; x <= 12; x++) {
+            for (int z = 10; z <= 14; z++) {
+                BlockPos p = new BlockPos(x, 3, z);
+                boolean spring = x >= 10 && x <= 11 && z >= 11 && z <= 13;
+                if (spring) {
+                    h.setBlock(p.below(), Blocks.STONE);
+                    h.setBlock(p, Blocks.WATER);
+                } else if (x >= 10) {
+                    h.setBlock(p, Blocks.GLASS);
+                }
+            }
+        }
+        h.setBlock(new BlockPos(9, 3, 13), Blocks.STONE_SLAB);
+        // The water running into the gap reaches the pump's place too: floored and walled in.
+        h.setBlock(new BlockPos(9, 2, 12), Blocks.STONE);
+        h.setBlock(new BlockPos(8, 2, 12), Blocks.STONE);
+        h.setBlock(new BlockPos(8, 3, 13), Blocks.GLASS);
+        Villager v = spawnMcaVillager(h, new Vec3(6.5, 2, 11.2));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        MotorCommand sneakUse = new MotorCommand(0, 0, false, true, false, 0f, 0f, false, true);
+        Vec3 front = new Vec3(6.5, 2, 8.5);
+        // Each step: where it stands, where it looks, what it holds, whether it sneaks.
+        Object[][] steps = {
+                {new Vec3(6.5, 2, 11.2), new Vec3(6.5, 1.98, 12.5), new ItemStack(burner.get()), false},
+                {new Vec3(6.5, 2, 11.2), new Vec3(6.5, 2.99, 13.5), new ItemStack(tank.get(), 4), false},
+                {new Vec3(7.5, 2, 11.2), new Vec3(7.5, 2.99, 13.5), new ItemStack(tank.get(), 3), false},
+                {new Vec3(6.5, 2, 11.2), new Vec3(6.5, 2.86, 12.5), new ItemStack(tank.get(), 2), false},
+                {new Vec3(7.5, 2, 11.2), new Vec3(7.5, 2.99, 12.5), new ItemStack(tank.get(), 1), false},
+                {new Vec3(9.6, 3, 12.5), new Vec3(8.02, 3.5, 12.5), new ItemStack(pump.get()), true},
+                {new Vec3(9.5, 2, 14.5), new Vec3(8.98, 3.5, 12.5), new ItemStack(pipe.get()), false},
+                {front, new Vec3(6.5, 2.5, 11.98), new ItemStack(Items.COAL, 8), false},
+                {front, new Vec3(6.5, 3.5, 11.98), new ItemStack(engine.get()), false},
+                {front, new Vec3(6.5, 3.5, 11.3), new ItemStack(shaft.get(), 4), false}};
+        BlockPos engineAt = new BlockPos(6, 3, 11);
+        Class<?> engineBlock = Class.forName("com.simibubi.create.content.kinetics.steamEngine.SteamEngineBlock");
+        java.lang.reflect.Method shaftPos = engineBlock.getMethod("getShaftPos", net.minecraft.world.level.block.state.BlockState.class, BlockPos.class);
+        BlockPos[] shaftAt = {null};
+        for (int i = 0; i < steps.length; i++) {
+            int at = 40 + 40 * i;
+            Vec3 standAt = (Vec3) steps[i][0];
+            Vec3 aimAt = (Vec3) steps[i][1];
+            ItemStack give = (ItemStack) steps[i][2];
+            boolean sneak = (boolean) steps[i][3];
+            h.runAtTickTime(at - 4, () -> {
+                Vec3 to = h.absoluteVec(standAt);
+                v.teleportTo(to.x, to.y, to.z);
+                v.setItemSlot(EquipmentSlot.MAINHAND, give.copy());
+                aim(h, v, aimAt);
+            });
+            h.runAtTickTime(at, () -> {
+                aim(h, v, aimAt);
+                handle.hold(sneak ? sneakUse : USE);
+                LOG.info("boiler build: aimed at {}", handle.hands().target() instanceof net.minecraft.world.phys.BlockHitResult b
+                        ? h.getLevel().getBlockState(b.getBlockPos()) + " at " + h.relativePos(b.getBlockPos()) + " face " + b.getDirection() : handle.hands().target());
+            });
+            h.runAtTickTime(at + 2, () -> handle.hold(MotorCommand.IDLE));
+            h.runAtTickTime(at + 10, () -> {
+                StringBuilder built = new StringBuilder();
+                for (BlockPos p : new BlockPos[] {new BlockPos(6, 2, 12), new BlockPos(6, 3, 12), new BlockPos(7, 3, 12), new BlockPos(6, 3, 13),
+                        new BlockPos(7, 3, 13), new BlockPos(8, 3, 12), new BlockPos(9, 3, 12), new BlockPos(10, 3, 12), engineAt}) {
+                    var state = h.getBlockState(p);
+                    if (!state.isAir()) {
+                        built.append(' ').append(p.getX()).append(',').append(p.getY()).append(',').append(p.getZ()).append('=').append(state);
+                    }
+                }
+                var state = h.getBlockState(engineAt);
+                if (state.getBlock().asItem() == engine.get() && shaftAt[0] == null) {
+                    try {
+                        shaftAt[0] = ((BlockPos) shaftPos.invoke(null, state, h.absolutePos(engineAt))).immutable();
+                    } catch (ReflectiveOperationException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+                LOG.info("boiler build: after aiming at {}, hand {}; built{}", aimAt, v.getMainHandItem(), built);
+            });
+        }
+        int end = 40 + 40 * steps.length + 300;
+        h.runAtTickTime(end, () -> {
+            boolean turning = shaftAt[0] != null && com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), shaftAt[0]);
+            String boiler = "?";
+            try {
+                Object be = h.getLevel().getBlockEntity(h.absolutePos(new BlockPos(6, 3, 12)));
+                Object b = be.getClass().getField("boiler").get(be);
+                boiler = "active heat " + b.getClass().getField("activeHeat").get(b) + ", water supply " + b.getClass().getField("waterSupply").get(b);
+            } catch (ReflectiveOperationException | NullPointerException e) {
+                boiler = e.toString();
+            }
+            LOG.info("boiler build: rotation {}, {}, engine {}, shaft {} turning {}", rotation, boiler, h.getBlockState(engineAt),
+                    shaftAt[0] == null ? null : h.getLevel().getBlockState(shaftAt[0]), turning);
+            h.assertTrue(turning, "the steam engine on the boiler it built does not turn its shaft");
+            h.succeed();
+        });
+    }
+
+    /**
      * With Create installed: a windmill finished by hand, as a player finishes one. A windmill
      * bearing stands ready; the villager sets a sail on its face, then sails on that sail's edges
      * (a sail used on a sail goes beside it, in the same plane) until nine make a square, and
