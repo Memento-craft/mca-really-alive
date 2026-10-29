@@ -941,7 +941,8 @@ public final class Brain {
                     // Nor is what it once answered from a line told long ago ("the cart is in the
                     // barn ."), when a later line answers now.
                     final int[] once = mine[r];
-                    boolean toldOnce = toldLately(once) || keptTold.stream().anyMatch(old -> Arrays.equals(old, once));
+                    boolean toldOnce = toldLately(once) || keptTold.stream().anyMatch(old -> Arrays.equals(old, once))
+                            || otherAnswer(once, toldLine);
                     if (!toldOnce || Arrays.equals(mine[r], toldLineAsHeard)) {
                         match[kept] = match[r];
                         mine[kept++] = mine[r];
@@ -970,6 +971,18 @@ public final class Brain {
             said[saidNext++ % said.length] = best;
         }
         return best;
+    }
+
+    /**
+     * Whether a line it said before is the same answer with the other yes or no ("yes , tom is
+     * taller than ben ." when "no , tom is taller than ben ." answers now), which must not be said
+     * again for it.
+     */
+    private boolean otherAnswer(int[] said, int[] answer) {
+        int yes = language.vocabulary.find("yes"), no = language.vocabulary.find("no");
+        return said.length > 2 && answer.length == said.length && (said[0] == yes || said[0] == no)
+                && (answer[0] == yes || answer[0] == no) && said[0] != answer[0]
+                && Arrays.equals(Arrays.copyOfRange(said, 1, said.length), Arrays.copyOfRange(answer, 1, answer.length));
     }
 
     /** How many remembered answers come to mind for a heard line, and how much they count. */
@@ -1126,6 +1139,14 @@ public final class Brain {
         if (meant == null && plain.length > 0) {
             // "where is it now?" after "where was the cat?" asks of the cat.
             meant = ofTheSame(plain);
+        }
+        Vocabulary words = language.vocabulary;
+        if (meant == null && plain.length > 4 && plain[0] == words.find("am") && plain[1] == words.find("i")
+                && contains(plain, words.find("than")) && words.find("me") >= 0) {
+            // "am i older than hanna?" after "hanna is older than me .": as "is me older than hanna?".
+            meant = plain.clone();
+            meant[0] = words.find("is");
+            meant[1] = words.find("me");
         }
         int[] reasoned = meant == null && plain.length > 0 ? fromRules(plain) : null;
         if (reasoned != null) {
@@ -1451,6 +1472,11 @@ public final class Brain {
             }
             if (told == kindLine) {
                 // "rex is a dog ." says what kind rex is, not what is so of dogs.
+                continue;
+            }
+            if (askingName && aboutThem && heard.length <= 6 && aboutSpeaker(told)
+                    && !saysAny(told, Set.of("i'm", "am", "name", "call", "called", "named"))) {
+                // "what is my name?" is answered by "hi , i'm nils .", not by "hanna is older than me .".
                 continue;
             }
             List<int[]> givenHere = new ArrayList<>();
@@ -3718,6 +3744,19 @@ public final class Brain {
         if (heard.length == 0 || heard[0] < 0 || !ASKS_YES_OR_NO.contains(language.vocabulary.word(heard[0]))) {
             return -1;
         }
+        for (int i = 1; i + 1 < heard.length; i++) {
+            String q = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
+            int other = OPPOSITE.containsKey(q) ? language.vocabulary.find(OPPOSITE.get(q)) : -1;
+            if (other >= 0 && heard[i + 1] == language.vocabulary.find("than") && !saidIn(told, heard[i]) && saidIn(told, other)) {
+                // "am i younger than hanna?" after "hanna is older than me .": the other way round
+                // of "older", so the answer the other way too.
+                int[] turned = heard.clone();
+                turned[i] = other;
+                int answer = yesOrNo(turned, told, memory, tones);
+                int yes = language.vocabulary.find("yes"), no = language.vocabulary.find("no");
+                return answer == yes ? no : answer == no ? yes : -1;
+            }
+        }
         for (int i = 1; i < heard.length; i++) {
             int q = heard[i];
             // Small words ("my", "the") don't make it a different question.
@@ -4465,11 +4504,21 @@ public final class Brain {
     }
 
     /** Each way one thing can lie from another: its line (0 north-south, 1 east-west, 2 right-left, 3 up-down) and side. */
-    private static final java.util.Map<String, int[]> WAYS = java.util.Map.of("north", new int[] {0, 1}, "south",
-            new int[] {0, -1}, "east", new int[] {1, 1}, "west", new int[] {1, -1}, "right", new int[] {2, 1}, "left",
-            new int[] {2, -1}, "above", new int[] {3, 1}, "over", new int[] {3, 1}, "below", new int[] {3, -1}, "under",
-            new int[] {3, -1});
-    private static final String[][] WAY_WORDS = {{"north", "south"}, {"east", "west"}, {"right", "left"}, {"above", "below"}};
+    private static final java.util.Map<String, int[]> WAYS = java.util.Map.ofEntries(
+            java.util.Map.entry("north", new int[] {0, 1}),
+            java.util.Map.entry("south", new int[] {0, -1}),
+            java.util.Map.entry("east", new int[] {1, 1}),
+            java.util.Map.entry("west", new int[] {1, -1}),
+            java.util.Map.entry("right", new int[] {2, 1}),
+            java.util.Map.entry("left", new int[] {2, -1}),
+            java.util.Map.entry("above", new int[] {3, 1}),
+            java.util.Map.entry("over", new int[] {3, 1}),
+            java.util.Map.entry("below", new int[] {3, -1}),
+            java.util.Map.entry("under", new int[] {3, -1}),
+            java.util.Map.entry("front", new int[] {4, 1}),
+            java.util.Map.entry("behind", new int[] {4, -1}));
+    private static final String[][] WAY_WORDS = {{"north", "south"}, {"east", "west"}, {"right", "left"}, {"above", "below"},
+        {"front", "behind"}};
 
     /**
      * The earlier told line a told line goes against, said back as "wait , you said the cart is red
@@ -4611,6 +4660,12 @@ public final class Brain {
         int from;
         if (way.equals("next") && at + 1 < w.size() && w.get(at + 1).equals("to")) {
             from = at + 2;
+        } else if (way.equals("in") && at + 2 < w.size() && w.get(at + 1).equals("front") && w.get(at + 2).equals("of")) {
+            // "the cart is in front of the barn ."
+            way = "front";
+            from = at + 3;
+        } else if (way.equals("front")) {
+            return null;
         } else if (WAYS.containsKey(way) && WAYS.get(way)[0] < 3) {
             if (at + 1 >= w.size() || !w.get(at + 1).equals("of")) {
                 return null;
@@ -4630,7 +4685,8 @@ public final class Brain {
 
     /** "south of the well", "below the lamp", "next to the inn". */
     private static String wayTo(String way, String b) {
-        return way.equals("next") ? "next to " + b : WAYS.get(way)[0] < 3 ? way + " of " + b : way + " " + b;
+        return way.equals("next") ? "next to " + b : way.equals("front") ? "in front of " + b
+                : WAYS.get(way)[0] < 3 ? way + " of " + b : way + " " + b;
     }
 
     /**
@@ -4704,8 +4760,23 @@ public final class Brain {
         if (body.get(0).equals("where") && body.size() >= 3 && body.get(1).equals("is")) {
             // "where is the farm?" when only told what lies from it.
             String thing = String.join(" ", body.subList(2, body.size()));
-            if (told.stream().anyMatch(l -> l.a().equals(thing))) {
-                return null;
+            String head = body.get(body.size() - 1);
+            for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+                // "where is the well?" after "the well is behind the house .", when nothing told
+                // since says more of the well.
+                int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+                List<String> w = line == null ? List.of() : wordsOf(line);
+                if (w.contains(head) && !w.get(w.size() - 1).equals("?")) {
+                    String said = String.join(" ", w.subList(0, w.size() - 1));
+                    if (told.stream().anyMatch(l -> l.a().equals(thing) && l.line().equals(said))) {
+                        return said(said + " .");
+                    }
+                    if (told.stream().noneMatch(l -> l.b().equals(thing) && l.line().equals(said))) {
+                        // Something told since says more of it ("the cat went to the garden .").
+                        return null;
+                    }
+                    break;
+                }
             }
             for (Lies l : told) {
                 if (l.b().equals(thing)) {
@@ -4763,7 +4834,9 @@ public final class Brain {
     private static List<String> withIs(List<String> body) {
         int of = -1;
         for (int i = 2; i < body.size() && of < 0; i++) {
-            if (WAYS.containsKey(body.get(i)) || body.get(i).equals("next") || body.get(i).equals("to") && i + 1 < body.size()
+            if (WAYS.containsKey(body.get(i)) && !body.get(i).equals("front") || body.get(i).equals("next")
+                    || body.get(i).equals("in") && i + 1 < body.size() && body.get(i + 1).equals("front")
+                    || body.get(i).equals("to") && i + 1 < body.size()
                     && body.get(i + 1).equals("the") && i + 2 < body.size() && WAYS.containsKey(body.get(i + 2))) {
                 of = i;
             }

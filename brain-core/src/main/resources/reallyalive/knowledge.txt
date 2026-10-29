@@ -424,3 +424,4 @@ you use a bucket to carry water .
 you use a bow to shoot arrows .
 you use a fishing rod to catch fish .
 you use shears to cut wool from sheep .
+there are twenty four hours in a day .
