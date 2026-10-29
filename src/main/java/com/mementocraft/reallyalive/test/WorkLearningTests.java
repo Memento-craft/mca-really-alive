@@ -2146,10 +2146,10 @@ public final class WorkLearningTests {
             }
             if (tick[0] % WINDOW == 0) {
                 LOG.info("{} newborn {}: by tick {}: cranks made {}; at the table {} times, {} ticks; screens {}, clicks {}, results formed {}, made {};"
-                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}", name, which, tick[0], cranks[0],
+                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}; made kinds {}", name, which, tick[0], cranks[0],
                         tableOpened[0], tableTicks[0], handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().formedTotal,
                         handle.hands().madeTotal, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal, handle.hands().recipesLearnt,
-                        handle.hands().matchedTotal, handedBack[0]);
+                        handle.hands().matchedTotal, handedBack[0], handle.hands().madeKinds);
             }
             if (tick[0] == ticks) {
                 String report = String.format("%s: made %d hand cranks in %d ticks, at the table %d times", name, cranks[0], ticks, tableOpened[0]);

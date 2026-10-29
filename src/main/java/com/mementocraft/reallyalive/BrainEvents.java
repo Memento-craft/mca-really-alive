@@ -238,7 +238,7 @@ public final class BrainEvents {
 
     @SubscribeEvent
     public static void crafted(PlayerEvent.ItemCraftedEvent e) {
-        made(e.getEntity());
+        made(e.getEntity(), e.getCrafting().getItem());
         if (e.getInventory() instanceof net.minecraft.world.inventory.CraftingContainer grid
                 && e.getEntity().level() instanceof net.minecraft.server.level.ServerLevel level && BrainManager.get() != null) {
             level.getRecipeManager().getRecipeFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING, grid.asCraftInput(), level)
@@ -276,7 +276,7 @@ public final class BrainEvents {
 
     @SubscribeEvent
     public static void smelted(PlayerEvent.ItemSmeltedEvent e) {
-        made(e.getEntity());
+        made(e.getEntity(), e.getSmelting().getItem());
     }
 
     @SubscribeEvent
@@ -288,14 +288,15 @@ public final class BrainEvents {
         if (contents == null || contents.is(net.minecraft.world.item.alchemy.Potions.WATER)) {
             return;
         }
-        made(e.getEntity());
+        // Every potion is the same item: its kind tells nothing apart.
+        made(e.getEntity(), null);
     }
 
     /** A villager's stand-in took something it made out of a result slot. */
-    private static void made(Object player) {
+    private static void made(Object player, net.minecraft.world.item.Item kind) {
         Hands hands = StandIn.owner(player);
         if (hands != null) {
-            hands.made();
+            hands.made(kind);
         }
     }
 

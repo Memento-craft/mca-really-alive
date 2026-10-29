@@ -117,7 +117,9 @@ public final class Hands {
     private boolean dugThisTick;
     private int placedThisTick;
     private int changedThisTick;
-    private int madeThisTick;
+    private float madePleasureThisTick;
+    /** Diagnostics: how many of each kind it has made in result slots. */
+    public final java.util.Map<net.minecraft.world.item.Item, Integer> madeKinds = new java.util.LinkedHashMap<>();
     private int formedThisTick;
     private float movedThisTick;
     private boolean brewingShown;
@@ -264,7 +266,7 @@ public final class Hands {
             pleasure += Motives.COLLECT;
         }
         carried = screen != null ? -1 : now;
-        pleasure += changedThisTick * Motives.CHANGE + madeThisTick * Motives.MAKE + formedThisTick * Motives.FORM
+        pleasure += changedThisTick * Motives.CHANGE + madePleasureThisTick + formedThisTick * Motives.FORM
                 + movedThisTick * Motives.MOVE_THINGS
                 + noveltyThisTick * Motives.NEW_SCREEN;
         if (setGoingThisTick > 0) {
@@ -274,7 +276,7 @@ public final class Hands {
         setGoingThisTick = 0;
         noveltyThisTick = 0f;
         changedThisTick = 0;
-        madeThisTick = 0;
+        madePleasureThisTick = 0f;
         formedThisTick = 0;
         pleasure += matchedThisTick * Motives.MATCH_PICTURE;
         matchedThisTick = 0;
@@ -519,7 +521,15 @@ public final class Hands {
 
     /** Something it made came out of a result slot: crafted, smelted or brewed. */
     public void made() {
-        madeThisTick++;
+        made(null);
+    }
+
+    /** Something of a kind it made came out of a result slot. */
+    public void made(net.minecraft.world.item.Item kind) {
+        if (kind != null) {
+            madeKinds.merge(kind, 1, Integer::sum);
+        }
+        madePleasureThisTick += Motives.MAKE;
         madeTotal++;
         if (screen != null) {
             // What is still in the grid as the result is taken is what it was made from.
@@ -1028,7 +1038,7 @@ public final class Hands {
             }
         }
         if (made) {
-            madeThisTick++;
+            madePleasureThisTick += Motives.MAKE;
             madeTotal++;
         } else if (gained) {
             carried = -1;
