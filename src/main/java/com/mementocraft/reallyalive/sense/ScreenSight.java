@@ -52,6 +52,12 @@ public final class ScreenSight {
     /** How much a thing already put into the thing being worked still catches the eye. */
     private static final float PUT_IN = 0.3f;
     /**
+     * How much the grid still catches the eye, with a stack in hand, once something shows in the
+     * result. With nothing, one plank set down and a button showing sent the hand straight off to
+     * put the rest away and take the button: three planks in a row never came about.
+     */
+    private static final float MADE_GRID = 0.5f;
+    /**
      * How much finer the middle of the eye sees than its edge. With even cells (22 by 33 pixels,
      * wider than a 16-pixel slot) the orienting reflex stopped once a slot was in the middle cell,
      * which left the pointer off the slot two times in three; a result showing with the hand free
@@ -138,8 +144,11 @@ public final class ScreenSight {
             }
             ItemStack stack = s.getItem();
             vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_SOLID)] = 1f;
-            if (!carried.isEmpty() && (s.container instanceof Inventory) == made && s.mayPlace(carried)
-                    && (stack.isEmpty() || ItemStack.isSameItemSameComponents(stack, carried))) {
+            boolean takes = !carried.isEmpty() && s.mayPlace(carried) && (stack.isEmpty() || ItemStack.isSameItemSameComponents(stack, carried));
+            if (takes && made && !(s.container instanceof Inventory) && !isMade(menu, s) && !(s instanceof ResultSlot)) {
+                glow(vision, x, y, SenseLayout.CH_CLIMBABLE, WORK_SLOT * MADE_GRID);
+            }
+            if (takes && (s.container instanceof Inventory) == made) {
                 // A slot of the thing being worked (a crafting grid, a brewing stand's bottles, a
                 // chest) that could take the stack stands out from one's own pockets, as the grid
                 // does on a player's screen, and draws the eye the way a ladder does. Once
