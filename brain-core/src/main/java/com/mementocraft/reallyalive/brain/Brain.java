@@ -1442,7 +1442,7 @@ public final class Brain {
         int recent = toldLines.size();
         for (int[] old : talk.toldLines()) {
             boolean lately = false;
-            for (int k = 1; k <= TOLD_LINES + 1 && k <= heardLinesNext; k++) {
+            for (int k = 1; k <= TOLD_LINES && k <= heardLinesNext; k++) {
                 lately |= Arrays.equals(old, heardLines[(heardLinesNext - k) % heardLines.length]);
             }
             if (!lately) {
