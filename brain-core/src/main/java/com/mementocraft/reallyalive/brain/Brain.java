@@ -1147,6 +1147,12 @@ public final class Brain {
             return new int[0];
         }
         int[] weighed = compared(heard);
+        if (weighed == null && !ofAllAsked) {
+            weighed = whichOfTwo(heard);
+        }
+        if (weighed == null) {
+            weighed = countedList(heard);
+        }
         if (weighed != null) {
             // "who has more apples?" after "tom has three apples ." "anna has five apples .":
             // "anna has five apples ."; "which comes first, friday or sunday?" "friday comes first ."
@@ -1207,6 +1213,14 @@ public final class Brain {
         if (near != null) {
             // "how many cows are there?" "there are two cows ."
             toldLine = near;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            return new int[0];
+        }
+        int[] follows = ruleFollows(heard);
+        if (follows != null) {
+            // "if it rains, we stay home." "it is raining.": "what do we do?" "we stay home ."
+            toldLine = follows;
             toldLineAsHeard = null;
             toldInOwnWords = true;
             return new int[0];
@@ -1455,6 +1469,13 @@ public final class Brain {
             best = there;
             bestSeen = there;
         }
+        int[] further = whereThatIs(heard, best);
+        if (further != null) {
+            // "the key is in the box ." "the box is in the barn .": the key is in the barn too.
+            best = join(best, further);
+            bestSeen = best;
+            toldSure = true;
+        }
         // "mary went to the garden .", not "then mary went to the garden ."
         best = withoutThen(best);
         if (!answersAsked(heard, best)) {
@@ -1522,6 +1543,12 @@ public final class Brain {
             // "what happens if it rains?" "the field floods ."; "why did the field flood?"
             // "because it rained all night ."
             toldLine = toIt;
+        }
+        if (answer < 0 && yesNoAsked(heard) && onlyIfSaid(heard, best)) {
+            // "did the horn sound?" after "when the horn sounds , the gates open ." and "the
+            // gates opened .": something else may have opened them.
+            dontKnow();
+            return new int[0];
         }
         if (heard[0] == language.vocabulary.find("why") && !saysAny(toldLine, WHY_WORDS)) {
             // "why is the farmer sick?" after only "the farmer is sick .".
@@ -2870,7 +2897,9 @@ public final class Brain {
             }
             boolean changes;
             if (where) {
-                changes = doing < 0 || LASTING.contains(language.vocabulary.word(doing)) ? saysAny(line, PLACE) : saidIn(line, doing);
+                // "the dog took the bread ." moves it too.
+                changes = doing < 0 || LASTING.contains(language.vocabulary.word(doing)) ? saysAny(line, PLACE)
+                        || doing < 0 && saysAny(line, Set.of("took", "stole", "grabbed", "ate")) : saidIn(line, doing);
                 changes &= doing < 0 || saidIn(line, doing) || saysAny(line, GOING);
             } else if (whoHas) {
                 changes = passedTo(line) >= 0;
@@ -3455,8 +3484,9 @@ public final class Brain {
                 return -1;
             }
         }
-        if (rule(told)) {
-            // "if it rains, the field floods." alone doesn't say that it did.
+        if (rule(told) || onlyIfSaid(heard, told)) {
+            // "if it rains, the field floods." alone doesn't say that it did; nor does "the field
+            // flooded ." with it say that it rained.
             return -1;
         }
         int order = sameOrder(heard, told);
@@ -3665,15 +3695,23 @@ public final class Brain {
         int comma = language.vocabulary.find(","), stop = language.vocabulary.find(".");
         int best = -1;
         boolean not = false;
+        // What is asked of it ("swim" in "can the thing in the river swim?") is said with or
+        // without "not" in the part that says it ("no zombie can swim ."), whatever the rest says.
+        int asked = heard.length > 2 && heard[heard.length - 1] >= 0 && !Character.isLetter(language.vocabulary.word(heard[heard.length - 1]).charAt(0))
+                ? heard[heard.length - 2] : -1;
         for (int from = 0; from < line.length; ) {
             int to = from;
             int says = 0;
-            boolean no = false;
+            boolean no = false, saysAsked = false;
             for (; to < line.length && line[to] != comma && line[to] != stop; to++) {
                 if (line[to] >= 0) {
                     no |= NOT.contains(language.vocabulary.word(line[to]));
                     says += saidIn(heard, line[to]) && Character.isLetter(language.vocabulary.word(line[to]).charAt(0)) ? 1 : 0;
+                    saysAsked |= asked >= 0 && line != heard && line[to] == asked;
                 }
+            }
+            if (saysAsked) {
+                return no;
             }
             if (says > best) {
                 best = says;
@@ -3682,6 +3720,33 @@ public final class Brain {
             from = to + 1;
         }
         return not;
+    }
+
+    /**
+     * Whether what is asked ("did the bell ring?") is said only as what a rule needs ("if the bell
+     * rings , the guards come ."), not as what happened.
+     */
+    private boolean onlyIfSaid(int[] heard, int[] told) {
+        Vocabulary v = language.vocabulary;
+        int asked = heard.length > 2 ? heard[heard.length - 2] : -1;
+        if (asked < 0 || !thingWord(asked)) {
+            return false;
+        }
+        int stop = v.find("."), comma = v.find(","), iff = v.find("if"), when = v.find("when");
+        boolean inRule = false, happened = false;
+        boolean condition = false;
+        for (int i = 0; i < told.length; i++) {
+            int w = told[i];
+            if (w == iff || w == when) {
+                condition = true;
+            } else if (w == comma || w == stop) {
+                condition = false;
+            } else if (w >= 0 && saidIn(new int[] {w}, asked)) {
+                inRule |= condition;
+                happened |= !condition;
+            }
+        }
+        return inRule && !happened;
     }
 
     /** Whether a line is a rule alone ("if it rains, the field floods.", "when the bell rings, ..."). */
@@ -3850,6 +3915,184 @@ public final class Brain {
         return null;
     }
 
+    /**
+     * Where the place a line puts something is: for "where is the key?" answered by "the key is
+     * in the box .", a line told lately that puts the box somewhere ("the box is in the barn .");
+     * null if none does or it is no where question.
+     */
+    private int[] whereThatIs(int[] heard, int[] best) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 3 || heard[0] < 0 || !v.word(heard[0]).equals("where")) {
+            return null;
+        }
+        int at = placeAt(best);
+        int place = -1;
+        for (int i = Math.max(at, 0) + 1; at >= 0 && i < best.length; i++) {
+            if (best[i] >= 0 && thingWord(best[i]) && !BEFORE_A_THING.contains(v.word(best[i]))) {
+                place = best[i];
+                break;
+            }
+        }
+        if (place < 0 || saidIn(heard, place)) {
+            return null;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            int there = line == null || line.length == 0 || line[line.length - 1] == v.find("?") ? -1 : placeAt(line);
+            int of = there < 0 ? -1 : indexOf(line, place, 0);
+            if (of >= 0 && of < there && !Arrays.equals(line, best)) {
+                return line;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * "who is taller, tom or ben?" worked out as "is tom taller than ben?" from what was told
+     * ("tom is taller than sam ." "sam is taller than ben ."): "tom is taller than ben ."; null if
+     * it is no such question or what was told doesn't tell.
+     */
+    private int[] whichOfTwo(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        int comma = indexOf(heard, v.find(","), 0), or = indexOf(heard, v.find("or"), 0);
+        if (heard.length < 8 || heard[0] < 0 || !Set.of("who", "which").contains(v.word(heard[0])) || heard[1] < 0
+                || !Set.of("is", "are", "was", "were").contains(v.word(heard[1])) || comma != 3 || or < comma + 2
+                || or >= heard.length - 2 || heard[2] < 0 || !v.word(heard[2]).endsWith("er")) {
+            return null;
+        }
+        int[] a = Arrays.copyOfRange(heard, comma + 1, or);
+        int[] b = Arrays.copyOfRange(heard, or + 1, heard.length - 1);
+        int[] asked = join(new int[] {heard[1]}, a, new int[] {heard[2], v.find("than")}, b, new int[] {v.find("?")});
+        int[] keepLine = toldLine;
+        boolean keepOwn = toldInOwnWords, keepSure = toldSure;
+        ofAllAsked = true;
+        toldBefore(asked);
+        ofAllAsked = false;
+        int[] answer = toldLine;
+        toldLine = keepLine;
+        toldInOwnWords = keepOwn;
+        toldSure = keepSure;
+        if (answer == null || answer.length == 0 || answer[0] != v.find("yes") && answer[0] != v.find("no")) {
+            return null;
+        }
+        boolean first = answer[0] == v.find("yes");
+        return join(first ? a : b, new int[] {heard[1], heard[2], v.find("than")}, first ? b : a, new int[] {v.find(".")});
+    }
+
+    /**
+     * "how many people went to the market?" after "tom , anna and ben went to the market .":
+     * "three people went to the market ."; null if no line told lately lists who did it.
+     */
+    private int[] countedList(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 5 || heard[0] < 0 || heard[1] < 0 || !v.word(heard[0]).equals("how") || !v.word(heard[1]).equals("many")) {
+            return null;
+        }
+        int[] doing = Arrays.copyOfRange(heard, 3, heard.length - 1);
+        if (doing.length == 0 || doing[0] < 0 || Set.of("do", "does", "did", "are", "is", "were", "was", "have", "has").contains(v.word(doing[0]))) {
+            return null;
+        }
+        int and = v.find("and"), comma = v.find(",");
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            int at = line == null ? -1 : indexOf(line, doing[0], 0);
+            if (at < 3 || !saidIn(line, doing[doing.length - 1])) {
+                continue;
+            }
+            int[] who = Arrays.copyOfRange(line, 0, at);
+            if (indexOf(who, and, 0) < 0) {
+                continue;
+            }
+            int n = 1;
+            for (int w : who) {
+                n += w == and || w == comma ? 1 : 0;
+            }
+            return join(new int[] {numberWord(n), heard[2]}, Arrays.copyOfRange(line, at, line.length));
+        }
+        return null;
+    }
+
+    /**
+     * What a rule told lately says will be, when what it needs was told too: "if it rains , we
+     * stay home ." and "it is raining .": "what do we do?" "we stay home ."; "what happens now?"
+     * likewise. Null if no rule told lately has its condition told.
+     */
+    private int[] ruleFollows(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 3 || heard[0] < 0 || !v.word(heard[0]).equals("what")
+                || !saysAny(heard, Set.of("do", "does", "happens", "happen", "will"))) {
+            return null;
+        }
+        int iff = v.find("if"), when = v.find("when"), comma = v.find(",");
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] rule = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (rule == null || rule.length < 5 || rule[0] != iff && rule[0] != when) {
+                continue;
+            }
+            int split = indexOf(rule, comma, 1);
+            if (split < 2 || split >= rule.length - 2) {
+                continue;
+            }
+            int[] needs = Arrays.copyOfRange(rule, 1, split);
+            int[] then = Arrays.copyOfRange(rule, split + 1, rule.length);
+            boolean ofThem = saysAny(heard, Set.of("happens", "happen")) || then[0] >= 0 && contains(heard, then[0]);
+            if (!ofThem && then[0] >= 0 && Set.of("he", "she", "it", "they").contains(v.word(then[0]))) {
+                // "if you feed the chickens , they lay eggs .": "what do the chickens do?"
+                for (int w : needs) {
+                    ofThem |= w >= 0 && thingWord(w) && !NO_THING.contains(v.word(w)) && saidIn(heard, w)
+                            && !Set.of("do", "does", "did").contains(v.word(w));
+                }
+            }
+            if (!ofThem) {
+                continue;
+            }
+            for (int j = 2; j <= TOLD_LINES && j <= heardLinesNext; j++) {
+                int[] fact = heardLines[(heardLinesNext - j) % heardLines.length];
+                if (j == k || fact == null || fact.length == 0 || fact[fact.length - 1] == v.find("?") || rule(fact)
+                        || negated(fact, fact)) {
+                    continue;
+                }
+                boolean all = true, some = false;
+                for (int w : needs) {
+                    if (w >= 0 && thingWord(w) && !NO_THING.contains(v.word(w))) {
+                        boolean said = false;
+                        for (int f : fact) {
+                            said |= f >= 0 && sameDoing(v.word(w), v.word(f));
+                        }
+                        all &= said;
+                        some = true;
+                    }
+                }
+                if (all && some) {
+                    return then;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** "rains" and "raining", "rang" and "rings": the same doing. */
+    private boolean sameDoing(String a, String b) {
+        if (sameWord(a, b) || stem(a).equals(stem(b))) {
+            return true;
+        }
+        Set<String> forms = plain(a);
+        return plain(b).stream().anyMatch(forms::contains);
+    }
+
+    /** The forms a doing may have without its ending: "died" "die", "di"; "raining" "rain". */
+    private static Set<String> plain(String w) {
+        String p = IRREGULAR.getOrDefault(w, w);
+        Set<String> forms = new java.util.HashSet<>();
+        forms.add(p);
+        for (String end : new String[] {"ing", "es", "s", "ed", "d"}) {
+            if (p.endsWith(end) && p.length() > end.length() + 1) {
+                forms.add(p.substring(0, p.length() - end.length()));
+            }
+        }
+        return forms;
+    }
+
     /** The answer when nothing it knows tells what is asked. */
     private void dontKnow() {
         toldLine = Arrays.stream(new String[] {"i", "don't", "know", "."}).mapToInt(language.vocabulary::find).toArray();
@@ -3867,7 +4110,8 @@ public final class Brain {
     private static final Set<String> WHERE_WORDS = Set.of("to", "into", "onto", "in", "on", "at", "inside", "under", "behind",
             "from", "near", "by", "beside", "above", "below", "over", "home", "upstairs", "downstairs", "outside", "away",
             "here", "there", "north", "south", "east", "west", "left", "right", "underground", "deep", "everywhere",
-            "nowhere", "somewhere", "anywhere", "far", "close", "nearby", "down", "up", "around", "across", "through");
+            "nowhere", "somewhere", "anywhere", "far", "close", "nearby", "down", "up", "around", "across", "through",
+            "took", "stole", "grabbed", "carried", "ate");
     private static final Set<String> WHEN_WORDS = Set.of("in", "on", "at", "after", "before", "ago", "yesterday", "today",
             "tomorrow", "morning", "noon", "evening", "night", "tonight", "week", "year", "spring", "summer", "autumn",
             "winter", "soon", "later", "when", "since", "until", "for", "day", "days", "weeks", "hour", "hours", "month",

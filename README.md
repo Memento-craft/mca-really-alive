@@ -188,6 +188,14 @@ does rex have?" with "a dog has four legs .", and told "the monster by the gate 
 "does it burn in the sun?" with "yes , skeletons burn in the sun .". Told "i keep bees.", "what
 do my bees make?" is "a bee makes honey .", and told "i run the bakery.", "what do i do?" is "you
 run the bakery .".
+It reasons over more than one step: "the key is in the box." "the box is in the barn." answers
+"where is the key?" with both; "tom is taller than sam." "sam is taller than ben." answers "who
+is taller, tom or ben?" with "tom is taller than ben ."; "tom , anna and ben went to the market."
+answers "how many people went?" with three; "if it rains, we stay home." and "it is raining."
+answer "what do we do?" with "we stay home ."; "no zombie can swim." makes the zombie in the river
+unable to swim; "the rat took the cheese." moves the cheese. It does not take "the gates opened."
+with "when the horn sounds, the gates open." as proof that the horn sounded: it says it doesn't
+know.
 When nothing it knows tells what is asked, it says "i don't know ." rather than repeat a line
 that is only about the same thing: "what colour is my cat?" after "i have a cat.", "who bought the
 sword?" after "the blacksmith made a sword.", "why is the farmer sick?" after only "the farmer is

@@ -446,6 +446,33 @@ class ConversationTest {
     }
 
     @Test
+    void villagerReasonsInSeveralSteps() {
+        // {told, told, asked, right, wrong}; "-" for no wrong word.
+        String[][] talks = {{"the key is in the box.", "the box is in the barn.", "where is the key?", "barn", "-"},
+            {"tom is taller than sam.", "sam is taller than ben.", "who is taller, tom or ben?", "tom", "-"},
+            {"if it rains, we stay home.", "it is raining.", "what do we do?", "home", "-"},
+            {"no zombie can swim.", "the thing in the river is a zombie.", "can the thing in the river swim?", "no", "yes"},
+            {"when the horn sounds, the gates open.", "the gates opened.", "did the horn sound?", "know", "yes"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 2500 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (int k = 0; k < 3; k++) {
+                said = talk(b, talks[i][k], onScript);
+                System.out.println("  player: " + talks[i][k] + "\n  villager: " + String.join(" ", said));
+            }
+            right += said.contains(talks[i][3]) && !said.contains(talks[i][4]) ? 1 : 0;
+        }
+        System.out.printf("reasoned in several steps %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "reasoned only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},
