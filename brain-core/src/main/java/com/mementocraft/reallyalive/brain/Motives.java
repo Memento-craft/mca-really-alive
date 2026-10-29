@@ -44,6 +44,12 @@ public final class Motives {
      */
     public static final float SET_GOING = 1.0f;
     /**
+     * Stopping a machine: a part that was turning stops as its hands work it, as a windmill does
+     * when its bearing is used again. Felt as a small pain, the loss of what was going, so a
+     * villager that starts a windmill learns to leave it be rather than poke it still again.
+     */
+    public static final float STOP_GOING = 0.5f;
+    /**
      * Putting something where a remembered picture of a recipe showed it: the grid looks a little
      * more like the page in the book. Felt once for each place filled on a screen, so a recipe
      * needing two things in two places is not all or nothing.

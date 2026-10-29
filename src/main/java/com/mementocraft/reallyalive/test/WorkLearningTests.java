@@ -1562,6 +1562,138 @@ public final class WorkLearningTests {
         });
     }
 
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornRunsAWindmill(GameTestHelper h) {
+        windmillBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornRunsAWindmill(GameTestHelper h) {
+        windmillBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornRunsAWindmill(GameTestHelper h) {
+        windmillBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornRunsAWindmill(GameTestHelper h) {
+        windmillBenchmark(h, "4");
+    }
+
+    /**
+     * With Create installed: a newborn in the pen with a windmill bearing against the north wall,
+     * facing in, carrying sails. A windmill wants at least eight sails held together in one plane
+     * before the bearing's face, and an empty hand on the bearing to start it; sails used on a
+     * sail go beside it. Sails on the bearing and the windmill running are counted apart. Now and
+     * then the windmill is stopped, the sails taken back and handed over again.
+     */
+    private static void windmillBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "WINDMILL")) {
+            return;
+        }
+        var bearing = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "windmill_bearing"));
+        var sail = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "white_sail"));
+        if (bearing.isEmpty() || sail.isEmpty()) {
+            LOG.info("WINDMILL: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        net.minecraft.world.item.Item sailItem = sail.get();
+        Villager v = pen(h, new ItemStack(sailItem, 16), TICKS);
+        // The roof one higher: a turning windmill's sails lifted newborns standing by it into the
+        // roof, and they suffocated there.
+        for (int x = 0; x <= 10; x++) {
+            for (int z = 7; z <= 17; z++) {
+                h.setBlock(x, 5, z, x == 0 || x == 10 || z == 7 || z == 17 ? Blocks.BEDROCK : Blocks.AIR);
+                h.setBlock(x, 6, z, Blocks.BEDROCK);
+            }
+        }
+        BlockPos bearingAt = new BlockPos(5, 3, 8);
+        var bearingState = bearing.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.SOUTH)
+                .rotate(h.getTestRotation());
+        h.setBlock(bearingAt, bearingState);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] ran = {0};
+        int[] runTicks = {0};
+        int[] mostSails = {0};
+        int[] sailTicks = {0};
+        int[] handedBack = {0};
+        boolean[] was = {false};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                BlockPos eyes = BlockPos.containing(v.getEyePosition());
+                h.fail("the villager died at tick " + tick[0] + " at " + h.relativeVec(v.position()) + ", eyes in "
+                        + h.getLevel().getBlockState(eyes) + " (rotation " + h.getTestRotation() + ")");
+                return;
+            }
+            tick[0]++;
+            if (tick[0] % TIDY_EVERY == 0) {
+                tidyLitter(h);
+            }
+            if (!h.getBlockState(bearingAt).is(bearing.get())) {
+                h.setBlock(bearingAt, bearingState);
+            }
+            boolean running = com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(bearingAt));
+            ran[0] += running && !was[0] ? 1 : 0;
+            runTicks[0] += running ? 1 : 0;
+            was[0] = running;
+            if (tick[0] % 20 == 0 && !running) {
+                // Sails in the plane before the bearing's face.
+                int n = 0;
+                for (int x = 1; x <= 9; x++) {
+                    for (int y = 2; y <= 4; y++) {
+                        n += h.getBlockState(new BlockPos(x, y, 9)).getBlock().asItem() == sailItem ? 1 : 0;
+                    }
+                }
+                mostSails[0] = Math.max(mostSails[0], n);
+                sailTicks[0] += h.getBlockState(bearingAt.south()).getBlock().asItem() == sailItem ? 20 : 0;
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                regrow(h, v);
+                if (tick[0] % (REGROW * 12) == 0) {
+                    // The windmill is stopped and the sails come back to its hands, to put up again.
+                    if (running && h.getLevel().getBlockEntity(h.absolutePos(bearingAt)) instanceof Object be) {
+                        try {
+                            be.getClass().getMethod("disassemble").invoke(be);
+                        } catch (ReflectiveOperationException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    }
+                    clearPen(h, bearingAt);
+                    handedBack[0]++;
+                }
+                int carried = carried(v, sailItem);
+                if (carried < 16 && tick[0] % (REGROW * 12) == 0 || carried == 0 && !running) {
+                    v.getInventory().addItem(new ItemStack(sailItem, 16 - carried));
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    if (!v.getInventory().getItem(i).is(sailItem)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("WINDMILL newborn {}: by tick {}: most sails up {}, a sail on the bearing {} ticks, windmill ran {} times ({} ticks);"
+                                + " set going {}, stopped {}, placed {}; handed back {}; in hand {}", which, tick[0], mostSails[0], sailTicks[0], ran[0], runTicks[0],
+                        handle.hands().setGoingTotal, handle.hands().stoppedTotal, handle.hands().placedTotal, handedBack[0], v.getMainHandItem());
+            }
+            if (tick[0] == TICKS) {
+                String report = String.format("WINDMILL: most sails up %d, a sail on the bearing %d ticks, ran the windmill %d times (%d ticks)",
+                        mostSails[0], sailTicks[0], ran[0], runTicks[0]);
+                LOG.info("WINDMILL newborn {} learning result: {}", which, report);
+                if (ran[0] >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
     /** A block state with a property set by name, for blocks of mods the tests do not link against. */
     private static <T extends Comparable<T>> net.minecraft.world.level.block.state.BlockState withValue(
             net.minecraft.world.level.block.state.BlockState state, String property, String value) {

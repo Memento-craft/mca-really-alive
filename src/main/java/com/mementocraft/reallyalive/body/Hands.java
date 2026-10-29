@@ -82,6 +82,11 @@ public final class Hands {
     private final Villager body;
     private boolean attackWasDown;
     private boolean useWasDown;
+    /** Something it worked came alive while use was held: held use repeats no more until let go. */
+    private boolean satisfied;
+    private int setGoingSeen;
+    /** The block last used is a crank. */
+    private boolean crankInHand;
     /**
      * A mouse button pressed on a screen while holding a stack, as a player starts a drag: 0 left,
      * 1 right, -1 none. The slots dragged over share the stack when the button is let go.
@@ -165,6 +170,8 @@ public final class Hands {
     public int throwsTotal;
     /** Diagnostics: turns of the mouse wheel. */
     public int wheelTurns;
+    /** Turns of the wheel since the hand was last empty. */
+    private int turnsSinceEmpty;
     /** Diagnostics: recipes it has looked at long enough in a recipe book to remember. */
     public int recipesLearnt;
     /** Recipes looked at in a book, and when; the page being looked at, and for how long. */
@@ -197,6 +204,12 @@ public final class Hands {
     private static final int WORKERS_NEAR = 4;
     private static final float SET_GOING_HALF_LIFE = 2400f;
     private int setGoingThisTick;
+    /** Diagnostics: turning machine parts its hands stopped (see {@link Motives#STOP_GOING}). */
+    public int stoppedTotal;
+    private int stoppedThisTick;
+    /** Turning parts it worked lately, and when: if one stops soon after, its hands stopped it. */
+    private final java.util.Map<BlockPos, Long> turningWorked = new java.util.LinkedHashMap<>();
+    private static final long STOPPED_WITHIN = 20L;
     private float setGoingLately;
     public int clicksOnThings;
     /** Ticks since the screen was opened or last clicked on: how long it has gone without doing anything. */
@@ -275,6 +288,13 @@ public final class Hands {
         return pleasure;
     }
 
+    /** The inborn pain of using the hands since the last call: stopping a machine that was going. */
+    public float motivePain() {
+        float pain = stoppedThisTick * Motives.STOP_GOING;
+        stoppedThisTick = 0;
+        return pain;
+    }
+
     /** Forgets what it carried, for when something other than its own hands fills them. */
     public void recount() {
         carried = -1;
@@ -299,6 +319,9 @@ public final class Hands {
         setGoingLately *= (float) Math.pow(0.5, 1.0 / SET_GOING_HALF_LIFE);
         if (ticksLived % SET_GOING_EVERY == 0 && !stillWorked.isEmpty()) {
             watchSetGoing();
+        }
+        if (!turningWorked.isEmpty()) {
+            watchStopped();
         }
         if (screen instanceof RecipeBook.Menu book) {
             lookAtPage(book);
@@ -366,10 +389,20 @@ public final class Hands {
             if (!use) {
                 body.releaseUsingItem();
             }
-        } else if (use && (!useWasDown || useDelay == 0)) {
+        } else if (use && (!useWasDown || useDelay == 0 && !satisfied)) {
             useDelay = USE_REPEAT;
             use();
         }
+        // An inborn letting go: once something it worked comes alive, use held on goes no
+        // further until it is let go and pressed again. Held on, a windmill's bearing was used
+        // again a moment after it started, which stops it.
+        if (!use) {
+            satisfied = false;
+        } else if (setGoingTotal != setGoingSeen && !crankInHand) {
+            // A crank is the exception: what it drives turns only while it is held turning.
+            satisfied = true;
+        }
+        setGoingSeen = setGoingTotal;
         useWasDown = use;
     }
 
@@ -521,11 +554,28 @@ public final class Hands {
         }
     }
 
-    /** The mouse wheel: the next thing it carries comes into its hand, and what it held goes in its place. */
+    /**
+     * The mouse wheel: the next thing it carries comes into its hand, and what it held goes in its
+     * place. Once round everything it carries, the wheel comes to an empty hand, as a player's
+     * comes to an empty slot: some things (a windmill bearing, a crank) want a bare hand.
+     */
     private void nextInHand() {
         wheelTurns++;
         var inventory = body.getInventory();
         int size = inventory.getContainerSize();
+        ItemStack held = body.getMainHandItem();
+        if (!held.isEmpty()) {
+            int stacks = 1;
+            for (int i = 0; i < size; i++) {
+                stacks += inventory.getItem(i).isEmpty() ? 0 : 1;
+            }
+            if (turnsSinceEmpty >= stacks - 1 && inventory.canAddItem(held)) {
+                body.setItemSlot(EquipmentSlot.MAINHAND, inventory.addItem(held));
+                turnsSinceEmpty = 0;
+                return;
+            }
+        }
+        turnsSinceEmpty++;
         for (int k = 0; k < size; k++) {
             int i = k;
             ItemStack next = inventory.getItem(i);
@@ -883,6 +933,7 @@ public final class Hands {
             p.setItemInHand(hand, ItemStack.EMPTY);
         }
         boolean machine = Machines.isMachine(level, clicked);
+        crankInHand = Machines.isCrank(level, clicked);
         boolean clickedStill = Machines.present() && !Machines.turning(level, clicked);
         boolean placeStill = Machines.present() && !Machines.turning(level, placeAt);
         java.util.List<BlockPos> stillNear = machine ? stillPartsNear(level, clicked) : java.util.List.of();
@@ -905,6 +956,13 @@ public final class Hands {
         usedOnBlock++;
         noteWorked(level, clicked, clickedStill);
         noteStillNear(level, stillNear);
+        if (!clickedStill && Machines.present() && !Machines.isCrank(level, clicked)) {
+            turningWorked.remove(clicked);
+            turningWorked.put(clicked.immutable(), ticksLived);
+            while (turningWorked.size() > SET_GOING_WATCHED) {
+                turningWorked.remove(turningWorked.keySet().iterator().next());
+            }
+        }
         if (!placeAt.equals(clicked)) {
             noteWorked(level, placeAt, placeStill);
         }
@@ -1152,6 +1210,20 @@ public final class Hands {
                 it.remove();
                 setGoingThisTick++;
                 setGoingTotal++;
+            }
+        }
+    }
+
+    private void watchStopped() {
+        var it = turningWorked.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            if (ticksLived - e.getValue() > STOPPED_WITHIN) {
+                it.remove();
+            } else if (!Machines.turning(body.level(), e.getKey())) {
+                it.remove();
+                stoppedThisTick++;
+                stoppedTotal++;
             }
         }
     }

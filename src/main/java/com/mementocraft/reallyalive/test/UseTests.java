@@ -856,6 +856,83 @@ public final class UseTests {
     }
 
     /**
+     * With Create installed: a windmill finished by hand, as a player finishes one. A windmill
+     * bearing stands ready; the villager sets a sail on its face, then sails on that sail's edges
+     * (a sail used on a sail goes beside it, in the same plane) until nine make a square, and
+     * starts it with an empty hand on the bearing's side. Sails hold to each other in their own
+     * plane, so no glue is needed.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600)
+    public static void finishesAWindmillIfCreateIsInstalled(GameTestHelper h) {
+        var bearing = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "windmill_bearing"));
+        var sail = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "white_sail"));
+        if (bearing.isEmpty() || sail.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        BlockPos bearingAt = new BlockPos(6, 3, 12);
+        h.setBlock(bearingAt, bearing.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.NORTH)
+                .rotate(h.getTestRotation()));
+        Villager v = spawnMcaVillager(h, new Vec3(6.5, 2, 8.5));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        // The bearing's face first, then the edges of the sails already there: the middle one's
+        // four, then the left and right of the top and bottom ones.
+        Vec3[] aims = {new Vec3(6.5, 3.5, 12.02),
+                new Vec3(6.5, 3.9, 11.5), new Vec3(6.5, 3.1, 11.5), new Vec3(6.1, 3.5, 11.5), new Vec3(6.9, 3.5, 11.5),
+                new Vec3(6.1, 4.5, 11.5), new Vec3(6.9, 4.5, 11.5), new Vec3(6.1, 2.5, 11.5), new Vec3(6.9, 2.5, 11.5)};
+        int[] sails = {0};
+        for (int i = 0; i < aims.length; i++) {
+            int at = 20 + 20 * i;
+            Vec3 aimAt = aims[i];
+            h.runAtTickTime(at - 4, () -> {
+                if (!v.getMainHandItem().is(sail.get())) {
+                    v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(sail.get(), 9));
+                }
+                aim(h, v, aimAt);
+            });
+            h.runAtTickTime(at, () -> {
+                aim(h, v, aimAt);
+                handle.hold(USE);
+            });
+            h.runAtTickTime(at + 2, () -> handle.hold(MotorCommand.IDLE));
+            h.runAtTickTime(at + 10, () -> {
+                int n = 0;
+                for (int x = 4; x <= 8; x++) {
+                    for (int y = 1; y <= 5; y++) {
+                        n += h.getBlockState(new BlockPos(x, y, 11)).getBlock().asItem() == sail.get() ? 1 : 0;
+                    }
+                }
+                sails[0] = n;
+                LOG.info("windmill: after aiming at {}, {} sails up, hand {}", aimAt, n, v.getMainHandItem());
+            });
+        }
+        // Round to the bearing's side, where it shows past the sails, to start it by hand.
+        int start = 20 + 20 * aims.length;
+        Vec3 bearingSide = new Vec3(5.98, 3.5, 12.5);
+        h.runAtTickTime(start - 10, () -> {
+            v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            v.teleportTo(h.absoluteVec(new Vec3(4.5, 2, 12.5)).x, h.absoluteVec(new Vec3(4.5, 2, 12.5)).y, h.absoluteVec(new Vec3(4.5, 2, 12.5)).z);
+        });
+        h.runAtTickTime(start - 4, () -> aim(h, v, bearingSide));
+        h.runAtTickTime(start, () -> {
+            aim(h, v, bearingSide);
+            handle.hold(USE);
+        });
+        h.runAtTickTime(start + 2, () -> handle.hold(MotorCommand.IDLE));
+        h.runAtTickTime(start + 60, () -> {
+            boolean turning = com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(bearingAt));
+            LOG.info("windmill: rotation {}, {} sails, bearing {} turning {}, set going {}", h.getTestRotation(), sails[0],
+                    h.getBlockState(bearingAt), turning, handle.hands().setGoingTotal);
+            h.assertTrue(sails[0] >= 8, "only " + sails[0] + " sails went up");
+            h.assertTrue(turning, "the windmill does not turn");
+            h.succeed();
+        });
+    }
+
+    /**
      * With Create installed: holding use on a hand crank turns it, and the shaft behind it, as a
      * player's held right button does. The shaft it drives is felt set going; the crank itself,
      * turning only under the hand, is not.

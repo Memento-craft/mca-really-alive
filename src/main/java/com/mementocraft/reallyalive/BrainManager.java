@@ -463,6 +463,7 @@ public final class BrainManager {
             }
         }
         pleasure += h.hands.motivePleasure();
+        pain += h.hands.motivePain();
         f.pain = Math.min(1f, pain);
         f.pleasure = Math.min(1f, pleasure);
     }
