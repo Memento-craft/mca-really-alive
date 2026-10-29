@@ -630,6 +630,30 @@ class ConversationTest {
     }
 
     @Test
+    void villagerReasonsFromRulesOfAKind() {
+        // {told, asked, first word of the answer}
+        String[][] talks = {{"all blicks are furry.|zim is a blick.", "is zim furry?", "yes"},
+            {"no glorps can fly.|pip is a glorp.", "can pip fly?", "no"},
+            {"all snorks live in caves.|ari is a snork.", "where does ari live?", "ari"},
+            {"all dax are friendly.|mo is not a dax.", "is mo friendly?", "i"},
+            {"all mogs are tall.|tess is tall.", "is tess a mog?", "i"}};
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 6100 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            for (String told : talks[i][0].split("\\|")) {
+                talk(b, told, onScript);
+            }
+            List<String> said = talk(b, talks[i][1], onScript);
+            System.out.println("  " + talks[i][1] + " -> " + String.join(" ", said));
+            assertTrue(!said.isEmpty() && said.get(0).equals(talks[i][2]), talks[i][1] + " -> " + said);
+        }
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

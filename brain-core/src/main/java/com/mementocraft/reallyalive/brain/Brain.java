@@ -1127,6 +1127,16 @@ public final class Brain {
             // "where is it now?" after "where was the cat?" asks of the cat.
             meant = ofTheSame(plain);
         }
+        int[] reasoned = meant == null && plain.length > 0 ? fromRules(plain) : null;
+        if (reasoned != null) {
+            // "all blicks are furry." "zim is a blick.": "is zim furry?" "yes , all blicks are
+            // furry , and zim is a blick ."
+            toldLine = reasoned;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         kindLine = null;
         if (meant == null && plain.length > 0) {
             // "how many legs does rex have?" after "rex is a dog .": what is so of dogs.
@@ -4313,6 +4323,173 @@ public final class Brain {
         }
         out.addAll(all);
         return said(String.join(" ", out));
+    }
+
+    /** A rule told of a kind: "all blicks are furry .", "no glorps can fly .", "some vims are green ." */
+    private record KindRule(String kind, String how, List<String> does, List<String> line) {}
+
+    private static final Set<String> HOW_MANY_OF = Set.of("all", "every", "no", "some", "each");
+
+    /** Whether a word names the kind: "blicks", "blick" and "a blick"; "dax" and "dax"; "ponies" and "pony". */
+    private static boolean ofKind(String word, String kind) {
+        return word.equals(kind) || word.equals(kind + "s") || word.equals(kind + "es")
+                || kind.endsWith("y") && word.equals(kind.substring(0, kind.length() - 1) + "ies")
+                || kind.equals(word + "s") || kind.equals(word + "es");
+    }
+
+    /** "live" said of one: "lives"; "are" "is", "have" "has". */
+    private static String ofOne(String verb) {
+        return switch (verb) {
+            case "are" -> "is";
+            case "have" -> "has";
+            case "do" -> "does";
+            case "can", "will", "must", "should", "is", "has", "does" -> verb;
+            default -> verb.endsWith("s") || verb.endsWith("sh") || verb.endsWith("ch") || verb.endsWith("x") ? verb + "es"
+                    : verb + "s";
+        };
+    }
+
+    /**
+     * The answer to a question about one of a kind, reasoned from rules told of the kind: after
+     * "all blicks are furry ." and "zim is a blick .", "is zim furry?" is "yes , all blicks are
+     * furry , and zim is a blick ."; "no glorps can fly ." makes "can pip fly?" "no"; "where does ari
+     * live?" after "all snorks live in caves ." is "ari lives in caves ."; rules chain ("all fips
+     * are blue ." "all blue things are cold ."). What doesn't follow it won't say: one not of the
+     * kind ("mo is not a dax ."), "some", or the rule turned round ("all mogs are tall ." "tess is
+     * tall ." "is tess a mog?") get "i don't know" and why. Null when no told rule bears on it.
+     */
+    private int[] fromRules(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<String> q = wordsOf(heard);
+        int n = q.size();
+        if (n < 3 || n > TOLD_QUESTION_WORDS || !q.get(n - 1).equals("?")) {
+            return null;
+        }
+        List<KindRule> rules = new ArrayList<>();
+        java.util.Map<String, List<String>> kindOf = new java.util.HashMap<>(), notKindOf = new java.util.HashMap<>(),
+                saidOf = new java.util.HashMap<>();
+        for (int k = TOLD_LINES; k >= 2; k--) {
+            if (k > heardLinesNext) {
+                continue;
+            }
+            int[] told = heardLines[(heardLinesNext - k) % heardLines.length];
+            List<String> w = told == null ? List.of() : wordsOf(told);
+            if (w.size() < 3 || w.size() > TOLD_LONGEST || !w.get(w.size() - 1).equals(".")) {
+                continue;
+            }
+            List<String> body = w.subList(0, w.size() - 1);
+            String first = body.get(0);
+            if (HOW_MANY_OF.contains(first) && body.size() >= 3) {
+                // "all blue things are cold .": the kind is "blue things".
+                int at = 2;
+                if (body.size() >= 4 && Set.of("things", "ones").contains(body.get(2))) {
+                    at = 3;
+                }
+                String kind = at == 3 ? body.get(1) + " things" : body.get(1);
+                rules.add(new KindRule(kind, first.equals("each") ? "every" : first, body.subList(at, body.size()), body));
+            } else if (body.size() >= 3 && first.endsWith("s") && !first.endsWith("'s") && !BEFORE_A_THING.contains(first)
+                    && !NO_THING.contains(first) && Set.of("are", "can", "have", "live", "eat").contains(body.get(1))) {
+                // "grubs are slow ."
+                rules.add(new KindRule(first, "all", body.subList(1, body.size()), body));
+            } else if (body.size() == 4 && body.get(1).equals("is") && Set.of("a", "an").contains(body.get(2))) {
+                kindOf.computeIfAbsent(first, x -> new ArrayList<>()).add(body.get(3));
+            } else if (body.size() == 5 && body.get(1).equals("is") && body.get(2).equals("not") && Set.of("a", "an").contains(body.get(3))) {
+                notKindOf.computeIfAbsent(first, x -> new ArrayList<>()).add(body.get(4));
+            } else if (body.size() == 3 && body.get(1).equals("is")) {
+                saidOf.computeIfAbsent(first, x -> new ArrayList<>()).add(body.get(2));
+            }
+        }
+        if (rules.isEmpty()) {
+            return null;
+        }
+        // Who the question asks of: a name told of above.
+        String name = null;
+        int nameAt = -1;
+        for (int i = 0; i < n - 1 && name == null; i++) {
+            String w = q.get(i);
+            if (kindOf.containsKey(w) || notKindOf.containsKey(w) || saidOf.containsKey(w)) {
+                name = w;
+                nameAt = i;
+            }
+        }
+        if (name == null) {
+            return null;
+        }
+        boolean yesNo = YES_NO.contains(q.get(0));
+        List<String> asked = new ArrayList<>();
+        for (int i = 0; i < n - 1; i++) {
+            String w = q.get(i);
+            int id = v.find(w);
+            if (i != nameAt && id >= 0 && thingWord(id) && !ASKING_WORDS.contains(w) && !YES_NO.contains(w)
+                    && !Set.of("many", "much", "kind", "colour", "color").contains(w)) {
+                asked.add(w);
+            }
+        }
+        // "is tess a mog?" after "all mogs are tall ." "tess is tall .": the rule turned round.
+        if (yesNo && nameAt + 2 < n - 1 && Set.of("a", "an").contains(q.get(nameAt + 1)) && saidOf.containsKey(name)) {
+            String kind = q.get(nameAt + 2);
+            for (KindRule r : rules) {
+                if (ofKind(r.kind(), kind) && r.how().equals("all") || ofKind(r.kind(), kind) && r.how().equals("every")) {
+                    if (r.does().size() == 2 && saidOf.get(name).contains(r.does().get(1))) {
+                        return said("i don't know , " + name + " is " + r.does().get(1) + " , but not all " + r.does().get(1)
+                                + " things are " + r.kind() + " .");
+                    }
+                }
+            }
+            return null;
+        }
+        if (asked.isEmpty()) {
+            return null;
+        }
+        List<String> kinds = new ArrayList<>(kindOf.getOrDefault(name, List.of()));
+        List<String> because = new ArrayList<>();
+        for (int step = 0; step < 3; step++) {
+            for (KindRule r : rules) {
+                boolean ours = kinds.stream().anyMatch(kd -> ofKind(r.kind(), kd) || r.kind().equals(kd));
+                if (!ours) {
+                    continue;
+                }
+                boolean all = asked.stream().allMatch(a -> r.does().stream().anyMatch(d -> sameDoing(a, d) || ofKind(a, d)));
+                boolean some = asked.stream().anyMatch(a -> r.does().stream().anyMatch(d -> sameDoing(a, d) || ofKind(a, d)));
+                String line = String.join(" ", r.line());
+                if (yesNo && all) {
+                    String kind = kindOf.get(name).get(0);
+                    String why = String.join(" , ", because) + (because.isEmpty() ? "" : " , ") + line + " , and " + name + " is "
+                            + ("aeiou".indexOf(kind.charAt(0)) >= 0 ? "an " : "a ") + kind + " .";
+                    return switch (r.how()) {
+                        case "no" -> said("no , " + why);
+                        case "some" -> said("maybe , " + line + " , but i don't know if " + name + " is one of them .");
+                        default -> said("yes , " + why);
+                    };
+                }
+                if (!yesNo && some && !r.how().equals("no") && !r.how().equals("some") && !r.does().isEmpty()) {
+                    // "ari lives in caves ."
+                    List<String> out = new ArrayList<>(List.of(name));
+                    List<String> does = new ArrayList<>(r.does());
+                    boolean many = r.how().equals("all");
+                    out.add(many ? ofOne(does.get(0)) : does.get(0));
+                    out.addAll(does.subList(1, does.size()));
+                    out.add(".");
+                    return Arrays.stream(String.join(" ", out).split(" ")).mapToInt(v::id).toArray();
+                }
+                if (r.does().size() == 2 && Set.of("are", "is").contains(r.does().get(0)) && !r.how().equals("no")
+                        && !r.how().equals("some") && !kinds.contains(r.does().get(1) + " things")) {
+                    // "all fips are blue ." makes kip one of the blue things.
+                    kinds.add(r.does().get(1) + " things");
+                    because.add(line);
+                }
+            }
+        }
+        // One not of the kind: what is so of the kind says nothing of it.
+        for (String kd : notKindOf.getOrDefault(name, List.of())) {
+            for (KindRule r : rules) {
+                if (ofKind(r.kind(), kd) && asked.stream().allMatch(a -> r.does().stream().anyMatch(d -> sameDoing(a, d)))) {
+                    return said("i don't know , " + String.join(" ", r.line()) + " , but " + name + " is not "
+                            + ("aeiou".indexOf(kd.charAt(0)) >= 0 ? "an " : "a ") + kd + " .");
+                }
+            }
+        }
+        return null;
     }
 
     /** "rains" and "raining", "rang" and "rings": the same doing. */

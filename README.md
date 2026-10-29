@@ -221,6 +221,13 @@ It generalises from cases told alike: after "tom's goat is brown.", "ben's goat 
 woke early on monday / tuesday / wednesday." makes "when does the miller wake up?" "the miller woke
 early each day i heard of ."; one case against it is named ("are all goats brown?" "no , ben's goat
 is white ."; "are the stones heavy?" "most were , but the third stone was light .").
+It reasons from rules told of a kind: "all blicks are furry." "zim is a blick." "is zim furry?"
+gives "yes , all blicks are furry , and zim is a blick ."; "no glorps can fly." makes "can pip fly?"
+"no"; "all snorks live in caves." makes "where does ari live?" "ari lives in caves ."; rules chain
+("all fips are blue." "all blue things are cold." "is kip cold?" "yes"). It won't draw what doesn't
+follow: "mo is not a dax ." gets "i don't know , all dax are friendly , but mo is not a dax ."; "some
+vims are green" gets "maybe ..."; and "all mogs are tall." "tess is tall." "is tess a mog?" gets "i
+don't know , tess is tall , but not all tall things are mogs .".
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."
