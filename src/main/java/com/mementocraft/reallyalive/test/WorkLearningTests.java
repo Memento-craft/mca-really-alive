@@ -1367,6 +1367,209 @@ public final class WorkLearningTests {
         });
     }
 
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornRunsASteamEngine(GameTestHelper h) {
+        steamBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornRunsASteamEngine(GameTestHelper h) {
+        steamBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornRunsASteamEngine(GameTestHelper h) {
+        steamBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornRunsASteamEngine(GameTestHelper h) {
+        steamBenchmark(h, "4");
+    }
+
+    /**
+     * With Create installed: a newborn in the pen with a boiler already plumbed in (a two by two
+     * fluid tank against the north wall, a blaze burner under one corner, water pumped in from a
+     * pool outside), carrying ready-made parts: coal, a steam engine and shafts. The engine runs
+     * only when all three are done: coal in the burner, the engine on the tank's side and a shaft
+     * in front of the engine. Each step is counted on its own, so the report says how far it got.
+     * The engine and shafts are taken back now and then and handed over again.
+     */
+    private static void steamBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "STEAM")) {
+            return;
+        }
+        java.util.function.Function<String, ResourceLocation> create = id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var tank = BuiltInRegistries.BLOCK.getOptional(create.apply("fluid_tank"));
+        var burner = BuiltInRegistries.BLOCK.getOptional(create.apply("blaze_burner"));
+        var pump = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_pump"));
+        var pipe = BuiltInRegistries.BLOCK.getOptional(create.apply("fluid_pipe"));
+        var cog = BuiltInRegistries.BLOCK.getOptional(create.apply("cogwheel"));
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var engine = BuiltInRegistries.BLOCK.getOptional(create.apply("steam_engine"));
+        var poweredShaft = BuiltInRegistries.BLOCK.getOptional(create.apply("powered_shaft"));
+        var shaft = BuiltInRegistries.ITEM.getOptional(create.apply("shaft"));
+        if (tank.isEmpty() || burner.isEmpty() || pump.isEmpty() || pipe.isEmpty() || cog.isEmpty() || motor.isEmpty() || engine.isEmpty()
+                || poweredShaft.isEmpty() || shaft.isEmpty()) {
+            LOG.info("STEAM: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        net.minecraft.world.item.Item engineItem = engine.get().asItem();
+        net.minecraft.world.item.Item shaftItem = shaft.get();
+        Villager v = pen(h, new ItemStack(Items.COAL, 16), TICKS);
+        v.getInventory().addItem(new ItemStack(engineItem));
+        v.getInventory().addItem(new ItemStack(shaftItem, 4));
+        var rotation = h.getTestRotation();
+        var facing = net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING;
+        // The boiler: a tank of four blocks (one heat level), a burner under its south-west corner
+        // whose south side shows, stone under the rest.
+        java.util.List<BlockPos> keep = new java.util.ArrayList<>();
+        for (int x = 4; x <= 5; x++) {
+            for (int z = 8; z <= 9; z++) {
+                h.setBlock(new BlockPos(x, 3, z), tank.get());
+                keep.add(new BlockPos(x, 3, z));
+                keep.add(new BlockPos(x, 2, z));
+            }
+        }
+        BlockPos burnerAt = new BlockPos(4, 2, 9);
+        var unlit = withValue(burner.get().defaultBlockState(), "blaze", "smouldering").rotate(rotation);
+        Runnable underTank = () -> {
+            for (BlockPos p : keep) {
+                if (p.getY() == 2 && !p.equals(burnerAt) && !h.getBlockState(p).is(Blocks.STONE)) {
+                    h.setBlock(p, Blocks.STONE);
+                }
+            }
+            if (!h.getBlockState(burnerAt).is(burner.get())) {
+                h.setBlock(burnerAt, unlit);
+            }
+        };
+        underTank.run();
+        // The plumbing, set into and beyond the north wall: a pump pushing south into the tank,
+        // turned through a cogwheel by a fast motor, drawing on a glass-walled pool of springs.
+        BlockPos pumpAt = new BlockPos(5, 3, 7);
+        h.setBlock(pumpAt, pump.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.SOUTH).rotate(rotation));
+        BlockPos cogAt = pumpAt.east();
+        h.setBlock(cogAt, cog.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.Z).rotate(rotation));
+        BlockPos motorAt = cogAt.north();
+        h.setBlock(motorAt, motor.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.SOUTH).rotate(rotation));
+        for (int x = 3; x <= 7; x++) {
+            for (int z = 2; z <= 6; z++) {
+                BlockPos p = new BlockPos(x, 3, z);
+                h.setBlock(p.below(), Blocks.STONE);
+                if (!p.equals(motorAt)) {
+                    h.setBlock(p, x == 3 || x == 7 || z == 2 || z == 6 ? Blocks.GLASS : Blocks.WATER);
+                }
+            }
+        }
+        BlockPos pipeAt = pumpAt.north();
+        h.setBlock(pipeAt, pipe.get());
+        BlockPos pipeAbs = h.absolutePos(pipeAt);
+        h.getLevel().setBlockAndUpdate(pipeAbs, net.minecraft.world.level.block.Block.updateFromNeighbourShapes(
+                h.getLevel().getBlockState(pipeAbs), h.getLevel(), pipeAbs));
+        try {
+            Object motorBe = h.getLevel().getBlockEntity(h.absolutePos(motorAt));
+            Object speed = motorBe.getClass().getField("generatedSpeed").get(motorBe);
+            speed.getClass().getMethod("setValue", int.class).invoke(speed, 128);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+        BlockPos[] kept = keep.toArray(BlockPos[]::new);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] ran = {0};
+        int[] runTicks = {0};
+        int[] litTicks = {0};
+        int[] lit = {0};
+        int[] engineTicks = {0};
+        int[] shaftTicks = {0};
+        int[] handedBack = {0};
+        boolean[] was = {false, false};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (tick[0] % TIDY_EVERY == 0) {
+                tidyLitter(h);
+            }
+            boolean burning = !h.getBlockState(burnerAt).equals(unlit);
+            lit[0] += burning && !was[1] ? 1 : 0;
+            litTicks[0] += burning ? 1 : 0;
+            was[1] = burning;
+            boolean engineOn = false;
+            boolean shaftIn = false;
+            boolean running = false;
+            for (int x = 1; x <= 9; x++) {
+                for (int z = 8; z <= 16; z++) {
+                    for (int y = 2; y <= 4; y++) {
+                        var state = h.getBlockState(new BlockPos(x, y, z));
+                        engineOn |= state.is(engine.get());
+                        if (state.is(poweredShaft.get())) {
+                            shaftIn = true;
+                            running |= com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(new BlockPos(x, y, z)));
+                        }
+                    }
+                }
+            }
+            engineTicks[0] += engineOn ? 1 : 0;
+            shaftTicks[0] += shaftIn ? 1 : 0;
+            ran[0] += running && !was[0] ? 1 : 0;
+            runTicks[0] += running ? 1 : 0;
+            was[0] = running;
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                regrow(h, v);
+                underTank.run();
+                if (tick[0] % (REGROW * 12) == 0 || !engineOn && carried(v, engineItem) == 0) {
+                    // The parts come back to its hands, to put together (maybe better) again.
+                    clearPen(h, kept);
+                    if (carried(v, engineItem) == 0) {
+                        v.getInventory().addItem(new ItemStack(engineItem));
+                        handedBack[0]++;
+                    }
+                }
+                if (carried(v, shaftItem) == 0) {
+                    v.getInventory().addItem(new ItemStack(shaftItem, 4));
+                }
+                if (carried(v, Items.COAL) == 0) {
+                    v.getInventory().addItem(new ItemStack(Items.COAL, 16));
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    ItemStack s = v.getInventory().getItem(i);
+                    if (!s.is(engineItem) && !s.is(shaftItem) && !s.is(Items.COAL)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("STEAM newborn {}: by tick {}: burner lit {} times ({} ticks), engine on the tank {} ticks, shaft in {} ticks,"
+                                + " engine ran {} times ({} ticks); set going {}, placed {}; engines handed back {}; in hand {}",
+                        which, tick[0], lit[0], litTicks[0], engineTicks[0], shaftTicks[0], ran[0], runTicks[0],
+                        handle.hands().setGoingTotal, handle.hands().placedTotal, handedBack[0], v.getMainHandItem());
+            }
+            if (tick[0] == TICKS) {
+                String report = String.format("STEAM: lit the burner %d times, engine on the tank %d ticks, shaft in %d ticks, ran the engine %d times (%d ticks)",
+                        lit[0], engineTicks[0], shaftTicks[0], ran[0], runTicks[0]);
+                LOG.info("STEAM newborn {} learning result: {}", which, report);
+                if (ran[0] >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
+    /** A block state with a property set by name, for blocks of mods the tests do not link against. */
+    private static <T extends Comparable<T>> net.minecraft.world.level.block.state.BlockState withValue(
+            net.minecraft.world.level.block.state.BlockState state, String property, String value) {
+        @SuppressWarnings("unchecked")
+        var p = (net.minecraft.world.level.block.state.properties.Property<T>) state.getBlock().getStateDefinition().getProperty(property);
+        return p == null ? state : p.getValue(value).map(v -> state.setValue(p, v)).orElse(state);
+    }
+
     @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void newbornCraftsACrankAtATable(GameTestHelper h) {
         tableCrankBenchmark(h, "1", false);
