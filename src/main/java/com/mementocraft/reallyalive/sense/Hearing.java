@@ -26,7 +26,7 @@ public final class Hearing {
     /** Sounds are kept this many ticks, long enough for every villager to listen once after them. */
     private static final long KEEP = 20;
 
-    private record Heard(long seq, long time, Vec3 pos, int channel, float volume, String word, UUID speaker) {}
+    private record Heard(long seq, long time, Vec3 pos, int channel, float volume, String word, UUID speaker, String name) {}
 
     private static final Map<Level, ArrayDeque<Heard>> HEARD = new IdentityHashMap<>();
     private static long seq;
@@ -44,25 +44,26 @@ public final class Hearing {
     }
 
     public static synchronized void sound(Level level, Vec3 pos, SoundChannel channel, float volume) {
-        add(level, pos, channel.ordinal(), volume, null, null);
+        add(level, pos, channel.ordinal(), volume, null, null, null);
     }
 
     /**
      * A word said at a place, or {@link com.mementocraft.reallyalive.brain.WordCode#TURN} when the
      * speaker finishes a line. Words carry as far as a voice. The speaker, if a villager, hears it as
-     * its own.
+     * its own. Listeners know who said it by the speaker's name (null if it has none), as one knows
+     * a voice and sees who is talking.
      */
-    public static synchronized void word(Level level, Vec3 pos, String word, UUID speaker) {
-        add(level, pos, -1, 1f, word, speaker);
+    public static synchronized void word(Level level, Vec3 pos, String word, UUID speaker, String name) {
+        add(level, pos, -1, 1f, word, speaker, name);
     }
 
-    private static void add(Level level, Vec3 pos, int channel, float volume, String word, UUID speaker) {
+    private static void add(Level level, Vec3 pos, int channel, float volume, String word, UUID speaker, String name) {
         long time = level.getGameTime();
         ArrayDeque<Heard> queue = HEARD.computeIfAbsent(level, l -> new ArrayDeque<>());
         while (!queue.isEmpty() && queue.peekFirst().time() < time - KEEP) {
             queue.pollFirst();
         }
-        queue.addLast(new Heard(++seq, time, pos, channel, volume, word, speaker));
+        queue.addLast(new Heard(++seq, time, pos, channel, volume, word, speaker, name));
     }
 
     /**
@@ -85,7 +86,7 @@ public final class Hearing {
                 continue;
             }
             if (h.word() != null) {
-                f.hear(h.word(), listener.getUUID().equals(h.speaker()));
+                f.hear(h.word(), listener.getUUID().equals(h.speaker()), h.name());
                 continue;
             }
             float loudness = (float) (1.0 - dist / range) * Math.min(1f, h.volume());

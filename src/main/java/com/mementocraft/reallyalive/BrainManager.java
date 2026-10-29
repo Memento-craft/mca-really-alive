@@ -10,6 +10,7 @@ import com.mementocraft.reallyalive.brain.Brain;
 import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.BrainIO;
 import com.mementocraft.reallyalive.brain.Genome;
+import com.mementocraft.reallyalive.brain.MotorChannel;
 import com.mementocraft.reallyalive.brain.MotorCommand;
 import com.mementocraft.reallyalive.brain.OlfactoryChannel;
 import com.mementocraft.reallyalive.brain.Rng;
@@ -27,7 +28,11 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
+import com.mementocraft.reallyalive.body.Books;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.inventory.LecternMenu;
 import net.minecraft.world.entity.ai.control.JumpControl;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.control.LookControl;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.entity.npc.Villager;
@@ -93,8 +98,9 @@ public final class BrainManager {
         final float[] colour = new float[frame.colour.length];
         /** The eyes last saw a screen, so the world must be looked at again as soon as it closes. */
         boolean sawScreen;
-        /** Someone to talk to is near, checked now and then. */
+        /** Someone to talk to is near, checked now and then, and whether a child is among them. */
         boolean company;
+        boolean child;
         final float[] scent = new float[OlfactoryChannel.COUNT];
         CompletableFuture<MotorCommand> pending;
         MotorCommand command = MotorCommand.IDLE;
@@ -116,6 +122,34 @@ public final class BrainManager {
         /** The last line shown in chat, and how many have been. */
         String lastLine;
         int lines;
+        /** Names of people seen dying, and crops it harvested, since the brain last sensed. */
+        final List<String> deathsSeen = new ArrayList<>();
+        final List<String> harvested = new ArrayList<>();
+        /** Deeds done since the brain last sensed ("broke wheat", "placed dirt"), and blocks placed so far. */
+        final List<String> did = new ArrayList<>();
+        int placedSeen;
+        /** How hungry the body is, 0..1: it grows while the villager lives and eating takes it down. */
+        float hunger;
+        /** How tired the body is, 0..1: it grows while awake and sleeping takes it down. */
+        float tiredness;
+        /** How bored (idle too long), lonely (alone too long) and scared it is, 0..1, and of what. */
+        float boredom;
+        float loneliness;
+        float fear;
+        net.minecraft.world.entity.Entity feared;
+        int madeSeen;
+        /** The line it is writing down, its own written words to feel, and how many lines it wrote. */
+        final List<String> writtenLine = new ArrayList<>();
+        final List<String> wroteWords = new ArrayList<>();
+        int linesWritten;
+        String lastWritten;
+        /** Words still to be read, each with its writer (or null), and the lectern screen read last. */
+        final java.util.ArrayDeque<String[]> reading = new java.util.ArrayDeque<>();
+        Object readScreen;
+        boolean useWasDown;
+        /** Keys it last saw someone in view press. */
+        final float[] watched = new float[MotorChannel.COUNT];
+        int linesRead;
 
         Handle(UUID id, Brain brain, PlayerInputMoveControl move, MoveControl originalMove, LookControl originalLook,
                JumpControl originalJump) {
@@ -132,8 +166,57 @@ public final class BrainManager {
             return brain;
         }
 
+        /** How many lines it has written down, the last of them, and how many lines it has read. */
+        public int linesWritten() {
+            return linesWritten;
+        }
+
+        public String lastWritten() {
+            return lastWritten;
+        }
+
+        public int linesRead() {
+            return linesRead;
+        }
+
         public Hands hands() {
             return hands;
+        }
+
+        public float hunger() {
+            return hunger;
+        }
+
+        public void setHunger(float hunger) {
+            this.hunger = Math.max(0f, Math.min(1f, hunger));
+        }
+
+        public float tiredness() {
+            return tiredness;
+        }
+
+        public void setTiredness(float tiredness) {
+            this.tiredness = Math.max(0f, Math.min(1f, tiredness));
+        }
+
+        public float boredom() {
+            return boredom;
+        }
+
+        public void setBoredom(float boredom) {
+            this.boredom = clampNeed(boredom);
+        }
+
+        public float loneliness() {
+            return loneliness;
+        }
+
+        public void setLoneliness(float loneliness) {
+            this.loneliness = clampNeed(loneliness);
+        }
+
+        public float fear() {
+            return fear;
         }
 
         public MotorCommand command() {
@@ -260,6 +343,10 @@ public final class BrainManager {
         ((BrainDriven) v).reallyalive$setDriven(true);
         v.refreshDimensions();
         h.heard = Hearing.now();
+        h.hunger = data.hunger();
+        h.tiredness = data.tiredness();
+        h.boredom = data.boredom();
+        h.loneliness = data.loneliness();
         handles.put(v.getUUID(), h);
         return h;
     }
@@ -271,6 +358,7 @@ public final class BrainManager {
             return;
         }
         save(h);
+        v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness, h.boredom, h.loneliness);
         h.hands.release();
         MobAccessor body = (MobAccessor) v;
         body.reallyalive$setMoveControl(h.originalMove);
@@ -302,6 +390,103 @@ public final class BrainManager {
         });
     }
 
+    /** How far a death can be seen; within NEAR it is noticed even out of sight. */
+    private static final double DEATH_SEEN = 16.0;
+    private static final double DEATH_NEAR = 4.0;
+
+    /**
+     * Someone died: brain villagers that see it (or are right there) take it in, by the name they
+     * would know the dead by. What they make of it is up to their brains.
+     */
+    public void witness(LivingEntity dead) {
+        String name = dead instanceof Player p ? p.getGameProfile().getName()
+                : dead.hasCustomName() ? dead.getCustomName().getString() : null;
+        if (name == null) {
+            return;
+        }
+        for (Handle h : handles.values()) {
+            LivingEntity w = h.move.mob();
+            if (w == dead || w.level() != dead.level() || !w.isAlive()) {
+                continue;
+            }
+            double dist = w.distanceTo(dead);
+            if (dist < DEATH_NEAR || dist < DEATH_SEEN && w.hasLineOfSight(dead)) {
+                h.deathsSeen.add(name);
+            }
+        }
+    }
+
+    /** A brain villager harvested a ripe crop: it knows what it did. */
+    public void harvested(Villager v, String crop) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.harvested.add(crop);
+        }
+    }
+
+    /** A brain villager ate something: its hunger falls by what the food gives, as a player's would. */
+    public void ate(Villager v, net.minecraft.world.item.ItemStack food) {
+        Handle h = handles.get(v.getUUID());
+        var props = food.get(net.minecraft.core.component.DataComponents.FOOD);
+        if (h != null && props != null) {
+            h.setHunger(h.hunger - props.nutrition() / 20f);
+            h.did.add("ate " + Hands.nameOf(food.getItem()));
+        }
+    }
+
+    private static float clampNeed(float level) {
+        return Math.max(0f, Math.min(1f, level));
+    }
+
+    /**
+     * Fear rises fast while a monster is near and in sight, the more the nearer, and when it is
+     * hurt; it fades slowly once nothing threatens. Getting out of a feared monster's reach, or
+     * seeing it die, is getting away from it.
+     */
+    private static void fear(Villager v, Handle h) {
+        if (h.age % 5 == 0) {
+            net.minecraft.world.entity.Entity nearest = null;
+            double best = FEAR_NEAR;
+            for (var m : v.level().getEntitiesOfClass(net.minecraft.world.entity.Mob.class, v.getBoundingBox().inflate(FEAR_NEAR),
+                    m -> m instanceof net.minecraft.world.entity.monster.Enemy && m.isAlive() && v.hasLineOfSight(m))) {
+                double d = m.distanceTo(v);
+                if (d < best) {
+                    best = d;
+                    nearest = m;
+                }
+            }
+            if (nearest != null) {
+                h.feared = nearest;
+                h.fear = clampNeed(Math.max(h.fear, 0.5f + 0.5f * (float) (1 - best / FEAR_NEAR)));
+            } else if (h.feared != null && (!h.feared.isAlive() || h.feared.distanceTo(v) > FEAR_GONE)) {
+                h.did.add("got away from " + net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(h.feared.getType()).getPath().replace('_', ' '));
+                h.feared = null;
+            }
+        }
+        if (v.hurtTime > 0) {
+            h.fear = clampNeed(Math.max(h.fear, 0.8f));
+        }
+        if (h.feared == null) {
+            h.fear = clampNeed(h.fear - 0.005f);
+        }
+    }
+
+    /** A brain villager lay down in a bed. */
+    public void slept(Villager v) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.did.add("slept in bed");
+        }
+    }
+
+    /** A brain villager broke a block, with its hands or otherwise. */
+    public void broke(Villager v, String block) {
+        Handle h = handles.get(v.getUUID());
+        if (h != null) {
+            h.did.add("broke " + block);
+        }
+    }
+
     /** Before the villager ticks: take the brain's latest keys and put them on the body. */
     public void beforeTick(Villager v) {
         Handle h = handles.get(v.getUUID());
@@ -319,6 +504,7 @@ public final class BrainManager {
         h.move.setCommand(bodyKeys);
         h.hands.tick(keys);
         speak(v, h, keys);
+        read(v, h, keys);
     }
 
     /**
@@ -331,6 +517,19 @@ public final class BrainManager {
         if (keys.say() >= 0 && keys != h.said && h.pending == null) {
             h.said = keys;
             String word = h.brain.word(keys.say());
+            if (word != null && keys.use() && Books.canWriteIn(v.getMainHandItem())) {
+                // Pen to the page: the word is written, not said, and the villager sees what it wrote.
+                h.wroteWords.add(word);
+                if (!word.equals(WordCode.TURN)) {
+                    h.writtenLine.add(word);
+                } else if (!h.writtenLine.isEmpty()) {
+                    h.lastWritten = Speech.join(h.writtenLine);
+                    Books.write(v.getMainHandItem(), h.lastWritten);
+                    h.linesWritten++;
+                    h.writtenLine.clear();
+                }
+                return;
+            }
             if (word != null) {
                 h.spoken = word;
                 Speech.villagerSays(v, word);
@@ -349,6 +548,97 @@ public final class BrainManager {
         }
         if (!h.line.isEmpty() && h.age - h.lastWordAge > UNFINISHED_LINE_TICKS) {
             h.line.clear();
+        }
+    }
+
+    /** Ticks between looks at what someone in view is doing with their hands and feet. */
+    private static final int WATCH_INTERVAL = 4;
+    /** Ticks for a fed villager to grow fully hungry, two game days; halfway it sets out to eat. */
+    private static final int HUNGER_TICKS = 48_000;
+    /** Ticks awake for a rested villager to grow fully tired (a day), and asleep to rest fully (most of a night). */
+    private static final int AWAKE_TICKS = 24_000;
+    private static final int REST_TICKS = 8_000;
+    /** Ticks for boredom to fill while it does no work, and loneliness while no one is near. */
+    private static final int BORED_TICKS = 12_000;
+    private static final int LONELY_TICKS = 12_000;
+    /** How much one piece of work eases boredom, and one line heard in company eases loneliness. */
+    private static final float WORK_EASES = 0.05f;
+    private static final float TALK_EASES = 0.15f;
+    /** A monster this near (blocks), in sight, is feared; once this far it has been got away from. */
+    private static final double FEAR_NEAR = 10;
+    private static final double FEAR_GONE = 14;
+    /** Ticks between looks at what it carries. */
+    private static final int CARRIED_INTERVAL = 10;
+
+    private static String blockName(net.minecraft.world.level.block.state.BlockState state) {
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().replace('_', ' ');
+    }
+    private static final double WATCH_RANGE = 8.0;
+
+    /**
+     * What the villager or player it is looking at is doing, as keys: a brain villager's keys are
+     * known exactly; for anyone else what shows (a swinging arm, crouching, sprinting, an item in
+     * use) stands for the key that does it.
+     */
+    private void watch(Villager v, float[] out) {
+        java.util.Arrays.fill(out, 0f);
+        LivingEntity seen = Naming.creatureInView(v);
+        if (seen == null || !(seen instanceof Player || seen instanceof Villager) || seen.distanceTo(v) > WATCH_RANGE) {
+            return;
+        }
+        Handle other = seen instanceof Villager sv ? handles.get(sv.getUUID()) : null;
+        if (other != null) {
+            MotorCommand k = other.held != null ? other.held : other.command;
+            out[MotorChannel.FORWARD.ordinal()] = k.forward() > 0 ? 1f : 0f;
+            out[MotorChannel.BACK.ordinal()] = k.forward() < 0 ? 1f : 0f;
+            out[MotorChannel.LEFT.ordinal()] = k.strafe() > 0 ? 1f : 0f;
+            out[MotorChannel.RIGHT.ordinal()] = k.strafe() < 0 ? 1f : 0f;
+            out[MotorChannel.JUMP.ordinal()] = k.jump() ? 1f : 0f;
+            out[MotorChannel.SNEAK.ordinal()] = k.sneak() ? 1f : 0f;
+            out[MotorChannel.SPRINT.ordinal()] = k.sprint() ? 1f : 0f;
+            out[MotorChannel.ATTACK.ordinal()] = k.attack() ? 1f : 0f;
+            out[MotorChannel.USE.ordinal()] = k.use() ? 1f : 0f;
+            return;
+        }
+        out[MotorChannel.ATTACK.ordinal()] = seen.swinging ? 1f : 0f;
+        out[MotorChannel.USE.ordinal()] = seen.isUsingItem() ? 1f : 0f;
+        out[MotorChannel.SNEAK.ordinal()] = seen.isShiftKeyDown() ? 1f : 0f;
+        out[MotorChannel.SPRINT.ordinal()] = seen.isSprinting() ? 1f : 0f;
+        out[MotorChannel.FORWARD.ordinal()] = seen.getDeltaMovement().horizontalDistanceSqr() > 0.003 ? 1f : 0f;
+    }
+
+    /** Ticks between words read: reading goes faster than talking. */
+    private static final int READ_TICKS = 3;
+
+    /**
+     * Reading: the right mouse button with a book in hand (one not being written in right now), or
+     * a lectern's screen open, puts the book's lines before its eyes, word by word.
+     */
+    private static void read(Villager v, Handle h, MotorCommand keys) {
+        boolean press = keys.use() && !h.useWasDown;
+        h.useWasDown = keys.use();
+        if (!h.reading.isEmpty()) {
+            return;
+        }
+        ItemStack book = null;
+        if (h.hands.screen() instanceof LecternMenu lectern) {
+            if (h.readScreen != lectern) {
+                h.readScreen = lectern;
+                book = lectern.getBook();
+            }
+        } else if (press && !h.brain.isWriting() && Books.hasText(v.getMainHandItem())) {
+            book = v.getMainHandItem();
+        }
+        if (book == null) {
+            return;
+        }
+        String writer = Books.writer(book);
+        for (List<String> line : Books.lines(book)) {
+            for (String w : line) {
+                h.reading.add(new String[] {w, writer});
+            }
+            h.reading.add(new String[] {WordCode.TURN, writer});
+            h.linesRead++;
         }
     }
 
@@ -375,7 +665,76 @@ public final class BrainManager {
             h.company = Naming.someoneNear(v);
         }
         f.company = h.company ? 1f : 0f;
+        if (h.company && h.age % 10 == 0) {
+            h.child = Naming.childNear(v);
+        }
+        f.youngCompany = h.company && h.child ? 1f : 0f;
+        f.died.addAll(h.deathsSeen);
+        h.deathsSeen.clear();
+        f.harvested.addAll(h.harvested);
+        h.harvested.clear();
+        if (h.hands.placedTotal > h.placedSeen) {
+            h.placedSeen = h.hands.placedTotal;
+            h.did.add("placed " + blockName(v.level().getBlockState(h.hands.lastPlaced)));
+        }
+        // Work takes boredom down: breaking, placing, making.
+        for (String d : h.did) {
+            if (d.startsWith("broke ") || d.startsWith("placed ")) {
+                h.setBoredom(h.boredom - WORK_EASES);
+            }
+        }
+        if (h.hands.madeTotal > h.madeSeen) {
+            h.setBoredom(h.boredom - WORK_EASES * (h.hands.madeTotal - h.madeSeen));
+            h.madeSeen = h.hands.madeTotal;
+        }
+        // A deed is looked at with what it carries, so what it used up is seen with it.
+        boolean deeds = !h.did.isEmpty();
+        f.did.addAll(h.did);
+        h.did.clear();
+        if (h.hands.digging() != null) {
+            f.doing.add("broke " + blockName(v.level().getBlockState(h.hands.digging())));
+        }
+        if (deeds || h.age % CARRIED_INTERVAL == 0) {
+            f.carried = h.hands.carried();
+        }
+        f.canWrite = Books.canWriteIn(v.getMainHandItem());
+        if (h.age % WATCH_INTERVAL == 0) {
+            watch(v, h.watched);
+        }
+        System.arraycopy(h.watched, 0, f.watched, 0, h.watched.length);
+        for (String w : h.wroteWords) {
+            f.hear(w, true);
+        }
+        h.wroteWords.clear();
+        if (!h.reading.isEmpty() && h.age % READ_TICKS == 0) {
+            String[] next = h.reading.poll();
+            f.read(next[0], next[1]);
+        }
         Senses.feel(v, f);
+        h.setHunger(h.hunger + 1f / HUNGER_TICKS);
+        f.set(FeelChannel.HUNGER, h.hunger);
+        if (v.isSleeping()) {
+            h.setTiredness(h.tiredness - 1f / REST_TICKS);
+            f.doing.add("slept in bed");
+            // It wakes rested, or with the day, as a player is woken.
+            if (h.tiredness <= 0f || v.level().isDay()) {
+                v.stopSleeping();
+            }
+        } else {
+            h.setTiredness(h.tiredness + 1f / AWAKE_TICKS);
+        }
+        f.needs.put("tiredness", h.tiredness);
+        if (!v.isSleeping()) {
+            h.setBoredom(h.boredom + 1f / BORED_TICKS);
+        }
+        h.setLoneliness(h.loneliness + (h.company ? 0f : 1f / LONELY_TICKS));
+        fear(v, h);
+        f.needs.put("boredom", h.boredom);
+        f.needs.put("loneliness", h.loneliness);
+        f.needs.put("fear", h.fear);
+        if (h.age % 100 == 0) {
+            v.getData(Attachments.BRAIN).setBody(h.hunger, h.tiredness, h.boredom, h.loneliness);
+        }
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
@@ -405,6 +764,11 @@ public final class BrainManager {
         for (int i = 0; i < f.heardWords.size(); i++) {
             if (!f.heardOwn.get(i) && f.heardWords.get(i).equals(WordCode.TURN)) {
                 h.line.clear();
+                // Someone spoke to it, or near it: company eases loneliness.
+                if (h.company) {
+                    h.setLoneliness(h.loneliness - TALK_EASES);
+                    f.did.add("talked with someone");
+                }
             }
         }
         feelings(v, h, f);

@@ -81,9 +81,15 @@ public final class BrainEvents {
 
     @SubscribeEvent
     public static void death(LivingDeathEvent e) {
-        if (!e.getEntity().level().isClientSide() && e.getEntity() instanceof Villager v && BrainManager.get() != null
-                && v.hasData(Attachments.BRAIN)) {
+        if (e.getEntity().level().isClientSide() || BrainManager.get() == null) {
+            return;
+        }
+        if (e.getEntity() instanceof Villager v && v.hasData(Attachments.BRAIN)) {
             BrainManager.get().forget(v);
+        }
+        // Villagers who see someone they could know by name die, see it.
+        if (e.getEntity() instanceof Villager || e.getEntity() instanceof net.minecraft.world.entity.player.Player) {
+            BrainManager.get().witness(e.getEntity());
         }
     }
 
@@ -208,11 +214,19 @@ public final class BrainEvents {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void chat(ServerChatEvent e) {
         if (!e.isCanceled() && BrainManager.get() != null) {
-            Speech.playerSays(e.getPlayer().level(), e.getPlayer().getEyePosition(), e.getRawText());
+            Speech.playerSays(e.getPlayer().level(), e.getPlayer().getEyePosition(), e.getRawText(),
+                    e.getPlayer().getGameProfile().getName());
         }
     }
 
     // ---------------------------------------------------------------- making things
+
+    @SubscribeEvent
+    public static void ate(net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent.Finish e) {
+        if (e.getEntity() instanceof Villager v && !v.level().isClientSide() && BrainManager.get() != null) {
+            BrainManager.get().ate(v, e.getItem());
+        }
+    }
 
     @SubscribeEvent
     public static void crafted(PlayerEvent.ItemCraftedEvent e) {

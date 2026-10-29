@@ -84,8 +84,14 @@ public final class Naming {
                 e -> e != body && e.isAlive() && (e instanceof Player || e instanceof AbstractVillager)).isEmpty();
     }
 
+    /** Whether a child villager is among those close enough to talk to. */
+    public static boolean childNear(LivingEntity body) {
+        return !body.level().getEntitiesOfClass(AbstractVillager.class, body.getBoundingBox().inflate(COMPANY_RANGE),
+                e -> e != body && e.isAlive() && e.isBaby()).isEmpty();
+    }
+
     /** The nearest creature in the middle of its view that it has a clear line of sight to. */
-    private static LivingEntity creatureInView(LivingEntity body) {
+    public static LivingEntity creatureInView(LivingEntity body) {
         Vec3 eye = body.getEyePosition();
         Vec3 look = body.getLookAngle();
         LivingEntity best = null;

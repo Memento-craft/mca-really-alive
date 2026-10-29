@@ -22,6 +22,11 @@ public final class Speech {
      * in order, then the end of the line, together with the sound of a player's voice.
      */
     public static void playerSays(Level level, Vec3 mouth, String text) {
+        playerSays(level, mouth, text, null);
+    }
+
+    /** As above, said by someone listeners know by this name. */
+    public static void playerSays(Level level, Vec3 mouth, String text, String name) {
         if (!(level instanceof ServerLevel)) {
             return;
         }
@@ -31,9 +36,9 @@ public final class Speech {
         }
         Hearing.sound(level, mouth, SoundChannel.PLAYER_VOICE, 1f);
         for (String word : words) {
-            Hearing.word(level, mouth, word, null);
+            Hearing.word(level, mouth, word, null, name);
         }
-        Hearing.word(level, mouth, WordCode.TURN, null);
+        Hearing.word(level, mouth, WordCode.TURN, null, name);
     }
 
     /**
@@ -46,7 +51,7 @@ public final class Speech {
         }
         Vec3 mouth = v.getEyePosition();
         Hearing.sound(level, mouth, SoundChannel.VILLAGER_VOICE, 1f);
-        Hearing.word(level, mouth, word, v.getUUID());
+        Hearing.word(level, mouth, word, v.getUUID(), v.hasCustomName() ? v.getCustomName().getString() : null);
     }
 
     /** Shows a finished line in the chat of players within {@link Hearing#RANGE}. */

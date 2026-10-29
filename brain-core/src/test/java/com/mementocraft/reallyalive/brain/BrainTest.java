@@ -93,6 +93,16 @@ class BrainTest {
         assertTrue(b.health[a] > b.health[c], "cemented " + b.health[a] + " vs plain " + b.health[c]);
     }
 
+    /** A villager whose brain is switched on and off again before it ever stepped still saves. */
+    @Test
+    void aBrainThatNeverSteppedCanBeSavedAndLoaded() throws IOException {
+        Brain a = Brain.create(Genome.defaults(), 6L, 0.5f);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        BrainIO.write(a, new DataOutputStream(bytes));
+        Brain b = BrainIO.read(new DataInputStream(new ByteArrayInputStream(bytes.toByteArray())));
+        assertEquals(a.neuronCount(), b.neuronCount());
+    }
+
     @Test
     void saveAndLoadContinuesExactlyWhereItLeftOff() throws IOException {
         Brain a = Brain.create(Genome.defaults(), 6L, 0.5f);

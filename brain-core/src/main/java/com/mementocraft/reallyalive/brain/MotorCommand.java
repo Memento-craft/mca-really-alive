@@ -42,6 +42,11 @@ public record MotorCommand(int forward, int strafe, boolean jump, boolean sneak,
         return new MotorCommand(forward, strafe, jump, sneak, sprint, yawDelta, pitchDelta, attack, use, inventory, hotbar, word);
     }
 
+    /** The same keys with the right mouse button held or not. */
+    public MotorCommand using(boolean held) {
+        return new MotorCommand(forward, strafe, jump, sneak, sprint, yawDelta, pitchDelta, attack, held, inventory, hotbar, say);
+    }
+
     /**
      * The same keys as they work while a screen is open: the mouse and its buttons, sneak (shift)
      * and the inventory key still do something, the movement keys do not.
