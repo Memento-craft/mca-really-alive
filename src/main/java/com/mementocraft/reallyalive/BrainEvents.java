@@ -105,6 +105,50 @@ public final class BrainEvents {
     public static void serverTick(ServerTickEvent.Post e) {
         BrainCommand.tickWatchers(e.getServer());
         playerSteps(e);
+        if (WATCH_LITTER && e.getServer().getTickCount() % 200 == 0) {
+            watchLitter(e.getServer());
+        }
+    }
+
+    /** -PwatchLitter (on in game tests): report where a flood of dropped items is coming from. */
+    private static final boolean WATCH_LITTER = Boolean.getBoolean("reallyalive.watchLitter");
+    private static final int LITTER_FLOOD = 2000;
+    private static final org.slf4j.Logger LITTER_LOG = com.mojang.logging.LogUtils.getLogger();
+    private static int litterReports;
+
+    /**
+     * Benchmarks once froze the server under hundreds of thousands of dropped items, made faster
+     * than anything a villager could throw. Past {@code LITTER_FLOOD} item entities in a level,
+     * the kinds and places with the most are logged (a few times only), so the source shows.
+     */
+    private static void watchLitter(net.minecraft.server.MinecraftServer server) {
+        if (litterReports >= 5) {
+            return;
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            Map<String, Integer> byKind = new HashMap<>();
+            Map<net.minecraft.world.level.ChunkPos, Integer> byChunk = new HashMap<>();
+            int n = 0;
+            for (var entity : level.getAllEntities()) {
+                if (entity instanceof net.minecraft.world.entity.item.ItemEntity item) {
+                    n++;
+                    byKind.merge(item.getItem().getItem().toString(), 1, Integer::sum);
+                    byChunk.merge(item.chunkPosition(), 1, Integer::sum);
+                }
+            }
+            if (n < LITTER_FLOOD) {
+                continue;
+            }
+            litterReports++;
+            var kinds = byKind.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(5).toList();
+            var chunks = byChunk.entrySet().stream().sorted(Map.Entry.<net.minecraft.world.level.ChunkPos, Integer>comparingByValue().reversed()).limit(3)
+                    .map(c -> c.getKey().getMiddleBlockPosition(0) + "=" + c.getValue()).toList();
+            var nearest = chunks.isEmpty() ? null : byChunk.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
+            String villagers = nearest == null ? "" : level.getEntitiesOfClass(net.minecraft.world.entity.npc.Villager.class,
+                    new net.minecraft.world.phys.AABB(nearest.getMiddleBlockPosition(-64)).inflate(24, 400, 24)).stream()
+                    .map(v -> v.getName().getString() + " holding " + v.getMainHandItem()).toList().toString();
+            LITTER_LOG.warn("{} dropped items in {}: kinds {}, chunks {}, villagers there {}", n, level.dimension().location(), kinds, chunks, villagers);
+        }
     }
 
     // ---------------------------------------------------------------- hearing
