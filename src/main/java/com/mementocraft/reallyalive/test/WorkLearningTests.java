@@ -1734,6 +1734,136 @@ public final class WorkLearningTests {
         });
     }
 
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornSetsUpADrill(GameTestHelper h) {
+        drillBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornSetsUpADrill(GameTestHelper h) {
+        drillBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornSetsUpADrill(GameTestHelper h) {
+        drillBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornSetsUpADrill(GameTestHelper h) {
+        drillBenchmark(h, "4");
+    }
+
+    /**
+     * With Create installed: a first piece of automation. A motor in the pen's west wall turns a
+     * shaft ending in the open, two blocks short of a stone that grows back as a cobblestone
+     * generator's would. A newborn carries a mechanical drill: set down at the shaft's end it
+     * turns and mines the stone again and again, with no hand on it. Stone mined by the drill and
+     * stone dug by hand are counted apart. The drill is taken back now and then and handed over.
+     */
+    private static void drillBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "DRILL")) {
+            return;
+        }
+        var motor = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        var shaft = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        var drill = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "mechanical_drill"));
+        if (motor.isEmpty() || shaft.isEmpty() || drill.isEmpty()) {
+            LOG.info("DRILL: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        net.minecraft.world.item.Item drillItem = drill.get().asItem();
+        Villager v = pen(h, new ItemStack(drillItem), TICKS);
+        var rotation = h.getTestRotation();
+        BlockPos motorAt = new BlockPos(0, 2, 12);
+        var motorState = motor.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.EAST).rotate(rotation);
+        var shaftState = shaft.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.X).rotate(rotation);
+        BlockPos shaftAt = motorAt.east();
+        BlockPos drillAt = shaftAt.east();
+        BlockPos rock = drillAt.east();
+        h.setBlock(motorAt, motorState);
+        h.setBlock(shaftAt, shaftState);
+        h.setBlock(rock, Blocks.STONE);
+        try {
+            Object motorBe = h.getLevel().getBlockEntity(h.absolutePos(motorAt));
+            Object speed = motorBe.getClass().getField("generatedSpeed").get(motorBe);
+            speed.getClass().getMethod("setValue", int.class).invoke(speed, 64);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] byDrill = {0};
+        int[] byHand = {0};
+        int[] drillTicks = {0};
+        int[] handedBack = {0};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (tick[0] % TIDY_EVERY == 0) {
+                tidyLitter(h);
+            }
+            if (!h.getBlockState(shaftAt).is(shaft.get())) {
+                h.setBlock(shaftAt, shaftState);
+            }
+            boolean drilling = h.getBlockState(drillAt).is(drill.get())
+                    && com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(drillAt));
+            drillTicks[0] += drilling ? 1 : 0;
+            if (tick[0] % 10 == 0 && h.getBlockState(rock).isAir()) {
+                if (drilling) {
+                    byDrill[0]++;
+                } else {
+                    byHand[0]++;
+                }
+                h.setBlock(rock, Blocks.STONE);
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                regrow(h, v);
+                boolean drillInPen = false;
+                for (int x = 1; x <= 9; x++) {
+                    for (int z = 8; z <= 16; z++) {
+                        for (int y = 2; y <= 4; y++) {
+                            drillInPen |= h.getBlockState(new BlockPos(x, y, z)).is(drill.get());
+                        }
+                    }
+                }
+                if (tick[0] % (REGROW * 12) == 0 || tick[0] % (REGROW * 3) == 0 && !drilling || !drillInPen && carried(v, drillItem) == 0) {
+                    clearPen(h, shaftAt, rock);
+                    if (carried(v, drillItem) == 0) {
+                        v.getInventory().addItem(new ItemStack(drillItem));
+                        handedBack[0]++;
+                    }
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    if (!v.getInventory().getItem(i).is(drillItem)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("DRILL newborn {}: by tick {}: mined by the drill {} times ({} ticks drilling), dug by hand {}; set going {}, placed {};"
+                                + " handed back {}; in hand {}", which, tick[0], byDrill[0], drillTicks[0], byHand[0],
+                        handle.hands().setGoingTotal, handle.hands().placedTotal, handedBack[0], v.getMainHandItem());
+            }
+            if (tick[0] == TICKS) {
+                String report = String.format("DRILL: mined by the drill %d times (%d ticks drilling), dug by hand %d times",
+                        byDrill[0], drillTicks[0], byHand[0]);
+                LOG.info("DRILL newborn {} learning result: {}", which, report);
+                if (byDrill[0] >= 10) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
     /** A block state with a property set by name, for blocks of mods the tests do not link against. */
     private static <T extends Comparable<T>> net.minecraft.world.level.block.state.BlockState withValue(
             net.minecraft.world.level.block.state.BlockState state, String property, String value) {

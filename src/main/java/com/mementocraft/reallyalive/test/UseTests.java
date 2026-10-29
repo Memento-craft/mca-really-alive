@@ -993,6 +993,62 @@ public final class UseTests {
     }
 
     /**
+     * With Create installed: a first piece of automation, set up by hand. A motor turns a shaft
+     * ending in the open; the villager sets a mechanical drill down at the shaft's end, where it
+     * takes the shaft's turning and faces away from it, onto a block of stone that grows back as a
+     * cobblestone generator's would. The drill then mines it again and again with no hand on it.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 800)
+    public static void setsUpADrillThatMinesOnItsOwnIfCreateIsInstalled(GameTestHelper h) throws ReflectiveOperationException {
+        var motor = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        var shaft = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.fromNamespaceAndPath("create", "shaft"));
+        var drill = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", "mechanical_drill"));
+        if (motor.isEmpty() || shaft.isEmpty() || drill.isEmpty()) {
+            LOG.info("Create is not installed: nothing to check");
+            h.succeed();
+            return;
+        }
+        var rotation = h.getTestRotation();
+        BlockPos motorAt = new BlockPos(4, 2, 12);
+        h.setBlock(motorAt, motor.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING, net.minecraft.core.Direction.EAST).rotate(rotation));
+        h.setBlock(motorAt.east(), shaft.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.X).rotate(rotation));
+        Object motorBe = h.getLevel().getBlockEntity(h.absolutePos(motorAt));
+        Object speed = motorBe.getClass().getField("generatedSpeed").get(motorBe);
+        speed.getClass().getMethod("setValue", int.class).invoke(speed, 64);
+        BlockPos drillAt = motorAt.east(2);
+        BlockPos rock = drillAt.east();
+        h.setBlock(rock, Blocks.STONE);
+        Villager v = spawnMcaVillager(h, new Vec3(6.5, 2, 9.5));
+        BrainManager.Handle handle = attach(h, v);
+        handle.hold(MotorCommand.IDLE);
+        v.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(drill.get()));
+        Vec3 floor = new Vec3(6.5, 1.98, 12.5);
+        h.runAtTickTime(20, () -> aim(h, v, floor));
+        h.runAtTickTime(24, () -> {
+            aim(h, v, floor);
+            handle.hold(USE);
+        });
+        h.runAtTickTime(26, () -> handle.hold(MotorCommand.IDLE));
+        int[] mined = {0};
+        int[] tick = {0};
+        h.onEachTick(() -> {
+            tick[0]++;
+            if (tick[0] > 30 && tick[0] % 10 == 0 && h.getBlockState(rock).isAir()) {
+                mined[0]++;
+                h.setBlock(rock, Blocks.STONE);
+            }
+        });
+        h.runAtTickTime(700, () -> {
+            LOG.info("drill: rotation {}, drill {} turning {}, mined {} times, set going {}", rotation, h.getBlockState(drillAt),
+                    com.mementocraft.reallyalive.body.Machines.turning(h.getLevel(), h.absolutePos(drillAt)), mined[0], handle.hands().setGoingTotal);
+            h.assertTrue(mined[0] >= 3, "the drill mined the stone " + mined[0] + " times");
+            h.succeed();
+        });
+    }
+
+    /**
      * With Create installed: a windmill finished by hand, as a player finishes one. A windmill
      * bearing stands ready; the villager sets a sail on its face, then sails on that sail's edges
      * (a sail used on a sail goes beside it, in the same plane) until nine make a square, and
