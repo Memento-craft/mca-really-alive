@@ -1133,6 +1133,14 @@ public final class Brain {
             meant = ofItsKind(plain);
         }
         int[] heard = meant != null ? meant : plain;
+        int[] odd = heard.length <= TOLD_LONGEST ? oddOneOut(heard) : null;
+        if (odd != null) {
+            // "which one is not a fruit, an apple, a pear or a stone?" "a stone is not a fruit ."
+            toldLine = odd;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            return new int[0];
+        }
         if (memory != null && heard.length > TOLD_QUESTION_WORDS && heard.length <= TOLD_QUESTION_WORDS + 4
                 && heard[heard.length - 1] == ask) {
             // A longer question may still ask of the order of things ("what did the guard do
@@ -1259,6 +1267,19 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[] {most[most.length - 5]};
         }
+        int[] anyone = generalAsk ? null : askedOfAnyone(heard);
+        if (anyone != null) {
+            // "how do i get iron?" asks what anyone does: "to get iron , you mine iron ore with a
+            // stone pickaxe ."; "what should i do if i am hungry?" "you should eat some food ."
+            generalAsk = true;
+            int[] r = toldBefore(anyone);
+            generalAsk = false;
+            if (toldLine != null && !toldSure) {
+                return r;
+            }
+            toldLine = null;
+            toldSure = false;
+        }
         boolean aboutThem = aboutSpeaker(heard);
         ToneLinks tones = ToneLinks.shared();
         float asked = 0f;
@@ -1297,7 +1318,7 @@ public final class Brain {
         int[] knownBest = null;
         toldLines.addAll(knownToAll(language.vocabulary));
         for (int t = 0; t < toldLines.size(); t++) {
-            if (t == knownFrom && (best != null || saysAny(heard, OF_THE_MOMENT))) {
+            if (t == knownFrom && (best != null || !generalAsk && saysAny(heard, OF_THE_MOMENT))) {
                 // What everyone knows is of kinds of things, not of the one talking or of now
                 // ("is it raining?", "what have you found out?").
                 break;
@@ -1383,6 +1404,12 @@ public final class Brain {
                 // About someone or something else, the question has to be mostly about what the
                 // line told ("where is the key?" after "the red key is under the bed."), and so
                 // does a line told long ago, maybe by someone else.
+                continue;
+            }
+            if (t >= knownFrom && !answersAsked(heard, told)) {
+                // Nor one that doesn't give what is asked ("to get coal , you mine coal ore ." for
+                // "what colour is coal?", "a rabbit is an animal ." for "is a bear bigger than a
+                // rabbit?").
                 continue;
             }
             if (t >= knownFrom && !saysSome(heard, told, memory, tones)) {
@@ -3965,7 +3992,7 @@ public final class Brain {
     private int[] whichOfTwo(int[] heard) {
         Vocabulary v = language.vocabulary;
         int comma = indexOf(heard, v.find(","), 0), or = indexOf(heard, v.find("or"), 0);
-        if (heard.length < 8 || heard[0] < 0 || !Set.of("who", "which").contains(v.word(heard[0])) || heard[1] < 0
+        if (heard.length < 8 || heard[0] < 0 || !Set.of("who", "which", "what").contains(v.word(heard[0])) || heard[1] < 0
                 || !Set.of("is", "are", "was", "were").contains(v.word(heard[1])) || comma != 3 || or < comma + 2
                 || or >= heard.length - 2 || heard[2] < 0 || !v.word(heard[2]).endsWith("er")) {
             return null;
@@ -3982,6 +4009,11 @@ public final class Brain {
         toldLine = keepLine;
         toldInOwnWords = keepOwn;
         toldSure = keepSure;
+        if (answer == null || answer.length == 0 || answer[0] != v.find("yes") && answer[0] != v.find("no")) {
+            // Nothing told says; what it knows of the world may ("what is bigger, a house or a
+            // mouse?").
+            answer = judged(asked);
+        }
         if (answer == null || answer.length == 0 || answer[0] != v.find("yes") && answer[0] != v.find("no")) {
             return null;
         }
@@ -4133,6 +4165,122 @@ public final class Brain {
         return words;
     }
 
+    private boolean generalAsk;
+
+    /**
+     * "how do i get iron?" or "what should i do if i am hungry?" as asked of anyone, "how do you
+     * get iron ?"; null if it is no such question.
+     */
+    private int[] askedOfAnyone(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 4 || heard[0] < 0 || heard[1] < 0 || heard[2] < 0) {
+            return null;
+        }
+        String first = v.word(heard[0]), second = v.word(heard[1]), third = v.word(heard[2]);
+        boolean how = first.equals("how") && Set.of("do", "can", "should").contains(second) && third.equals("i");
+        boolean should = first.equals("what") && Set.of("should", "can", "do").contains(second) && third.equals("i")
+                && (contains(heard, v.find("if")) || contains(heard, v.find("when")));
+        if (first.equals("what") && Set.of("do", "does").contains(second) && third.equals("you") && heard.length > 5
+                && heard[3] == v.find("need") && heard[4] == v.find("to")) {
+            // "what do you need to sleep at night?" asks what anyone needs.
+            return heard;
+        }
+        if (!how && !should) {
+            return null;
+        }
+        int[] you = heard.clone();
+        for (int i = 0; i < you.length; i++) {
+            String w = you[i] < 0 ? "" : v.word(you[i]);
+            String to = switch (w) {
+                case "i", "me" -> "you";
+                case "my" -> "your";
+                case "am" -> "are";
+                case "i'm" -> "you're";
+                default -> null;
+            };
+            if (to != null) {
+                you[i] = v.find(to);
+            }
+        }
+        return Arrays.stream(you).anyMatch(w -> w < 0) ? null : you;
+    }
+
+    /**
+     * Which of a few things is (or is not) of a kind, from what it knows of each: "which one is
+     * not a fruit, an apple, a pear or a stone?" "a stone is not a fruit ."; null if it is no such
+     * question or what it knows doesn't single one out.
+     */
+    private int[] oddOneOut(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        int comma = indexOf(heard, v.find(","), 0), or = indexOf(heard, v.find("or"), 0);
+        if (heard.length < 10 || heard[0] < 0 || !Set.of("which", "what").contains(v.word(heard[0])) || comma < 4 || or < comma) {
+            return null;
+        }
+        int is = indexOf(heard, v.find("is"), 1);
+        if (is < 1 || is > comma) {
+            return null;
+        }
+        boolean not = heard[is + 1] == v.find("not");
+        int[] kind = Arrays.copyOfRange(heard, is + (not ? 2 : 1), comma);
+        int kindWord = kind.length == 0 ? -1 : kind[kind.length - 1];
+        if (kindWord < 0 || !thingWord(kindWord)) {
+            return null;
+        }
+        // The things: "an apple", "a pear", "a stone".
+        List<int[]> things = new ArrayList<>();
+        int from = comma + 1;
+        for (int i = comma + 1; i < heard.length; i++) {
+            if (heard[i] == v.find(",") || heard[i] == v.find("or") || i == heard.length - 1) {
+                if (i > from) {
+                    things.add(Arrays.copyOfRange(heard, from, i));
+                }
+                from = i + 1;
+            }
+        }
+        if (things.size() < 2) {
+            return null;
+        }
+        List<int[]> facts = knownToAll(v);
+        int[] single = null;
+        int fits = 0, knownOf = 0;
+        for (int[] thing : things) {
+            int head = thing[thing.length - 1];
+            Boolean of = null;
+            for (int[] fact : facts) {
+                int at = indexOf(fact, head, 0);
+                int verb = indexOf(fact, v.find("is"), 0);
+                int k = indexOf(fact, kindWord, 0);
+                if (at >= 0 && verb > at && k > verb) {
+                    boolean no = false;
+                    for (int j = verb; j < k; j++) {
+                        no |= fact[j] == v.find("not");
+                    }
+                    if (indexOf(fact, v.find("not"), verb) > 0 && indexOf(fact, v.find("not"), verb) < k) {
+                        no = true;
+                    }
+                    of = !no;
+                    break;
+                }
+            }
+            if (of == null) {
+                continue;
+            }
+            knownOf++;
+            if (of != not) {
+                fits++;
+                single = thing;
+            }
+        }
+        if (fits != 1 || knownOf < things.size() - 1) {
+            return null;
+        }
+        int[] said = join(single, said("is"));
+        if (not) {
+            said = join(said, said("not"));
+        }
+        return join(said, kind, said("."));
+    }
+
     /** The answer when nothing it knows tells what is asked. */
     private void dontKnow() {
         toldLine = Arrays.stream(new String[] {"i", "don't", "know", "."}).mapToInt(language.vocabulary::find).toArray();
@@ -4170,6 +4318,11 @@ public final class Brain {
         }
         String first = v.word(heard[0]), second = v.word(heard[1]);
         String doing = heard[heard.length - 2] < 0 ? "" : v.word(heard[heard.length - 2]);
+        int than = indexOf(heard, v.find("than"), 1);
+        if (than > 1 && heard[than - 1] >= 0) {
+            // "is a bear bigger than a rabbit?" is answered by a comparison.
+            return contains(told, v.find("than")) || saidIn(told, heard[than - 1]);
+        }
         if (saysAny(heard, COLOURS_ASKED)) {
             // And of the thing asked of: "pia has a red hat ." is no answer to "what colour is
             // my cat?".

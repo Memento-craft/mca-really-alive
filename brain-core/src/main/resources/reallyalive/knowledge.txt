@@ -319,3 +319,70 @@ gravel falls when nothing is under it .
 water flows downhill .
 lava flows slowly .
 a bed in the underworld explodes .
+# Kinds of things
+a wolf is an animal .
+a cow is an animal .
+a pig is an animal .
+a sheep is an animal .
+a horse is an animal .
+a chicken is a bird .
+a cat is an animal .
+a dog is an animal .
+a fish is an animal .
+a bear is an animal .
+a fox is an animal .
+a rabbit is an animal .
+an apple is a fruit .
+a pear is a fruit .
+a cherry is a fruit .
+a melon is a fruit .
+a carrot is a vegetable , not a fruit .
+a potato is a vegetable , not a fruit .
+a beet is a vegetable , not a fruit .
+wheat is a grain .
+a rose is a flower .
+an oak is a tree .
+a stone is not a fruit .
+a rock is not an animal .
+a chair is not an animal .
+a zombie is a monster .
+a skeleton is a monster .
+a creeper is a monster .
+a spider is a monster .
+iron is a metal .
+gold is a metal .
+copper is a metal .
+a diamond is a gem .
+an emerald is a gem .
+# What things can and can't do
+pigs can't fly .
+cows can't fly .
+fish can't walk .
+birds can fly .
+fish can swim .
+a stone can't swim .
+creepers are dangerous .
+zombies are dangerous .
+skeletons are dangerous .
+a sheep is not dangerous .
+# How to get things
+to get iron , you mine iron ore with a stone pickaxe .
+to get coal , you mine coal ore with a pickaxe .
+to get wood , you chop a tree with an axe .
+to get wool , you shear a sheep .
+to get milk , you milk a cow with a bucket .
+to get eggs , you keep chickens .
+to get food , you farm , fish or hunt .
+to get emeralds , you trade with villagers .
+to get stone , you mine it with a pickaxe .
+to get honey , you use a bottle on a hive .
+# What to do
+if you are hungry , you should eat some food .
+if you are cold , you should sit by a fire .
+if you are tired , you should sleep in a bed .
+if you are lost , you should follow the road home .
+if you are hurt , you should rest and eat .
+if it gets dark , you should go inside .
+if you see a creeper , you should run away .
+if you are thirsty , you should drink some water .
+you need a bed to sleep at night .

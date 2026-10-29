@@ -501,6 +501,26 @@ class ConversationTest {
     }
 
     @Test
+    void villagerHasEverydayCommonSense() {
+        // {asked, right}
+        String[][] talks = {{"is a carrot a fruit?", "no"}, {"which one is not a fruit, an apple, a pear or a stone?", "stone"},
+            {"how do i get iron?", "mine"}, {"what should i do if i am cold?", "fire"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 3300 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            List<String> said = talk(b, talks[i][0], new int[] {0, 0});
+            System.out.println("  player: " + talks[i][0] + "\n  villager: " + String.join(" ", said));
+            right += said.contains(talks[i][1]) ? 1 : 0;
+        }
+        System.out.printf("had common sense %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "had only " + right + " of " + talks.length);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

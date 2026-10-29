@@ -196,6 +196,11 @@ answer "what do we do?" with "we stay home ."; "no zombie can swim." makes the z
 unable to swim; "the rat took the cheese." moves the cheese. It does not take "the gates opened."
 with "when the horn sounds, the gates open." as proof that the horn sounded: it says it doesn't
 know.
+It has everyday common sense from the shipped facts: "is a carrot a fruit?" "no , a carrot is a
+vegetable , not a fruit ."; "which one is not a fruit, an apple, a pear or a stone?" "a stone is
+not a fruit ."; "how do i get iron?" "to get iron , you mine iron ore with a stone pickaxe .";
+"what should i do if i am cold?" "you should sit by a fire ."; and "what is bigger, a house or a
+mouse?" "a house is bigger than a mouse .". A fact only answers if it gives what is asked.
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."
