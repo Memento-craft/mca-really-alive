@@ -654,6 +654,29 @@ class ConversationTest {
     }
 
     @Test
+    void villagerWorksOutWhereThingsLie() {
+        // {told, asked, a word the answer says, a word it must not start with}
+        String[][] talks = {{"the well is north of the mill.|the mill is north of the church.", "is the church south of the well?", "yes", "no"},
+            {"the barn is east of the house.", "is the house east of the barn?", "west", "yes"},
+            {"the lake is west of the farm.", "where is the farm?", "east", "-"},
+            {"the mill is north of the well.|the church is north of the well.", "is the mill north of the church?", "know", "yes"}};
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 7100 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            for (String told : talks[i][0].split("\\|")) {
+                talk(b, told, onScript);
+            }
+            List<String> said = talk(b, talks[i][1], onScript);
+            System.out.println("  " + talks[i][1] + " -> " + String.join(" ", said));
+            assertTrue(said.contains(talks[i][2]) && !said.get(0).equals(talks[i][3]), talks[i][1] + " -> " + said);
+        }
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

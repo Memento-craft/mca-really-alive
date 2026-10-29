@@ -1185,6 +1185,16 @@ public final class Brain {
         if (memory == null || heard.length == 0 || heard.length > TOLD_QUESTION_WORDS || heard[heard.length - 1] != ask) {
             return new int[0];
         }
+        int[] placed = whereFrom(heard);
+        if (placed != null) {
+            // "the well is north of the mill." "the mill is north of the church.": "is the church
+            // south of the well?" "yes , the church is south of the well , because ..."
+            toldLine = placed;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] general = generalised(heard);
         if (general != null) {
             // "tom's goat is brown." "ben's goat is brown." "ana's goat is brown.": "what colour
@@ -4323,6 +4333,234 @@ public final class Brain {
         }
         out.addAll(all);
         return said(String.join(" ", out));
+    }
+
+    /** Each way one thing can lie from another: its line (0 north-south, 1 east-west, 2 right-left, 3 up-down) and side. */
+    private static final java.util.Map<String, int[]> WAYS = java.util.Map.of("north", new int[] {0, 1}, "south",
+            new int[] {0, -1}, "east", new int[] {1, 1}, "west", new int[] {1, -1}, "right", new int[] {2, 1}, "left",
+            new int[] {2, -1}, "above", new int[] {3, 1}, "over", new int[] {3, 1}, "below", new int[] {3, -1}, "under",
+            new int[] {3, -1});
+    private static final String[][] WAY_WORDS = {{"north", "south"}, {"east", "west"}, {"right", "left"}, {"above", "below"}};
+
+    /** One told "the well is north of the mill .": the things, the way, and the line. */
+    private record Lies(String a, String b, String way, String line) {}
+
+    /** "the well is north of the mill" read as the two things and the way, or null. */
+    private static Lies liesOf(List<String> w) {
+        int is = w.indexOf("is");
+        if (is < 1 || is + 2 >= w.size()) {
+            return null;
+        }
+        int at = is + 1;
+        if (w.get(at).equals("to") && at + 2 < w.size() && w.get(at + 1).equals("the")) {
+            at += 2;
+        }
+        String way = w.get(at);
+        int from;
+        if (way.equals("next") && at + 1 < w.size() && w.get(at + 1).equals("to")) {
+            from = at + 2;
+        } else if (WAYS.containsKey(way) && WAYS.get(way)[0] < 3) {
+            if (at + 1 >= w.size() || !w.get(at + 1).equals("of")) {
+                return null;
+            }
+            from = at + 2;
+        } else if (WAYS.containsKey(way)) {
+            from = at + 1;
+        } else {
+            return null;
+        }
+        if (from >= w.size()) {
+            return null;
+        }
+        String a = String.join(" ", w.subList(0, is)), b = String.join(" ", w.subList(from, w.size()));
+        return a.isEmpty() || b.isEmpty() || a.equals(b) ? null : new Lies(a, b, way, null);
+    }
+
+    /** "south of the well", "below the lamp", "next to the inn". */
+    private static String wayTo(String way, String b) {
+        return way.equals("next") ? "next to " + b : WAYS.get(way)[0] < 3 ? way + " of " + b : way + " " + b;
+    }
+
+    /**
+     * Where things lie from each other, worked out from what was told: "the well is north of the
+     * mill ." and "the mill is north of the church ." make "is the church south of the well?" "yes ,
+     * the church is south of the well , because ..."; "where is the farm?" after "the lake is west
+     * of the farm ." is "the farm is east of the lake ."; "which is furthest north?" names it. When
+     * the told lines don't settle it ("the mill is north of the well ." "the church is north of the
+     * well ." "is the mill north of the church?") it says it doesn't know. Null when nothing told
+     * of such places bears on it.
+     */
+    private int[] whereFrom(int[] heard) {
+        List<String> q = wordsOf(heard);
+        int n = q.size();
+        if (n < 4 || !q.get(n - 1).equals("?")) {
+            return null;
+        }
+        List<Lies> told = new ArrayList<>();
+        for (int k = TOLD_LINES; k >= 2; k--) {
+            if (k > heardLinesNext) {
+                continue;
+            }
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            List<String> w = line == null ? List.of() : wordsOf(line);
+            if (w.size() < 5 || !w.get(w.size() - 1).equals(".") || w.size() > TOLD_LONGEST) {
+                continue;
+            }
+            Lies l = liesOf(w.subList(0, w.size() - 1));
+            if (l != null) {
+                told.add(new Lies(l.a(), l.b(), l.way(), String.join(" ", w.subList(0, w.size() - 1))));
+            }
+        }
+        if (told.isEmpty()) {
+            return null;
+        }
+        List<String> body = q.subList(0, n - 1);
+        if (body.get(0).equals("is")) {
+            // "is the church south of the well?"
+            List<String> as = withIs(body);
+            Lies asked = as.isEmpty() ? null : liesOf(as);
+            if (asked == null || told.stream().noneMatch(l -> l.a().equals(asked.a()) || l.b().equals(asked.a()))) {
+                return null;
+            }
+            if (asked.way().equals("next")) {
+                for (Lies l : told) {
+                    if (l.way().equals("next") && (l.a().equals(asked.a()) && l.b().equals(asked.b())
+                            || l.a().equals(asked.b()) && l.b().equals(asked.a()))) {
+                        return said("yes , " + l.line() + " .");
+                    }
+                }
+                return null;
+            }
+            int axis = WAYS.get(asked.way())[0], side = WAYS.get(asked.way())[1];
+            List<Lies> chain = path(told, axis, asked.a(), asked.b(), side);
+            if (chain != null) {
+                // Said as told, in the order told: "yes , the well is north of the mill , and the mill
+                // is north of the church ."
+                List<String> lines = told.stream().map(Lies::line).filter(l -> chain.stream().anyMatch(c -> c.line().equals(l))).toList();
+                return said("yes , " + String.join(" , and ", lines) + " .");
+            }
+            List<Lies> against = path(told, axis, asked.a(), asked.b(), -side);
+            if (against != null) {
+                String other = WAY_WORDS[axis][side > 0 ? 1 : 0];
+                return said("no , " + asked.a() + " is " + wayTo(other, asked.b()) + " .");
+            }
+            boolean known = told.stream().anyMatch(l -> l.a().equals(asked.b()) || l.b().equals(asked.b()));
+            List<String> lines = told.stream().filter(l -> WAYS.containsKey(l.way()) && WAYS.get(l.way())[0] == axis)
+                    .map(Lies::line).toList();
+            return known && !lines.isEmpty() ? said("i don't know , " + String.join(" , and ", lines) + " .") : null;
+        }
+        if (body.get(0).equals("where") && body.size() >= 3 && body.get(1).equals("is")) {
+            // "where is the farm?" when only told what lies from it.
+            String thing = String.join(" ", body.subList(2, body.size()));
+            if (told.stream().anyMatch(l -> l.a().equals(thing))) {
+                return null;
+            }
+            for (Lies l : told) {
+                if (l.b().equals(thing)) {
+                    String back = l.way().equals("next") ? "next" : WAY_WORDS[WAYS.get(l.way())[0]][WAYS.get(l.way())[1] > 0 ? 1 : 0];
+                    return said(thing + " is " + wayTo(back, l.a()) + " .");
+                }
+            }
+            return null;
+        }
+        if (body.get(0).equals("what") && body.size() >= 5 && body.get(1).equals("is") && WAYS.containsKey(body.get(2))) {
+            // "what is south of the well?"
+            String way = body.get(2);
+            int at = body.get(3).equals("of") ? 4 : 3;
+            String thing = String.join(" ", body.subList(at, body.size()));
+            int axis = WAYS.get(way)[0], side = WAYS.get(way)[1];
+            for (Lies l : told) {
+                if (!WAYS.containsKey(l.way()) || WAYS.get(l.way())[0] != axis) {
+                    continue;
+                }
+                int s = WAYS.get(l.way())[1];
+                if (l.b().equals(thing) && s == side) {
+                    return said(l.line() + " .");
+                }
+                if (l.a().equals(thing) && s == -side) {
+                    return said(l.b() + " is " + wayTo(way, thing) + " .");
+                }
+            }
+            return null;
+        }
+        int far = body.indexOf("furthest") >= 0 ? body.indexOf("furthest") : body.indexOf("farthest");
+        if (body.get(0).equals("which") && far >= 0 && far + 1 < body.size() && WAYS.containsKey(body.get(far + 1))) {
+            // "which is furthest north?": the one nothing lies further that way from.
+            String way = body.get(far + 1);
+            int axis = WAYS.get(way)[0], side = WAYS.get(way)[1];
+            Set<String> things = new java.util.LinkedHashSet<>();
+            for (Lies l : told) {
+                if (WAYS.containsKey(l.way()) && WAYS.get(l.way())[0] == axis) {
+                    things.add(l.a());
+                    things.add(l.b());
+                }
+            }
+            for (String t : things) {
+                boolean beyond = things.stream().anyMatch(o -> !o.equals(t) && path(told, axis, o, t, side) != null);
+                boolean all = things.stream().allMatch(o -> o.equals(t) || path(told, axis, t, o, side) != null);
+                if (!beyond && all) {
+                    return said(t + " is furthest " + way + " .");
+                }
+            }
+            return null;
+        }
+        return null;
+    }
+
+    /** "is the church south of the well" read as a told line. */
+    private static List<String> withIs(List<String> body) {
+        int of = -1;
+        for (int i = 2; i < body.size() && of < 0; i++) {
+            if (WAYS.containsKey(body.get(i)) || body.get(i).equals("next") || body.get(i).equals("to") && i + 1 < body.size()
+                    && body.get(i + 1).equals("the") && i + 2 < body.size() && WAYS.containsKey(body.get(i + 2))) {
+                of = i;
+            }
+        }
+        if (of < 0) {
+            return List.of();
+        }
+        List<String> line = new ArrayList<>(body.subList(1, of));
+        line.add("is");
+        line.addAll(body.subList(of, body.size()));
+        return line;
+    }
+
+    /**
+     * The told lines that put a further than b one way along a line (side 1 north, east, right or
+     * up; -1 the other), each step either told so or told the other way round; null if they don't.
+     */
+    private static List<Lies> path(List<Lies> told, int axis, String a, String b, int side) {
+        java.util.Map<String, List<Lies>> from = new java.util.HashMap<>();
+        java.util.Map<String, String> to = new java.util.HashMap<>();
+        for (Lies l : told) {
+            int[] w = WAYS.get(l.way());
+            if (w == null || w[0] != axis) {
+                continue;
+            }
+            // Each step goes from the thing further the asked way to the one less so.
+            String hi = w[1] == side ? l.a() : l.b(), lo = w[1] == side ? l.b() : l.a();
+            from.computeIfAbsent(hi, x -> new ArrayList<>()).add(new Lies(hi, lo, l.way(), l.line()));
+        }
+        java.util.Map<String, Lies> came = new java.util.HashMap<>();
+        java.util.ArrayDeque<String> open = new java.util.ArrayDeque<>(List.of(a));
+        Set<String> seen = new java.util.HashSet<>(List.of(a));
+        while (!open.isEmpty()) {
+            String at = open.poll();
+            if (at.equals(b)) {
+                List<Lies> chain = new ArrayList<>();
+                for (String c = b; !c.equals(a); c = came.get(c).a()) {
+                    chain.add(0, came.get(c));
+                }
+                return chain;
+            }
+            for (Lies step : from.getOrDefault(at, List.of())) {
+                if (seen.add(step.b())) {
+                    came.put(step.b(), step);
+                    open.add(step.b());
+                }
+            }
+        }
+        return null;
     }
 
     /** A rule told of a kind: "all blicks are furry .", "no glorps can fly .", "some vims are green ." */

@@ -228,6 +228,12 @@ gives "yes , all blicks are furry , and zim is a blick ."; "no glorps can fly." 
 follow: "mo is not a dax ." gets "i don't know , all dax are friendly , but mo is not a dax ."; "some
 vims are green" gets "maybe ..."; and "all mogs are tall." "tess is tall." "is tess a mog?" gets "i
 don't know , tess is tall , but not all tall things are mogs .".
+It works out where things lie from each other: "the well is north of the mill." "the mill is north
+of the church." "is the church south of the well?" gives "yes , the well is north of the mill , and
+the mill is north of the church ."; it turns told lines round ("the lake is west of the farm."
+"where is the farm?" "the farm is east of the lake ."), names the furthest one ("which is furthest
+north?"), and handles east/west, left/right, above/below/under and next to. When the lines don't
+settle it, it says "i don't know" and what it was told.
 It works with numbers told in a talk (`NumberSense`): "lisa is 8." "her brother is 3 years
 older." gives "lisa's brother is eleven ."; "i have 3 cows and 4 pigs." gives "you have seven
 animals ."; "kai has 5 apples." "mia has twice as many." gives ten; "a loaf costs two emeralds."
