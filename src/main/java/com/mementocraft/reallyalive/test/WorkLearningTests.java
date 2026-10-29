@@ -1864,6 +1864,169 @@ public final class WorkLearningTests {
         });
     }
 
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void newbornJoinsABelt(GameTestHelper h) {
+        beltBenchmark(h, "1");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void secondNewbornJoinsABelt(GameTestHelper h) {
+        beltBenchmark(h, "2");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void thirdNewbornJoinsABelt(GameTestHelper h) {
+        beltBenchmark(h, "3");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = TICKS + 400, required = false)
+    public static void fourthNewbornJoinsABelt(GameTestHelper h) {
+        beltBenchmark(h, "4");
+    }
+
+    /**
+     * With Create installed: an automated line to finish. Two turning shafts lie on the pen's
+     * floor four apart, a press waits over the place between them, and a chest of iron drops
+     * ingots through a funnel onto the first. A newborn carries belt connectors: used on one
+     * shaft and then the other, one lays a belt that carries the ingots under the press, which
+     * makes sheets of them with no hand on it. Belts laid and sheets made are counted; now and
+     * then the belt is taken up and the connector handed back.
+     */
+    private static void beltBenchmark(GameTestHelper h, String which) {
+        if (!selected(h, "BELT")) {
+            return;
+        }
+        java.util.function.Function<String, ResourceLocation> create = id -> ResourceLocation.fromNamespaceAndPath("create", id);
+        var motor = BuiltInRegistries.BLOCK.getOptional(create.apply("creative_motor"));
+        var shaft = BuiltInRegistries.BLOCK.getOptional(create.apply("shaft"));
+        var press = BuiltInRegistries.BLOCK.getOptional(create.apply("mechanical_press"));
+        var funnel = BuiltInRegistries.BLOCK.getOptional(create.apply("andesite_funnel"));
+        var belt = BuiltInRegistries.BLOCK.getOptional(create.apply("belt"));
+        var connector = BuiltInRegistries.ITEM.getOptional(create.apply("belt_connector"));
+        var sheet = BuiltInRegistries.ITEM.getOptional(create.apply("iron_sheet"));
+        if (motor.isEmpty() || shaft.isEmpty() || press.isEmpty() || funnel.isEmpty() || belt.isEmpty() || connector.isEmpty() || sheet.isEmpty()) {
+            LOG.info("BELT: Create is not installed, nothing to learn");
+            h.succeed();
+            return;
+        }
+        net.minecraft.world.item.Item connectorItem = connector.get();
+        Villager v = pen(h, new ItemStack(connectorItem, 2), TICKS);
+        var rotation = h.getTestRotation();
+        var facing = net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING;
+        var shaftState = shaft.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.AXIS, net.minecraft.core.Direction.Axis.X).rotate(rotation);
+        BlockPos first = new BlockPos(3, 2, 9);
+        BlockPos last = new BlockPos(3, 2, 13);
+        BlockPos beltMotor = first.west();
+        BlockPos pressAt = new BlockPos(3, 4, 11);
+        BlockPos pressMotor = pressAt.east();
+        BlockPos chestAt = first.above(2);
+        BlockPos funnelAt = first.above();
+        var funnelState = withValue(funnel.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.DOWN), "extracting", "true");
+        Runnable lay = () -> {
+            h.setBlock(first, shaftState);
+            h.setBlock(last, shaftState);
+        };
+        lay.run();
+        h.setBlock(beltMotor, motor.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.EAST).rotate(rotation));
+        h.setBlock(pressAt, press.get().defaultBlockState()
+                .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, net.minecraft.core.Direction.EAST)
+                .rotate(rotation));
+        h.setBlock(pressMotor, motor.get().defaultBlockState().setValue(facing, net.minecraft.core.Direction.WEST).rotate(rotation));
+        try {
+            for (BlockPos m : new BlockPos[] {beltMotor, pressMotor}) {
+                Object be = h.getLevel().getBlockEntity(h.absolutePos(m));
+                Object speed = be.getClass().getField("generatedSpeed").get(be);
+                speed.getClass().getMethod("setValue", int.class).invoke(speed, 64);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+        h.setBlock(chestAt, Blocks.CHEST);
+        h.setBlock(funnelAt, funnelState);
+        BlockPos[] keep = {beltMotor, pressAt, pressMotor, chestAt, funnelAt};
+        var box = new net.minecraft.world.phys.AABB(h.absolutePos(new BlockPos(0, 0, 6)).getCenter(), h.absolutePos(new BlockPos(10, 6, 18)).getCenter());
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        int[] tick = {0};
+        int[] laid = {0};
+        int[] beltTicks = {0};
+        int[] sheets = {0};
+        int[] handedBack = {0};
+        boolean[] was = {false};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (tick[0] % TIDY_EVERY == 0) {
+                tidyLitter(h);
+            }
+            boolean joined = h.getBlockState(first.south(2)).is(belt.get());
+            laid[0] += joined && !was[0] ? 1 : 0;
+            beltTicks[0] += joined ? 1 : 0;
+            was[0] = joined;
+            if (tick[0] % 20 == 0) {
+                // Sheets come off the belt's end: counted and cleared away, in its hands too.
+                for (var item : h.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+                    if (item.getItem().is(sheet.get())) {
+                        sheets[0] += item.getItem().getCount();
+                        item.discard();
+                    }
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    if (v.getInventory().getItem(i).is(sheet.get())) {
+                        sheets[0] += v.getInventory().getItem(i).getCount();
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                if (h.getBlockEntity(chestAt) instanceof net.minecraft.world.level.block.entity.ChestBlockEntity chest && chest.getItem(0).isEmpty()) {
+                    chest.setItem(0, new ItemStack(Items.IRON_INGOT, 4));
+                }
+                if (!h.getBlockState(funnelAt).is(funnel.get())) {
+                    h.setBlock(funnelAt, funnelState);
+                }
+                if (tick[0] % (REGROW * 12) == 0 || tick[0] % (REGROW * 3) == 0 && !joined) {
+                    // The belt is taken up and the shafts laid again, for another go.
+                    clearPen(h, keep);
+                    regrow(h, v);
+                    lay.run();
+                    if (carried(v, connectorItem) < 2) {
+                        v.getInventory().addItem(new ItemStack(connectorItem, 2 - carried(v, connectorItem)));
+                        handedBack[0]++;
+                    }
+                }
+                for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+                    ItemStack s = v.getInventory().getItem(i);
+                    // Ingots it picked up from under the funnel are taken back: they filled its
+                    // hands, and the connectors lay unused in its pockets.
+                    if (!s.is(connectorItem)) {
+                        v.getInventory().setItem(i, ItemStack.EMPTY);
+                    }
+                }
+                if (v.getMainHandItem().is(Items.IRON_INGOT)) {
+                    v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                }
+            }
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("BELT newborn {}: by tick {}: laid a belt {} times ({} ticks), {} sheets made; set going {}, placed {}; handed back {}; in hand {}",
+                        which, tick[0], laid[0], beltTicks[0], sheets[0], handle.hands().setGoingTotal, handle.hands().placedTotal, handedBack[0],
+                        v.getMainHandItem());
+            }
+            if (tick[0] == TICKS) {
+                String report = String.format("BELT: laid a belt %d times (%d ticks), %d sheets made", laid[0], beltTicks[0], sheets[0]);
+                LOG.info("BELT newborn {} learning result: {}", which, report);
+                if (laid[0] >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
     /** A block state with a property set by name, for blocks of mods the tests do not link against. */
     private static <T extends Comparable<T>> net.minecraft.world.level.block.state.BlockState withValue(
             net.minecraft.world.level.block.state.BlockState state, String property, String value) {
