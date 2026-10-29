@@ -1454,8 +1454,11 @@ public final class Brain {
             }
             float cue = 0f;
             boolean named = false;
+            Set<Integer> cued = new java.util.HashSet<>();
             for (int w : seen) {
-                if (w >= 0 && saidIn(heard, w)) {
+                if (w >= 0 && saidIn(heard, w) && (t < knownFrom || cued.add(w))) {
+                    // A fact that says a word twice ("a snow golem is made of snow .") tells no
+                    // more of it.
                     cue += toldWeight(w, memory, tones);
                 }
                 named |= w >= 0 && memory.weight(w) == 0f && tones != null && !tones.common(w)
@@ -1466,6 +1469,14 @@ public final class Brain {
                 cue += memory.weight(name);
             }
             float exact = cue;
+            for (int q : heard) {
+                // Between lines that say as much, one that also says the plainer words of the
+                // question goes first ("snow is cold ." for "is snow cold?").
+                if (q >= 0 && thingWord(q) && !BEFORE_A_THING.contains(language.vocabulary.word(q)) && saidIn(seen, q)
+                        && toldWeight(q, memory, tones) == 0f) {
+                    exact += 1e-3f;
+                }
+            }
             float telling = 0f;
             float linked = 0f;
             TopicLinks topics = TopicLinks.shared();
@@ -1687,6 +1698,15 @@ public final class Brain {
             // "did the horn sound?" after "when the horn sounds , the gates open ." and "the
             // gates opened .": something else may have opened them.
             dontKnow();
+            return new int[0];
+        }
+        int[] purpose = heard[0] == language.vocabulary.find("why") ? purposeOf(toldLine, heard) : null;
+        if (purpose != null) {
+            // "why do we need wood?" after "we need wood to fix the roof .": "to fix the roof ."
+            toldLine = purpose;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
             return new int[0];
         }
         if (heard[0] == language.vocabulary.find("why") && !saysAny(toldLine, WHY_WORDS)) {
@@ -4720,6 +4740,27 @@ public final class Brain {
             }
         }
         return null;
+    }
+
+    /**
+     * What a told line says something is for, as the answer to "why": "to fix the roof ." from "we
+     * need wood to fix the roof ." when asked "why do we need wood?"; null if it says none, or the
+     * "to" only says where ("we went to the mill .").
+     */
+    private int[] purposeOf(int[] told, int[] heard) {
+        List<String> w = wordsOf(told);
+        int to = w.indexOf("to");
+        if (to < 2 || to + 2 >= w.size() || PLACE.contains(w.get(to + 1)) || Set.of("the", "a", "an", "my", "your", "his", "her", "our", "their")
+                .contains(w.get(to + 1)) || GOING.contains(w.get(to - 1))) {
+            return null;
+        }
+        // The question asks of what comes before "to": "need wood".
+        List<String> asked = wordsOf(heard);
+        boolean of = false;
+        for (int i = 0; i < to; i++) {
+            of |= thingWord(told[i]) && asked.contains(w.get(i)) && !BEFORE_A_THING.contains(w.get(i));
+        }
+        return of ? Arrays.copyOfRange(told, to, told.length) : null;
     }
 
     /** A rule told of a kind: "all blicks are furry .", "no glorps can fly .", "some vims are green ." */

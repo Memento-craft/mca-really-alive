@@ -46,6 +46,9 @@ final class NumberSense {
     private final Map<String, Object[]> prices = new HashMap<>();
     /** Which counts were worked out rather than told. */
     private final Set<String> derived = new java.util.HashSet<>();
+    /** Doings that leave fewer of what was had ("shot", "ate", "sold"), by their plain forms. */
+    private static final Set<String> USED = Set.of("shot", "shoot", "eat", "sell", "lose", "lost", "give", "gave", "spend",
+            "spent", "use", "us", "break", "drop", "dropp", "burn", "throw", "threw");
     /** "three of them did not grow .": {who had them, thing, how many, whether not, doing}. */
     private final List<Object[]> ofThem = new ArrayList<>();
     private static final Map<String, String> PAST = Map.of("grew", "grow", "ate", "eat", "came", "come", "ran", "run",
@@ -306,6 +309,17 @@ final class NumberSense {
             ofThem.add(new Object[] {lastHaver, lastThing, number(w.get(0)), not, plainVerb(verb)});
             return;
         }
+        int ofIt = w.indexOf("of");
+        if (ofIt >= 3 && ofIt + 1 < w.size() && w.get(ofIt + 1).equals("them") && number(w.get(ofIt - 1)) >= 0
+                && USED.contains(plainVerb(w.get(ofIt - 2))) && lastHaver != null && lastThing != null) {
+            // "i shot five of them .": five fewer.
+            Integer before = counts.getOrDefault(lastHaver, new LinkedHashMap<>()).get(lastThing);
+            if (before != null && before >= number(w.get(ofIt - 1))) {
+                count(lastHaver, lastThing, before - number(w.get(ofIt - 1)));
+                derived.add(lastHaver + " " + lastThing);
+            }
+            return;
+        }
         if (w.contains("half") && w.contains("of") && lastHaver != null && lastThing != null) {
             Integer before = counts.getOrDefault(lastHaver, new LinkedHashMap<>()).get(lastThing);
             if (before != null) {
@@ -456,6 +470,10 @@ final class NumberSense {
 
     /** "how many animals do i have?", "how many apples does mia have?", "how many doors are there?", "how many eggs are left?" */
     private List<String> howMany(List<String> q) {
+        if (q.size() >= 6 && Set.of("left", "now").contains(q.get(q.size() - 1)) && HAVING.contains(q.get(q.size() - 2))) {
+            // "how many arrows do i have left?"
+            q = q.subList(0, q.size() - 1);
+        }
         String what = q.get(2);
         String who;
         if (q.size() == 4 && !HAVING.contains(q.get(3))) {

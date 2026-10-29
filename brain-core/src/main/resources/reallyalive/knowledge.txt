@@ -414,3 +414,4 @@ autumn comes before winter .
 spring comes before summer .
 summer comes before autumn .
 winter comes before spring .
+snow is cold .
