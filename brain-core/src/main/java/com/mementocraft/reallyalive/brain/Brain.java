@@ -960,7 +960,7 @@ public final class Brain {
                 // What was done in order is worked out from the story, and no remembered line about
                 // the same things ("pigs live in farms .") answers it instead.
                 weighRecalled(new int[][] {toldInOwnWords ? toldLine : toldBack(toldLine)}, new float[] {1f},
-                        toldInOrder ? 2 * TOLD_WEIGHT : TOLD_WEIGHT, true, start, turn);
+                        toldSure ? 2 * TOLD_WEIGHT : TOLD_WEIGHT, true, start, turn);
             }
         }
         language.restore(start);
@@ -1003,8 +1003,8 @@ public final class Brain {
     private int heardLinesNext;
     private int[] recalledFocus = new int[0];
     private int[] toldLine;
-    /** Whether the told line was picked by the order things happened in. */
-    private boolean toldInOrder;
+    /** Whether the told line is surely the answer: worked out by order, or that it doesn't know. */
+    private boolean toldSure;
     /** Whether the told line is already said as this villager would say it ("rosa is my mother ."). */
     private boolean toldInOwnWords;
     /** The told line as it was heard, before any "yes ," or "because" was put in front. */
@@ -1113,7 +1113,7 @@ public final class Brain {
         int ask = language.vocabulary.find("?");
         toldLine = null;
         toldInOwnWords = false;
-        toldInOrder = false;
+        toldSure = false;
         // A short, plain question about the speaker ("where do i live?"), not a long outburst
         // that ends in one.
         int[] plain = withoutAddress(heardLine);
@@ -1138,7 +1138,7 @@ public final class Brain {
             // A longer question may still ask of the order of things ("what did the guard do
             // before he went to sleep?").
             toldLine = withoutThen(inOrder(heard));
-            toldInOrder = toldLine != null;
+            toldSure = toldLine != null;
             toldLine = toldLine != null ? toldLine : compared(heard);
             toldLineAsHeard = null;
             return new int[0];
@@ -1223,7 +1223,7 @@ public final class Brain {
             // "tom fed the pigs." "then he milked the cow.": "what did tom do first?" "tom fed
             // the pigs ."; "what did he do after he fed the pigs?" "he milked the cow ."
             toldLine = ordered;
-            toldInOrder = true;
+            toldSure = true;
             toldLineAsHeard = null;
             return new int[0];
         }
@@ -1414,6 +1414,21 @@ public final class Brain {
             }
         }
         if (best == null) {
+            int[] ofKind = ofAllAsked ? null : ofTheNamed(heard, null);
+            if (ofKind != null) {
+                // "how many legs does rex have?" after "i have a dog called rex .": what is so
+                // of dogs.
+                ofAllAsked = true;
+                int[] r = toldBefore(ofKind);
+                ofAllAsked = false;
+                if (toldLine != null) {
+                    return r;
+                }
+            }
+            if (unheardOf(heard, memory, tones)) {
+                // "where is my hat?" when no one said: "i don't know ."
+                dontKnow();
+            }
             return new int[0];
         }
         if (bestT >= recent && bestT < knownFrom && best == toldLines.get(bestT)) {
@@ -1442,6 +1457,23 @@ public final class Brain {
         }
         // "mary went to the garden .", not "then mary went to the garden ."
         best = withoutThen(best);
+        if (!answersAsked(heard, best)) {
+            int[] ofKind = ofAllAsked ? null : ofTheNamed(heard, best);
+            if (ofKind != null) {
+                // "how many legs does rex have?" after "i have a dog called rex .": what is so of
+                // dogs.
+                ofAllAsked = true;
+                int[] r = toldBefore(ofKind);
+                ofAllAsked = false;
+                if (toldLine != null && !toldSure) {
+                    return r;
+                }
+            }
+            // "what colour is my cat?" after "i have a cat .": the line is of the cat, but says
+            // nothing of what is asked.
+            dontKnow();
+            return new int[0];
+        }
         toldLine = best;
         toldLineAsHeard = best;
         int quality = yesNoAsked(heard) ? qualityAsked(heard) : -1;
@@ -1490,6 +1522,11 @@ public final class Brain {
             // "what happens if it rains?" "the field floods ."; "why did the field flood?"
             // "because it rained all night ."
             toldLine = toIt;
+        }
+        if (heard[0] == language.vocabulary.find("why") && !saysAny(toldLine, WHY_WORDS)) {
+            // "why is the farmer sick?" after only "the farmer is sick .".
+            dontKnow();
+            return new int[0];
         }
         // Telling words: those that cue remembered exchanges, and names, which never do but are
         // not among the commonest words either.
@@ -3759,6 +3796,207 @@ public final class Brain {
      * the question asks of no thing of theirs, or the line tells what it asks.
      */
     private boolean ofAllAsked;
+
+    /**
+     * The question asked of a kind instead of the one named: "how many legs does a dog have?" for
+     * "how many legs does rex have?" when the line says "a dog called rex"; null if it names none.
+     */
+    private int[] ofTheNamed(int[] heard, int[] best) {
+        Vocabulary v = language.vocabulary;
+        for (int k = 1; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] told = k == 1 ? best : heardLines[(heardLinesNext - k) % heardLines.length];
+            int[] asked = told == null ? null : ofTheNamedIn(heard, told);
+            if (asked != null) {
+                return asked;
+            }
+        }
+        // Or named long ago.
+        for (int[] told : talk.toldLines()) {
+            int[] asked = ofTheNamedIn(heard, told);
+            if (asked != null) {
+                return asked;
+            }
+        }
+        return null;
+    }
+
+    private int[] ofTheNamedIn(int[] heard, int[] told) {
+        Vocabulary v = language.vocabulary;
+        if (told.length == 0 || told[told.length - 1] == v.find("?")) {
+            return null;
+        }
+        for (int j = 1; j + 1 < told.length; j++) {
+            if (told[j] < 0 || !Set.of("called", "named").contains(v.word(told[j]))) {
+                continue;
+            }
+            // "a dog called rex", "my dog is called max"
+            int thing = j - 1;
+            if (thing > 0 && told[thing] >= 0 && Set.of("is", "was").contains(v.word(told[thing]))) {
+                thing--;
+            }
+            if (told[thing] < 0 || !thingWord(told[thing])) {
+                continue;
+            }
+            int at = indexOf(heard, told[j + 1], 0);
+            if (at > 0 && at < heard.length - 1 && thingWord(told[j + 1])) {
+                int[] asked = new int[heard.length + 1];
+                System.arraycopy(heard, 0, asked, 0, at);
+                asked[at] = v.find("a");
+                asked[at + 1] = told[thing];
+                System.arraycopy(heard, at + 1, asked, at + 2, heard.length - at - 1);
+                return asked[at] < 0 ? null : asked;
+            }
+        }
+        return null;
+    }
+
+    /** The answer when nothing it knows tells what is asked. */
+    private void dontKnow() {
+        toldLine = Arrays.stream(new String[] {"i", "don't", "know", "."}).mapToInt(language.vocabulary::find).toArray();
+        if (Arrays.stream(toldLine).anyMatch(w -> w < 0)) {
+            toldLine = null;
+            return;
+        }
+        toldLineAsHeard = null;
+        toldInOwnWords = true;
+        toldSure = true;
+    }
+
+    private static final Set<String> NOT_A_DOING = Set.of("is", "are", "was", "were", "has", "have", "had", "do", "does",
+            "did", "can", "will", "would", "should", "could", "'s");
+    private static final Set<String> WHERE_WORDS = Set.of("to", "into", "onto", "in", "on", "at", "inside", "under", "behind",
+            "from", "near", "by", "beside", "above", "below", "over", "home", "upstairs", "downstairs", "outside", "away",
+            "here", "there", "north", "south", "east", "west", "left", "right", "underground", "deep", "everywhere",
+            "nowhere", "somewhere", "anywhere", "far", "close", "nearby", "down", "up", "around", "across", "through");
+    private static final Set<String> WHEN_WORDS = Set.of("in", "on", "at", "after", "before", "ago", "yesterday", "today",
+            "tomorrow", "morning", "noon", "evening", "night", "tonight", "week", "year", "spring", "summer", "autumn",
+            "winter", "soon", "later", "when", "since", "until", "for", "day", "days", "weeks", "hour", "hours", "month",
+            "months", "years", "minutes", "while");
+
+    /**
+     * Whether a told line gives what a question asks for, not only what it asks of: a colour for
+     * "what colour", a name for "what is its name", a count for "how many", a place for "where",
+     * a time for "when", and the doing itself for "who bought the sword?" or "what did tom buy?".
+     * True when it can't tell.
+     */
+    private boolean answersAsked(int[] heard, int[] told) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 3 || heard[0] < 0 || heard[1] < 0) {
+            return true;
+        }
+        String first = v.word(heard[0]), second = v.word(heard[1]);
+        String doing = heard[heard.length - 2] < 0 ? "" : v.word(heard[heard.length - 2]);
+        if (saysAny(heard, COLOURS_ASKED)) {
+            return saysAny(told, COLOURS);
+        }
+        if (contains(heard, v.find("name")) && Set.of("what", "what's").contains(first)) {
+            // "my dog is called rex .", "i have a dog named rex .", "hi, i'm josh ."
+            ExchangeMemory memory = ExchangeMemory.shared();
+            ToneLinks tones = ToneLinks.shared();
+            for (int w : told) {
+                if (w >= 0 && (Set.of("name", "called", "named").contains(v.word(w)) || memory != null && tones != null
+                        && memory.weight(w) == 0f && !tones.common(w) && Character.isLetter(v.word(w).charAt(0)))) {
+                    return true;
+                }
+            }
+            return namesIn(told, new ArrayList<>());
+        }
+        if (first.equals("how") && Set.of("many", "old", "much", "long", "far").contains(second)) {
+            for (int w : told) {
+                if (w >= 0 && (number(v.word(w)) >= 0 || AMOUNTS.contains(v.word(w)))) {
+                    return true;
+                }
+            }
+            // "it is very old ."; "for a week ."
+            return second.equals("old") ? saysAny(told, Set.of("old", "young", "new", "years", "baby"))
+                : Set.of("long", "far").contains(second) && (saysAny(told, WHEN_WORDS) || saysAny(told, Set.of("miles", "mile", "far", "close", "near")));
+        }
+        if (first.equals("how") && SIZES.contains(second)) {
+            // "how big is my uncle's farm?"
+            for (int w : told) {
+                if (w >= 0 && (number(v.word(w)) >= 0 || SIZES.contains(v.word(w)))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (first.equals("where")) {
+            return saysAny(told, WHERE_WORDS);
+        }
+        if (first.equals("what") && Set.of("is", "was", "are", "were", "'s").contains(second) && heard.length > 3
+                && heard[2] >= 0 && PLACE.contains(v.word(heard[2]))) {
+            // "what was in the chest?"
+            return saysAny(told, PLACE);
+        }
+        if (first.equals("when")) {
+            return saysAny(told, WHEN_WORDS);
+        }
+        if (first.equals("who") && !NOT_A_DOING.contains(second)) {
+            return saidIn(told, heard[1]);
+        }
+        if (first.equals("what") && Set.of("did", "does", "do").contains(second) && !NOT_A_DOING.contains(doing)
+                && heard[heard.length - 2] >= 0 && thingWord(heard[heard.length - 2])) {
+            return saidIn(told, heard[heard.length - 2]);
+        }
+        return true;
+    }
+
+    private static final Set<String> SIZES = Set.of("big", "small", "tall", "short", "deep", "wide", "heavy", "high",
+            "large", "little", "huge", "tiny", "long");
+    private static final Set<String> AMOUNTS = Set.of("no", "none", "lots", "few", "some", "many", "thirty", "forty", "fifty",
+            "sixty", "seventy", "eighty", "ninety", "hundred", "hundreds", "thousand", "dozen", "half", "all", "both");
+    private static final Set<String> WHY_WORDS = Set.of("because", "so", "if", "since", "cause", "after", "when", "from", "by", "due",
+            "thanks", "caused");
+    private static final Set<String> COLOURS_ASKED = Set.of("colour", "color", "colours", "colors");
+
+    /**
+     * Whether a question asks of the asker's own things ("where is my hat?") or of someone by a
+     * name no one said here ("where does lena live?"), which only being told would tell.
+     */
+    private boolean unheardOf(int[] heard, ExchangeMemory memory, ToneLinks tones) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 3 || heard[0] < 0 || !ASKING_WORDS.contains(v.word(heard[0])) && !v.word(heard[0]).equals("what's")
+                || saysAny(heard, Set.of("you", "your", "you're", "think", "should", "can", "i"))) {
+            return false;
+        }
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            if (Arrays.equals(heardLines[(heardLinesNext - k) % heardLines.length], heard)) {
+                // Asked before, maybe answered by someone else ("the password is pumpkin.").
+                return false;
+            }
+        }
+        if (contains(heard, v.find("my"))) {
+            return true;
+        }
+        // "who bought the sword?" after "the blacksmith made a sword .": of the sword, but not
+        // what was told of it. A name given to something ("a dog called rex") is of a kind of
+        // thing, and what is so of the kind may answer.
+        int[][] names = namesGiven();
+        for (int i = 1; i < heard.length; i++) {
+            final int named = heard[i];
+            if (Arrays.stream(names).anyMatch(g -> g[0] == named)) {
+                continue;
+            }
+            int w = heard[i];
+            if (w < 0 || heard[i - 1] < 0 || !Set.of("the", "a", "an", "his", "her", "their", "does", "did", "is", "was")
+                    .contains(v.word(heard[i - 1])) || !thingWord(w) || NOT_A_DOING.contains(v.word(w))) {
+                continue;
+            }
+            for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+                int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+                if (line != null && line.length > 0 && line[line.length - 1] != v.find("?") && saidIn(line, w)) {
+                    return true;
+                }
+            }
+        }
+        for (int w : heard) {
+            if (w >= 0 && memory != null && memory.weight(w) == 0f && tones != null && !tones.common(w)
+                    && Character.isLetter(v.word(w).charAt(0)) && Arrays.stream(names).noneMatch(g -> g[0] == w)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static final Set<String> WHAT_THEY_DO = Set.of("what do i do ?", "what do i do for work ?",
             "what do i do for a living ?", "what is my job ?", "what's my job ?", "what is my work ?");

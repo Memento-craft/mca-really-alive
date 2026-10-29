@@ -410,6 +410,42 @@ class ConversationTest {
     }
 
     @Test
+    void villagerSaysWhenItDoesNotKnow() {
+        // {told, asked}: nothing told answers, so "i don't know"; and a question that is answered.
+        String[][] talks = {{"i have a cat.", "what colour is my cat?"}, {"tom went to the market.", "what did tom buy?"},
+            {"-", "where is my hat?"}, {"the farmer is sick.", "why is the farmer sick?"}};
+        int right = 0;
+        for (int i = 0; i < talks.length; i++) {
+            Brain b = Brain.create(Genome.defaults(), 1900 + i, 1f);
+            b.setBabbleScale(1f);
+            for (int t = 0; t < 300; t++) {
+                b.step(frame());
+            }
+            int[] onScript = {0, 0};
+            List<String> said = List.of();
+            for (String line : talks[i]) {
+                if (!line.equals("-")) {
+                    said = talk(b, line, onScript);
+                    System.out.println("  player: " + line + "\n  villager: " + String.join(" ", said));
+                }
+            }
+            right += said.contains("know") ? 1 : 0;
+        }
+        Brain b = Brain.create(Genome.defaults(), 1950, 1f);
+        b.setBabbleScale(1f);
+        for (int t = 0; t < 300; t++) {
+            b.step(frame());
+        }
+        int[] onScript = {0, 0};
+        talk(b, "my dog is called max.", onScript);
+        List<String> said = talk(b, "how many legs does max have?", onScript);
+        System.out.println("  player: how many legs does max have?\n  villager: " + String.join(" ", said));
+        System.out.printf("knew when it didn't know %d of %d%n", right, talks.length);
+        assertTrue(right >= talks.length - 1, "knew only " + right + " of " + talks.length);
+        assertTrue(said.contains("four"), "said " + said);
+    }
+
+    @Test
     void villagerComparesAmounts() {
         // {told, told, asked, right, wrong}; "-" tells nothing.
         String[][] talks = {{"tom has three apples.", "anna has five apples.", "who has more apples?", "anna", "tom"},

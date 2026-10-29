@@ -188,6 +188,13 @@ does rex have?" with "a dog has four legs .", and told "the monster by the gate 
 "does it burn in the sun?" with "yes , skeletons burn in the sun .". Told "i keep bees.", "what
 do my bees make?" is "a bee makes honey .", and told "i run the bakery.", "what do i do?" is "you
 run the bakery .".
+When nothing it knows tells what is asked, it says "i don't know ." rather than repeat a line
+that is only about the same thing: "what colour is my cat?" after "i have a cat.", "who bought the
+sword?" after "the blacksmith made a sword.", "why is the farmer sick?" after only "the farmer is
+sick.", or "where is my hat?" when no one said. A line gives an answer only if it has what the
+question asks for: a colour, a name, a count, a place, a time, a reason, or the doing asked
+about. A thing known by a name ("my dog is called max.") is still asked of its kind: "how many
+legs does max have?" "a dog has four legs .".
 All of this holds up in one long talk mixing chat, things told and every kind of question: a
 line told twenty lines back still answers, and a later change ("the cart is in the yard now.")
 wins over what it once answered from an older line.
