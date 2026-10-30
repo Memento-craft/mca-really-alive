@@ -968,7 +968,9 @@ public final class Brain {
         recalledFocus = new int[0];
         int[] best = thoughtBest;
         if (best != null) {
-            best = countsAsHeard(best, language.heardLine());
+            int[] heardNow = language.heardLine();
+            best = countsAsHeard(best, heardNow);
+            best = heardNow == null ? best : withoutCalling(heardNow, best);
             said[saidNext++ % said.length] = best;
         }
         return best;
@@ -4134,7 +4136,9 @@ public final class Brain {
                 continue;
             }
             if (CALLINGS.contains(word) && marked && !OWNING.contains(before) && !OWNING.contains(twoBefore)
-                    && !Set.of("and", "or").contains(before) && indexOf(heard, answer[i], 0) < 0) {
+                    && !Set.of("and", "or").contains(before) && indexOf(heard, answer[i], 0) < 0
+                    && (!word.equals("honey") || before.isEmpty() || MARKS.contains(before))) {
+                // "honey" is called only after a mark ("thanks , honey ."); "bees make honey ." is the thing.
                 dropped = true;
                 if (before.equals(",")) {
                     out.remove(out.size() - 1);
