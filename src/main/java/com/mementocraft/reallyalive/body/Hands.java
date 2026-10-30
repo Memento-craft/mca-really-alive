@@ -194,8 +194,9 @@ public final class Hands {
     private net.minecraft.resources.ResourceLocation copying;
     private int copyMove;
     private int copiedThisTick;
-    /** Diagnostics: watched moves it has done again on its own grid. */
+    /** Diagnostics: watched moves it has done again on its own grid, and how often it got to each move. */
     public int copiedTotal;
+    public final int[] copyReached = new int[33];
     /** Kinds of things it lately threw out or gave a machine: taking those out of a machine is not making them. */
     private final java.util.Map<net.minecraft.world.item.Item, Long> givenKinds = new java.util.HashMap<>();
     private static final long GIVEN_REMEMBERED = 6000L;
@@ -1114,9 +1115,10 @@ public final class Hands {
                 copyMove++;
                 copiedThisTick++;
                 copiedTotal++;
+                copyReached[Math.min(copyMove, copyReached.length - 1)]++;
                 continue;
             }
-            Slot to = followed(menu, m);
+            Slot to = followed(menu, m, moves);
             if (to != null) {
                 return new CopyTarget(to, !menu.getCarried().isEmpty());
             }
@@ -1133,7 +1135,7 @@ public final class Hands {
     }
 
     /** The slot to click next to make this move: where the thing is to be put, or first where to get it from. */
-    private static Slot followed(AbstractContainerMenu menu, Watching.Move m) {
+    private static Slot followed(AbstractContainerMenu menu, Watching.Move m, java.util.List<Watching.Move> moves) {
         ItemStack carried = menu.getCarried();
         if (m.put() && carried.is(m.item())) {
             return Watching.gridSlot(menu, m.place());
@@ -1161,7 +1163,10 @@ public final class Hands {
             Slot result = menu.getSlot(0);
             return result instanceof net.minecraft.world.inventory.ResultSlot && result.getItem().is(m.item()) ? result : null;
         }
-        // Get it from a pocket, or from a grid place holding more than one of it.
+        // Get it from a pocket, or from a grid place holding more than one of it, or one it was
+        // never put in: a plank meant for the top right that went in the middle is picked up
+        // again. Newborns got the first two planks of a crank in place 30 to 50 times as often as
+        // the third, which mostly went in a place next to it, and then went on to the alloy.
         Slot spare = null;
         for (Slot s : menu.slots) {
             if (!s.getItem().is(m.item()) || s instanceof net.minecraft.world.inventory.ResultSlot) {
@@ -1170,11 +1175,22 @@ public final class Hands {
             if (s.container instanceof net.minecraft.world.entity.player.Inventory) {
                 return s;
             }
-            if (s.getItem().getCount() > 1 && spare == null) {
+            if (spare == null && (s.getItem().getCount() > 1 || !putIn(menu, s, m.item(), moves))) {
                 spare = s;
             }
         }
         return spare;
+    }
+
+    /** Whether the watched moves put this kind of thing in this grid slot's place. */
+    private static boolean putIn(AbstractContainerMenu menu, Slot s, net.minecraft.world.item.Item item, java.util.List<Watching.Move> moves) {
+        int place = Watching.placeOf(menu, s);
+        for (Watching.Move m : moves) {
+            if (m.put() && m.place() == place && m.item() == item) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void remember(net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {

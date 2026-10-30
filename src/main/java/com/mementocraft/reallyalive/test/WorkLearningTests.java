@@ -2185,10 +2185,11 @@ public final class WorkLearningTests {
             }
             if (tick[0] % WINDOW == 0) {
                 LOG.info("{} newborn {}: by tick {}: cranks made {}; at the table {} times, {} ticks; screens {}, clicks {}, results formed {}, made {};"
-                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}; watched {}, moves copied {}; made kinds {}", name, which, tick[0], cranks[0],
+                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}; watched {}, moves copied {} (got to each {}); made kinds {}", name, which, tick[0], cranks[0],
                         tableOpened[0], tableTicks[0], handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().formedTotal,
                         handle.hands().madeTotal, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal, handle.hands().recipesLearnt,
-                        handle.hands().matchedTotal, handedBack[0], handle.hands().sawCraftedTotal, handle.hands().copiedTotal, handle.hands().madeKinds);
+                        handle.hands().matchedTotal, handedBack[0], handle.hands().sawCraftedTotal, handle.hands().copiedTotal,
+                        java.util.Arrays.toString(java.util.Arrays.copyOf(handle.hands().copyReached, 9)), handle.hands().madeKinds);
             }
             if (tick[0] == ticks) {
                 String report = String.format("%s: made %d hand cranks in %d ticks, at the table %d times", name, cranks[0], ticks, tableOpened[0]);
