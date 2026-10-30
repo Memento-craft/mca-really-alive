@@ -1173,6 +1173,14 @@ public final class Brain {
             meant[0] = words.find("is");
             meant[1] = words.find("me");
         }
+        int[] job = meant == null && plain.length > 0 ? whatOneDoes(plain) : null;
+        if (job != null) {
+            // "my father is a carpenter .": "what does my father do?" "your father is a carpenter ."
+            toldLine = job;
+            toldLineAsHeard = null;
+            toldSure = true;
+            return new int[0];
+        }
         int[] reasoned = meant == null && plain.length > 0 ? fromRules(plain) : null;
         if (reasoned != null) {
             // "all blicks are furry." "zim is a blick.": "is zim furry?" "yes , all blicks are
@@ -6138,6 +6146,49 @@ public final class Brain {
             boolean now = !doing.endsWith("ed") && !NOT_DOING.contains(doing)
                     && (!IRREGULAR.containsKey(doing) || IRREGULAR.get(doing).equals(doing));
             if (who.equals("i'm") && Set.of("a", "an", "the").contains(doing) || who.equals("i") && now) {
+                return line;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * "what does my father do?" after "my father is a carpenter .": the latest line that said what
+     * the one asked of is; null if not asked so or not told.
+     */
+    private int[] whatOneDoes(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<String> q = wordsOf(heard);
+        int n = q.size();
+        if (n < 5 || n > 7 || !q.get(0).equals("what") || !q.get(1).equals("does") || !q.get(n - 2).equals("do")
+                || !q.get(n - 1).equals("?") || Set.of("it", "that", "this", "he", "she").contains(q.get(2))) {
+            return null;
+        }
+        int[] who = Arrays.copyOfRange(heard, 2, heard.length - 2);
+        List<int[]> lines = new ArrayList<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            lines.add(heardLines[(heardLinesNext - k) % heardLines.length]);
+        }
+        // And what was told longer ago, newest first.
+        lines.addAll(talk.toldLines());
+        for (int[] line : lines) {
+            if (line == null || line.length != who.length + 4 || line[line.length - 1] != v.find(".")
+                    || !Arrays.equals(Arrays.copyOf(line, who.length), who)) {
+                continue;
+            }
+            String is = line[who.length] < 0 ? "" : v.word(line[who.length]);
+            String a = line[who.length + 1] < 0 ? "" : v.word(line[who.length + 1]);
+            if (Set.of("is", "was").contains(is) && Set.of("a", "an").contains(a)) {
+                // And what such a one does, when it is known: "a carpenter works with wood ."
+                String kind = line[who.length + 2] < 0 ? "" : v.word(line[who.length + 2]);
+                for (String[] fact : knownLines()) {
+                    if (fact.length >= 4 && fact[0].equals(a) && fact[1].equals(kind) && !Set.of("is", "was", "has").contains(fact[2])) {
+                        int[] more = Arrays.stream(fact).mapToInt(v::find).toArray();
+                        if (Arrays.stream(more).allMatch(x -> x >= 0)) {
+                            return join(line, more);
+                        }
+                    }
+                }
                 return line;
             }
         }
