@@ -349,6 +349,8 @@ final class ConceptLinks {
     }
 
     void write(DataOutput out, int neurons) throws IOException {
+        // A brain saved before it ever stepped has not sized these yet: all at rest.
+        ensureNeurons(neurons);
         for (int i = 0; i < neurons; i++) {
             out.writeFloat(activity[i]);
             out.writeFloat(baseline[i]);

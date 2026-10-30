@@ -17,6 +17,9 @@ import java.util.List;
 public final class Speech {
     private Speech() {}
 
+    /** How many of MCA's stock lines were kept from being said by a brain villager. */
+    public static final java.util.concurrent.atomic.AtomicInteger STOCK_LINES_KEPT_BACK = new java.util.concurrent.atomic.AtomicInteger();
+
     /**
      * Someone says a line of chat at a place: villagers within {@link Hearing#RANGE} hear its words
      * in order, then the end of the line, together with the sound of a player's voice.

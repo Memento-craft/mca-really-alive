@@ -6,6 +6,7 @@
   "mixins": [
     "EntityMixin",
     "LivingEntityMixin",
+    "McaMessengerMixin",
     "MobAccessor"
   ],
   "injectors": {

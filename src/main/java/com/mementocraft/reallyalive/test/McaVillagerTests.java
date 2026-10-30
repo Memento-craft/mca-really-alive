@@ -90,6 +90,33 @@ public final class McaVillagerTests {
         });
     }
 
+    /** MCA's stock lines ("Hello!") are not said by a villager with a brain. */
+    @GameTest(template = FLOOR, timeoutTicks = 100)
+    public static void brainVillagerSaysNoMcaStockLines(GameTestHelper helper) {
+        Villager v = spawnMcaVillager(helper, new Vec3(9.5, 2, 6.5));
+        java.lang.reflect.Method send;
+        try {
+            send = v.getClass().getMethod("sendChatMessage", net.minecraft.network.chat.Component.class,
+                    net.minecraft.world.entity.Entity.class);
+        } catch (NoSuchMethodException e) {
+            helper.fail("MCA villager has no sendChatMessage");
+            return;
+        }
+        int before = com.mementocraft.reallyalive.speech.Speech.STOCK_LINES_KEPT_BACK.get();
+        try {
+            Player p = helper.makeMockPlayer(GameType.SURVIVAL);
+            attach(helper, v);
+            send.invoke(v, net.minecraft.network.chat.Component.literal("Hello!"), p);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.error("stock line test", e);
+            helper.fail("sendChatMessage failed: " + e);
+            return;
+        }
+        helper.assertTrue(com.mementocraft.reallyalive.speech.Speech.STOCK_LINES_KEPT_BACK.get() == before + 1,
+                "a brain villager still said MCA's stock line");
+        helper.succeed();
+    }
+
     @GameTest(template = FLOOR, timeoutTicks = 300)
     public static void mcaAiDoesNotMoveABrainVillager(GameTestHelper helper) {
         Villager v = spawnMcaVillager(helper, new Vec3(6.5, 2, 6.5));
