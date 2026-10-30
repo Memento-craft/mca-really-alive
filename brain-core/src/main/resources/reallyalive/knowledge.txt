@@ -95,6 +95,7 @@ a fish can swim .
 a fish lives in water .
 a bird lives in a nest .
 a bee lives in a hive .
+bees live in hives .
 a rabbit eats carrots .
 a cow eats grass .
 a sheep eats grass .

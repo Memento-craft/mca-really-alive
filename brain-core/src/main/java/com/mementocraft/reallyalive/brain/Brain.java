@@ -3075,7 +3075,13 @@ public final class Brain {
             }
             for (int i = 1; i < line.length; i++) {
                 if (line[i] == than && line[i - 1] >= 0 && language.vocabulary.word(line[i - 1]).equals(moreWord)) {
-                    int one = thingAt(line, i - 2, -1), other = thingAt(line, i + 1, 1);
+                    // "una runs faster than kim .": una, not her running.
+                    int doer = i - 2;
+                    if (doer == 1 && line[0] >= 0 && line[1] >= 0 && Character.isLetter(language.vocabulary.word(line[0]).charAt(0))
+                            && !BETWEEN.contains(language.vocabulary.word(line[1])) && language.vocabulary.word(line[1]).endsWith("s")) {
+                        doer = 0;
+                    }
+                    int one = thingAt(line, doer, -1), other = thingAt(line, i + 1, 1);
                     if (one >= 0 && other >= 0) {
                         more.add(new int[] {one, other});
                         // How each was said ("the iron bar"), to say it the same way.
@@ -4588,8 +4594,10 @@ public final class Brain {
      */
     private int[] ruleFollows(int[] heard) {
         Vocabulary v = language.vocabulary;
-        if (heard.length < 3 || heard[0] < 0 || !v.word(heard[0]).equals("what")
-                || !saysAny(heard, Set.of("do", "does", "happens", "happen", "will"))) {
+        boolean yesNo = heard.length >= 4 && heard[0] >= 0 && Set.of("is", "are", "will").contains(v.word(heard[0]))
+                && heard[heard.length - 1] == v.find("?");
+        if (!yesNo && (heard.length < 3 || heard[0] < 0 || !v.word(heard[0]).equals("what")
+                || !saysAny(heard, Set.of("do", "does", "happens", "happen", "will")))) {
             return null;
         }
         int iff = v.find("if"), when = v.find("when"), comma = v.find(",");
@@ -4605,7 +4613,16 @@ public final class Brain {
             int[] needs = Arrays.copyOfRange(rule, 1, split);
             int[] then = Arrays.copyOfRange(rule, split + 1, rule.length);
             boolean ofThem = saysAny(heard, Set.of("happens", "happen")) || then[0] >= 0 && contains(heard, then[0]);
-            if (!ofThem && then[0] >= 0 && Set.of("he", "she", "it", "they").contains(v.word(then[0]))) {
+            if (yesNo) {
+                // "is the road muddy?" after "if it rains , the road gets muddy .": all it asks of is
+                // what the rule says will be, and it says it is so.
+                ofThem = !negated(then, then) && !saysAny(then, STOPPING);
+                for (int i = 1; i + 1 < heard.length; i++) {
+                    int w = heard[i];
+                    ofThem &= w < 0 || !thingWord(w) || NO_THING.contains(v.word(w)) || saidIn(then, w);
+                }
+            }
+            if (!ofThem && !yesNo && then[0] >= 0 && Set.of("he", "she", "it", "they").contains(v.word(then[0]))) {
                 // "if you feed the chickens , they lay eggs .": "what do the chickens do?"
                 for (int w : needs) {
                     ofThem |= w >= 0 && thingWord(w) && !NO_THING.contains(v.word(w)) && saidIn(heard, w)
@@ -4633,7 +4650,7 @@ public final class Brain {
                     }
                 }
                 if (all && some) {
-                    return then;
+                    return yesNo ? withWord(v.find("yes"), then) : then;
                 }
             }
         }
@@ -5040,6 +5057,22 @@ public final class Brain {
             List<String> lines = told.stream().filter(l -> WAYS.containsKey(l.way()) && WAYS.get(l.way())[0] == axis)
                     .map(Lies::line).toList();
             return known && !lines.isEmpty() ? said("i don't know , " + String.join(" , and ", lines) + " .") : null;
+        }
+        int from = body.indexOf("from");
+        if (body.get(0).equals("where") && body.size() >= 5 && body.get(1).equals("is") && from > 2 && from + 1 < body.size()) {
+            // "where is the forge from the tavern?" after "the tavern is east of the forge .": "the
+            // forge is west of the tavern ."
+            String thing = String.join(" ", body.subList(2, from)), other = String.join(" ", body.subList(from + 1, body.size()));
+            for (Lies l : told) {
+                if (l.a().equals(thing) && l.b().equals(other)) {
+                    return said(l.line() + " .");
+                }
+                if (l.b().equals(thing) && l.a().equals(other)) {
+                    String back = l.way().equals("next") ? "next" : WAY_WORDS[WAYS.get(l.way())[0]][WAYS.get(l.way())[1] > 0 ? 1 : 0];
+                    return said(thing + " is " + wayTo(back, other) + " .");
+                }
+            }
+            return null;
         }
         if (body.get(0).equals("where") && body.size() >= 3 && body.get(1).equals("is")) {
             // "where is the farm?" when only told what lies from it.
@@ -6171,7 +6204,7 @@ public final class Brain {
      */
     /** The past forms of common verbs that don't end in -ed, after their plain form. */
     private static final java.util.Map<String, String> IRREGULAR = irregular(
-            "be was were been", "begin began begun", "break broke broken", "bring brought", "build built",
+            "be was were been", "call named", "begin began begun", "break broke broken", "bring brought", "build built",
             "buy bought", "catch caught", "choose chose chosen", "come came", "cut cut", "dig dug",
             "do did done", "draw drew drawn", "drink drank drunk", "drive drove driven", "eat ate eaten",
             "fall fell fallen", "feed fed", "feel felt", "fight fought", "find found", "fly flew flown",
