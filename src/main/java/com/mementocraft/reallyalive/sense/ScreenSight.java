@@ -113,8 +113,13 @@ public final class ScreenSight {
         see(menu, pointerX, pointerY, vision, colour, hint, null, false);
     }
 
-    /** How much else still catches the eye while following a watched move, against the place it points at. */
-    private static final float NOT_COPIED = 0.3f;
+    /**
+     * How much else still catches the eye while following a watched move, against the place it
+     * points at. At 0.3 the many pockets below the grid drew the pointer down more than one place
+     * at the top drew it up: the third plank of a crank went in the bottom row, was picked up
+     * again and put back there.
+     */
+    private static final float NOT_COPIED = 0.05f;
 
     /**
      * As above, while following a move watched someone make: the slot it points at stands out

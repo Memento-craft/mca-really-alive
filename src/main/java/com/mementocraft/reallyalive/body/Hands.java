@@ -194,6 +194,8 @@ public final class Hands {
     private net.minecraft.resources.ResourceLocation copying;
     private int copyMove;
     private int copiedThisTick;
+    /** For tracing: the slot the last watched move pointed at, or -1. */
+    private int copyTraced = -1;
     /** Diagnostics: watched moves it has done again on its own grid, and how often it got to each move. */
     public int copiedTotal;
     public final int[] copyReached = new int[33];
@@ -1099,6 +1101,7 @@ public final class Hands {
      * in place.
      */
     public CopyTarget copyTarget(AbstractContainerMenu menu) {
+        copyTraced = -1;
         var hint = recipeHint(menu);
         java.util.List<Watching.Move> moves = hint == null ? null : movesSeen.get(hint.recipe());
         if (moves == null) {
@@ -1120,6 +1123,7 @@ public final class Hands {
             }
             Slot to = followed(menu, m, moves);
             if (to != null) {
+                copyTraced = to.index;
                 return new CopyTarget(to, !menu.getCarried().isEmpty());
             }
         }
@@ -1570,8 +1574,8 @@ public final class Hands {
 
     private void click(StandIn p, int slot, int button, ClickType type) {
         if (TRACE_CLICKS) {
-            LOG.info("click {} {} button {} {} at tick {}, carrying {}, grid {}", body.getId(), type, button, slot < 0 ? "outside"
-                    : "slot " + slot + " " + screen.getSlot(slot).getItem(), ticksLived, screen.getCarried(), gridOf(screen));
+            LOG.info("click {} {} button {} {} at tick {}, carrying {}, grid {}, copying {}", body.getId(), type, button, slot < 0 ? "outside"
+                    : "slot " + slot + " " + screen.getSlot(slot).getItem(), ticksLived, screen.getCarried(), gridOf(screen), copyTraced);
         }
         screenIdle = 0;
         if (slot >= 0 && screen.getSlot(slot).hasItem()) {
