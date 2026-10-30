@@ -920,7 +920,7 @@ public final class Brain {
             if (talk.you.length == 0) {
                 talk.you = java.util.stream.Stream.of("you", "your", "yourself").mapToInt(language.vocabulary::find).filter(w -> w >= 0).sorted().toArray();
             }
-            int[][] recalled = memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask);
+            int[][] recalled = memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask, deedTold(heard));
             int keep = 0;
             for (int r = 0; r < recalled.length; r++) {
                 int[] kept = keptTrue(heard, recalled[r]);
@@ -3884,6 +3884,19 @@ public final class Brain {
             // "they are everywhere !" to "i lost my sword ." speaks of no one said.
             return null;
         }
+        if (answer.length > 0 && answer[0] >= 0 && PLACE_WORDS.contains(language.vocabulary.word(answer[0]))
+                && heard.length > 0 && heard[heard.length - 1] != language.vocabulary.find("?")) {
+            // "behind the trees !" answers where something is, and nothing asked that.
+            return null;
+        }
+        if (answer.length > 2 && answer[0] == language.vocabulary.find("i") && answer[1] >= 0
+                && Set.of("didn't", "never", "wasn't").contains(language.vocabulary.word(answer[1]))
+                && answer[2] >= 0 && !Set.of("know", "knew", "think", "thought", "mean", "expect", "realize", "hear",
+                        "heard", "see", "seen", "been", "sure", "aware").contains(language.vocabulary.word(answer[2]))
+                && !saysAny(heard, Set.of("you", "your", "you're", "?"))) {
+            // "i didn't kill anyone !" denies what no one said it did.
+            return null;
+        }
         answer = withoutCalling(heard, answer);
         int yes = language.vocabulary.find("yes"), no = language.vocabulary.find("no");
         if (answer.length < 3 || answer[0] != yes && answer[0] != no) {
@@ -3915,6 +3928,30 @@ public final class Brain {
         }
         return answer;
     }
+
+    /** Words after "i" or "we" that tell no deed of their own. */
+    private static final Set<String> NO_DEED = Set.of("am", "'m", "was", "were", "is", "are", "have", "'ve", "had",
+            "'d", "will", "'ll", "would", "can", "could", "should", "must", "do", "did", "don't", "didn't", "just",
+            "really", "also", "think", "guess", "mean", "know", "want", "need", "feel", "like", "love", "got", "get",
+            "go", "went", "came", "still", "never", "always", "might", "may", "not", "can't", "won't");
+
+    /**
+     * The deed a line tells of what its speaker did ("i lost my sword ." gives "lost"), or -1: a
+     * statement, not a question, saying "i" or "we" first and then a telling verb.
+     */
+    private int deedTold(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        if (heard.length < 3 || heard[heard.length - 1] == v.find("?") || heard[0] < 0
+                || !Set.of("i", "we").contains(v.word(heard[0])) || heard[1] < 0) {
+            return -1;
+        }
+        String word = v.word(heard[1]);
+        return NO_DEED.contains(word) || MARKS.contains(word) ? -1 : heard[1];
+    }
+
+    /** Words a reply that only says where something is starts with. */
+    private static final Set<String> PLACE_WORDS = Set.of("behind", "over", "under", "near", "inside", "outside",
+            "beside", "upstairs", "downstairs", "somewhere", "across", "along", "past");
 
     /** What a remembered reply called the one it answered, which the one talking now may not be. */
     private static final Set<String> CALLINGS = Set.of("mom", "mum", "mommy", "dad", "daddy", "son", "honey",

@@ -127,6 +127,15 @@ final class ExchangeMemory {
      * with the word ask ("?"); answers to the other kind of line count less.
      */
     int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, int ask) {
+        return recall(heard, before, beforeShare, k, match, ask, -1);
+    }
+
+    /**
+     * As above; with a word that must have cued an answer ({@code mustCue}, the deed told in "i lost
+     * my sword ."), only answers to lines that said it come up, if any did: "i lost my sword" is not
+     * answered with what was said of a sword in a fight.
+     */
+    int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, int ask, int mustCue) {
         boolean asking = heard.length > 0 && heard[heard.length - 1] == ask;
         float[] score = new float[answers.length];
         int[] seen = new int[heard.length + before.length];
@@ -155,6 +164,13 @@ final class ExchangeMemory {
         }
         if (heardNorm == 0f) {
             return new int[0][];
+        }
+        if (mustCue >= 0 && mustCue < weight.length && weight[mustCue] > 0f && cuedBy[mustCue].length > 0) {
+            float[] only = new float[score.length];
+            for (int p : cuedBy[mustCue]) {
+                only[p] = score[p];
+            }
+            score = only;
         }
         heardNorm = (float) Math.sqrt(heardNorm);
         // A line with few telling words ("what do you see?") brings memories up only faintly.
