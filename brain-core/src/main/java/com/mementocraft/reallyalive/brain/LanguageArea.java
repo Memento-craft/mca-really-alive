@@ -28,9 +28,9 @@ import java.util.List;
  * with), adding what it hears in its own world in a small sheet of its own.
  */
 public final class LanguageArea {
-    static final int MAX_SYNAPSES = 48;
+    static final int MAX_SYNAPSES = Integer.getInteger("reallyalive.maxSynapses", 48);
     static final int CELLS_PER_FEATURE = 2;
-    static final int HISTORY = 4;
+    static final int HISTORY = 5;
     static final int MEMORY_WORDS = 16;
     /**
      * How much a brain trusts what it heard in its own world next to the shared base: a little,
@@ -39,8 +39,14 @@ public final class LanguageArea {
     static final float OWN_WEIGHT = 0.5f;
 
     /** Feature kinds, with how strongly each one's guess counts. */
-    static final int F_UNI = 0, F_BI = 1, F_TRI = 2, F_QUAD = 3, F_HEARD_START = 4, F_HEARD_BI = 5;
-    static float[] featureWeight = {0.05f, 0.5f, 2f, 8f, 2f, 2f};
+    static final int F_UNI = 0, F_BI = 1, F_TRI = 2, F_QUAD = 3, F_HEARD_START = 4, F_HEARD_BI = 5, F_QUINT = 6,
+            F_EARLIER_BI = 7;
+    static float[] featureWeight = {0.05f, 1f, 4f, 16f, 1f, 1f, 16f, 0.5f};
+
+    /** Features that come from another line than the one being said (the line answered, or the one before). */
+    static boolean fromHeard(int kind) {
+        return kind == F_HEARD_START || kind == F_HEARD_BI || kind == F_EARLIER_BI;
+    }
 
     /**
      * A sheet of context cells and their synapses onto word cells. A frozen sheet (the shared base)
@@ -92,17 +98,35 @@ public final class LanguageArea {
          * mostly noise, and dropping them roughly halves the size.
          */
         public Sheet frozen(int minCount) {
+            return frozen(minCount, MAX_SYNAPSES);
+        }
+
+        /** As {@link #frozen(int)}, keeping at most the keep strongest synapses of each cell. */
+        public Sheet frozen(int minCount, int keep) {
             Sheet f = new Sheet(Integer.numberOfTrailingZeros(cellMask + 1), true);
             IntList words = new IntList(1 << 20);
             IntList counts = new IntList(1 << 20);
+            int[] order = new int[MAX_SYNAPSES];
             for (int cell = 0; cell <= cellMask; cell++) {
                 f.start[cell] = words.size;
                 f.total[cell] = total[cell];
+                int n = 0;
                 for (int k = 0; k < size(cell); k++) {
-                    if (countAt(cell, k) >= minCount) {
-                        words.add(wordAt(cell, k));
-                        counts.add(Math.min(Character.MAX_VALUE, countAt(cell, k)));
+                    if (countAt(cell, k) < minCount) {
+                        continue;
                     }
+                    // Strongest first.
+                    int p = n++;
+                    while (p > 0 && countAt(cell, order[p - 1]) < countAt(cell, k)) {
+                        order[p] = order[p - 1];
+                        p--;
+                    }
+                    order[p] = k;
+                }
+                n = Math.min(n, keep);
+                for (int i = 0; i < n; i++) {
+                    words.add(wordAt(cell, order[i]));
+                    counts.add(Math.min(Character.MAX_VALUE, countAt(cell, order[i])));
                 }
             }
             f.start[cellMask + 1] = words.size;
@@ -269,10 +293,16 @@ public final class LanguageArea {
     private int historyLength;
     private final List<Integer> utterance = new ArrayList<>();
     private int[] heard = new int[0];
+    /** The line heard before that one. */
+    private int[] earlier = new int[0];
+    /** The remembered line was this brain's own. */
+    private boolean heardOwn;
+    private byte[] activeKinds = new byte[256];
     private long[] activeHashes = new long[256];
     private float[] activeWeights = new float[256];
     private int activeCount;
     private float[] score = new float[1024];
+    private float[] peek = new float[1024];
 
     /** An area that learns everything itself, in a sheet of 2^cellBits context cells. */
     public LanguageArea(int cellBits) {
@@ -294,7 +324,58 @@ public final class LanguageArea {
         historyLength = 0;
         utterance.clear();
         heard = new int[0];
+        earlier = new int[0];
+        heardOwn = false;
         activeCount = 0;
+    }
+
+    /** Where the area is in a conversation, to come back to after thinking a line through. */
+    public final class Place {
+        final int[] history = LanguageArea.this.history.clone();
+        final int historyLength = LanguageArea.this.historyLength;
+        final List<Integer> utterance = new ArrayList<>(LanguageArea.this.utterance);
+        final int[] heard = LanguageArea.this.heard;
+        final int[] earlier = LanguageArea.this.earlier;
+        final boolean heardOwn = LanguageArea.this.heardOwn;
+    }
+
+    public Place place() {
+        return new Place();
+    }
+
+    public void restore(Place p) {
+        System.arraycopy(p.history, 0, history, 0, HISTORY);
+        historyLength = p.historyLength;
+        utterance.clear();
+        utterance.addAll(p.utterance);
+        heard = p.heard;
+        earlier = p.earlier;
+        heardOwn = p.heardOwn;
+        activate();
+    }
+
+    /**
+     * Gets ready to start a line of its own with nobody having spoken: a fresh turn, as if the
+     * last line had just ended.
+     */
+    public void startLine() {
+        reset();
+        hear(WordCode.TURN, false);
+        // Nobody spoke, itself included, so the first words of the line are learned.
+        heardOwn = false;
+    }
+
+    /** The words of the last line heard (word ids), and whether it was this brain's own. */
+    int[] heardLine() {
+        return heard;
+    }
+
+    int[] earlierLine() {
+        return earlier;
+    }
+
+    boolean heardOwnLine() {
+        return heardOwn;
     }
 
     /** True while nothing has been heard since the last reset or turn change. */
@@ -305,8 +386,16 @@ public final class LanguageArea {
     /** Hears one word. With learn set, the synapses from the context it followed grow. */
     public void hear(String word, boolean learn) {
         int id = vocabulary.id(word);
-        if (learn) {
+        // The first word someone says after this brain's own line is not learned at all: what
+        // follows its own words across the turn is not an answer to them.
+        if (learn && !(heardOwn && utterance.isEmpty())) {
             for (int i = 0; i < activeCount; i++) {
+                // What someone says after this brain's own line is not learned as an answer to
+                // that line: a player asking the same thing again and again would otherwise teach
+                // it to answer with the question.
+                if (heardOwn && fromHeard(activeKinds[i])) {
+                    continue;
+                }
                 own.strengthen((int) activeHashes[i] & own.cellMask, id);
             }
         }
@@ -315,12 +404,19 @@ public final class LanguageArea {
         historyLength = Math.min(HISTORY, historyLength + 1);
         if (word.equals(WordCode.TURN)) {
             int from = Math.max(0, utterance.size() - MEMORY_WORDS);
+            earlier = heard;
             heard = utterance.subList(from, utterance.size()).stream().mapToInt(Integer::intValue).toArray();
+            heardOwn = !learn;
             utterance.clear();
         } else {
             utterance.add(id);
         }
         activate();
+    }
+
+    /** Forgets the words of a line that was never ended, so they are not taken as part of the next one. */
+    void dropUnended() {
+        utterance.clear();
     }
 
     /** The word this area most expects next, or null when it expects nothing. */
@@ -360,13 +456,47 @@ public final class LanguageArea {
         return score;
     }
 
+    /**
+     * What the area would expect after one more word, without hearing it: the drive onto each word
+     * cell, into a buffer of its own that the next call overwrites. Used to plan a word ahead.
+     */
+    public float[] scoresAfter(int word) {
+        int[] savedHistory = history.clone();
+        int savedLength = historyLength;
+        int savedCount = activeCount;
+        long[] savedHashes = Arrays.copyOf(activeHashes, activeCount);
+        float[] savedWeights = Arrays.copyOf(activeWeights, activeCount);
+        byte[] savedKinds = Arrays.copyOf(activeKinds, activeCount);
+        float[] savedScore = score;
+        System.arraycopy(history, 0, history, 1, HISTORY - 1);
+        history[0] = word;
+        historyLength = Math.min(HISTORY, historyLength + 1);
+        utterance.add(word);
+        activate();
+        score = peek.length < vocabulary.size() ? new float[vocabulary.size() * 2] : peek;
+        peek = scores();
+        utterance.remove(utterance.size() - 1);
+        System.arraycopy(savedHistory, 0, history, 0, HISTORY);
+        historyLength = savedLength;
+        activeCount = savedCount;
+        System.arraycopy(savedHashes, 0, activeHashes, 0, savedCount);
+        System.arraycopy(savedWeights, 0, activeWeights, 0, savedCount);
+        System.arraycopy(savedKinds, 0, activeKinds, 0, savedCount);
+        score = savedScore;
+        return peek;
+    }
+
     /** Lights the context cells for what has just been heard. */
     private void activate() {
         activeCount = 0;
         long h = 0;
         for (int order = 0; order < historyLength; order++) {
             h = mix(h * 31 + history[order] + 1);
-            feature(order, h);
+            feature(order < 4 ? order : F_QUINT, h);
+        }
+        if (heard.length == 0 && utterance.isEmpty() && historyLength > 0) {
+            // Nothing was said to it: it is opening the conversation ("look, a zombie!").
+            feature(F_HEARD_START, 0x0BE5EED5L);
         }
         for (int q : heard) {
             if (utterance.isEmpty()) {
@@ -374,6 +504,12 @@ public final class LanguageArea {
             }
             if (historyLength > 0) {
                 feature(F_HEARD_BI, mix(((long) q << 24) + history[0] + 0x3C6EF3L));
+            }
+        }
+        // The line before that one too, so the talk keeps to its topic over a few turns.
+        if (historyLength > 0) {
+            for (int q : earlier) {
+                feature(F_EARLIER_BI, mix(((long) q << 24) + history[0] + 0x7F4A7C15L));
             }
         }
     }
@@ -385,7 +521,9 @@ public final class LanguageArea {
             if (activeCount == activeHashes.length) {
                 activeHashes = Arrays.copyOf(activeHashes, activeCount * 2);
                 activeWeights = Arrays.copyOf(activeWeights, activeCount * 2);
+                activeKinds = Arrays.copyOf(activeKinds, activeCount * 2);
             }
+            activeKinds[activeCount] = (byte) kind;
             activeHashes[activeCount] = h;
             activeWeights[activeCount++] = w;
         }

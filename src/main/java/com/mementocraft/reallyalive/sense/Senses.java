@@ -16,6 +16,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -47,8 +48,18 @@ public final class Senses {
 
     private Senses() {}
 
+    /** Sky seen where a ray hits nothing: a clear day's blue. */
+    private static final int SKY = 0x78A7FF;
+    /** People (players, villagers) have no spawn egg colours: a skin and clothes tone. */
+    private static final int PERSON = 0xB08A6A;
+
     /** Casts the eye rays. Column 0 is the left edge of view, row 0 the top. */
     public static void see(LivingEntity body, double range, float[] vision) {
+        see(body, range, vision, new float[SenseLayout.COLOUR_SIZE]);
+    }
+
+    /** Casts the eye rays, also filling the colour of what each ray hits. */
+    public static void see(LivingEntity body, double range, float[] vision, float[] colour) {
         Level level = body.level();
         Vec3 eye = body.getEyePosition();
         List<Entity> nearby = level.getEntities(body, body.getBoundingBox().inflate(range),
@@ -84,13 +95,16 @@ public final class Senses {
                 float hazard = 0f;
                 float creature = 0f;
                 float climbable = 0f;
+                int rgb = SKY;
                 if (seen != null) {
                     near = (float) (1.0 - entityDist / range);
+                    rgb = colourOf(seen);
                     creature = seen instanceof LivingEntity ? 1f : 0.5f;
                     hazard = seen instanceof Enemy ? 1f : 0f;
                 } else if (block.getType() != HitResult.Type.MISS) {
                     near = (float) (1.0 - blockDist / range);
                     BlockState state = level.getBlockState(block.getBlockPos());
+                    rgb = state.getMapColor(level, block.getBlockPos()).col;
                     boolean liquid = !level.getFluidState(block.getBlockPos()).isEmpty() && state.getCollisionShape(level, block.getBlockPos()).isEmpty();
                     solid = liquid ? 0.4f : 1f;
                     hazard = isHazard(level, block.getBlockPos(), state) ? 1f : 0f;
@@ -103,8 +117,20 @@ public final class Senses {
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_HAZARD)] = hazard;
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)] = creature;
                 vision[SenseLayout.visionIndex(x, y, SenseLayout.CH_CLIMBABLE)] = climbable;
+                colour[SenseLayout.colourIndex(x, y, 0)] = (rgb >> 16 & 0xFF) / 255f;
+                colour[SenseLayout.colourIndex(x, y, 1)] = (rgb >> 8 & 0xFF) / 255f;
+                colour[SenseLayout.colourIndex(x, y, 2)] = (rgb & 0xFF) / 255f;
             }
         }
+    }
+
+    /** What colour a creature looks: its spawn egg's base colour, which is its main colour. */
+    private static int colourOf(Entity e) {
+        if (e instanceof Player || e instanceof AbstractVillager) {
+            return PERSON;
+        }
+        SpawnEggItem egg = SpawnEggItem.byId(e.getType());
+        return egg != null ? egg.getColor(0) & 0xFFFFFF : PERSON;
     }
 
     /**

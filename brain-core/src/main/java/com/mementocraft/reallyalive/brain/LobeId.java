@@ -15,7 +15,11 @@ public enum LobeId {
     // memory lobe holds recent state and binds it into memories.
     MEMORY(false, 0.95f, 4f),
     CEREBELLUM(false, 0.75f, 1f),
-    MOTOR(false, 0.70f, 1f);
+    MOTOR(false, 0.70f, 1f),
+    // The frontal part of the notebook's frontal/temporal concept system: it holds what the
+    // villager attends to and wants, so its leak is slow, and it steers the concepts and words.
+    // Last, so saved brains keep their lobe numbers.
+    FRONTAL(false, 0.93f, 1f);
 
 
     public final boolean sensory;

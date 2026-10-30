@@ -13,6 +13,8 @@ Speakers alternate, so the line after a question is its answer. The corpus mixes
     numbers, days, months and the meanings of words;
   * everyday chatter (chatter.py) about likes, experiences, wishes and favours over a large
     lexicon of common nouns, verbs and adjectives;
+  * talk about the here and now (herenow.py): what the speaker sees, smells, feels, does and
+    wants, the lines a villager's concept links fill in;
   * the hand-written conversations in dialogues.txt.
 
 Usage: generate.py OUT_FILE [DIALOGUES] [SEED] [--no-hand-written]
@@ -24,6 +26,7 @@ import sys
 import chatter
 import facts
 import grammar
+import herenow
 import trees
 
 R = random.Random()
@@ -1102,8 +1105,10 @@ def main():
                 d = grammar.told(R)
             elif r < 0.30:
                 d = facts.fact_dialogue(R)
-            elif r < 0.42:
+            elif r < 0.36:
                 d = chatter.chatter(R)
+            elif r < 0.42:
+                d = herenow.here_and_now(R)
             elif r < 0.68:
                 d = trees.tree_dialogue(R, words)
             else:

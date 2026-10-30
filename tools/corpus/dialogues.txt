@@ -427,3 +427,480 @@ they're moving!
 they dance on cold, clear nights.
 it's like magic.
 my grandmother said they were the spirits of our ancestors.
+
+# Village life: neighbours, work, trade, nights and monsters, asked the way a visitor or a
+# friend would ask.
+
+do you know the blacksmith?
+of course. everyone knows him. he's the one with the loud hammer.
+is he nice?
+he's grumpy in the morning, but he has a good heart.
+where can i find him?
+at the forge by the well. just follow the smoke.
+
+do you know the blacksmith?
+we grew up together. why?
+i need my sword fixed.
+he can do that. tell him i sent you, he might give you a better price.
+
+do you know the librarian?
+a little. she keeps to herself, mostly.
+is she friendly?
+once you get her talking about books, she never stops.
+
+do you know the farmer who lives by the river?
+old tomas? sure. he sells the best carrots in the village.
+what's he like?
+quiet, hard working. he talks more to his pigs than to people.
+
+is the cleric nice?
+very kind. she helped my mother when she was sick.
+where does she live?
+in the church on the hill. you can't miss the tower.
+
+who is that man over there?
+that's the butcher. he just moved here from the next village.
+is he nice?
+i don't know yet. he seems friendly enough.
+
+do you know anyone who sells bread?
+the baker, of course. her shop is the one that smells so good.
+is it expensive?
+not at all. three emeralds for a whole basket.
+
+i need a new pickaxe.
+the toolsmith makes good ones. his shop is past the square.
+how much does it cost?
+an iron one is about five emeralds. a stone one is cheaper.
+that's a lot.
+it will last you for months, though. it's worth it.
+
+i need a new sword.
+go to the weaponsmith. he has a whole wall of them.
+how much is a good one?
+that depends. iron is a few emeralds. diamond, you can't afford.
+ha. probably not.
+
+how much does this cost?
+four emeralds.
+that's too much. how about three?
+three and a half, and that's my last offer.
+deal.
+
+how much for the bread?
+one emerald for three loaves.
+i'll take six, then.
+here you go. enjoy.
+
+do you sell armor?
+no, but the armorer does. she's next to the blacksmith.
+is her armor any good?
+the best around. the guards all buy from her.
+
+can i trade with you?
+sure. what do you have?
+some wheat and a few carrots.
+i'll give you an emerald for twenty wheat.
+sounds fair.
+
+what do you do for work?
+i'm a farmer. wheat, carrots and potatoes, mostly.
+do you like it?
+i love it. there's nothing like watching something grow.
+what's the hardest part?
+the weather. one bad storm and a whole season is gone.
+
+what do you do for work?
+i make tools. pickaxes, axes, shovels, that sort of thing.
+is it hard work?
+the forge is hot and my arms ache by evening, but i like it.
+how long have you been doing it?
+since i was a boy. my father taught me.
+
+what's your job?
+i'm the village librarian.
+that sounds peaceful.
+it is, until the children come in after school.
+what's the best part?
+finding the right book for someone who didn't know they needed it.
+
+what's your job?
+i fish. every morning before the sun is up.
+what's the hardest part?
+getting up so early. and sometimes the fish just won't bite.
+
+do you like your job?
+most days. some days are harder than others.
+what makes them hard?
+when the customers are rude, or when nothing goes right.
+i'm sorry to hear that.
+it's alright. tomorrow is always a new day.
+
+do zombies scare you?
+of course they do. they're terrifying.
+what do you do when you see one?
+i run inside and lock the door. then i wait for morning.
+
+do zombies scare you?
+not really. i've lived here my whole life. you get used to them.
+really?
+as long as you're inside after dark, they can't get you.
+
+are you scared of the dark?
+a little. that's when the monsters come out.
+what do you do at night?
+i stay home. i light some torches and go to bed early.
+
+where do you go when it gets dark?
+home. i don't like being outside at night.
+why not?
+zombies, skeletons, spiders. the night belongs to them.
+
+where do you sleep?
+in my house, the one with the blue door.
+is it comfortable?
+it's small, but my bed is warm. that's all i need.
+
+watch out! there's a zombie behind you!
+oh no! run!
+are you okay?
+yes, i'm fine. thank you for warning me.
+do zombies scare you?
+after that? absolutely.
+
+there's a skeleton by the wall!
+stay down! its arrows can reach us here.
+what do we do?
+wait for the sun. skeletons burn in the daylight.
+
+a creeper! it's right behind the house!
+get away from it! it's going to explode!
+that was close.
+too close. look at the hole in my garden.
+
+did you hear that noise last night?
+yes. i think zombies were trying to break the door.
+were you scared?
+very. i didn't sleep at all.
+me neither.
+
+are we safe here?
+the iron golem protects the village. we're safe enough.
+what's an iron golem like?
+big, strong and gentle. it gives flowers to the children.
+
+have you seen the iron golem today?
+it was walking near the fields this morning.
+does it ever sleep?
+i don't think so. it watches over us all night.
+
+i heard there's going to be a raid.
+a raid? who told you that?
+the guard saw a pillager near the woods.
+then we should warn everyone and ring the bell.
+
+what happened to your house?
+a creeper. it blew a hole right through the wall.
+oh no. are you okay?
+i'm fine, i wasn't home. but it will take days to fix.
+i can help you if you want.
+really? thank you. that would mean a lot.
+
+it's getting dark.
+we should head back before the monsters come out.
+how far is the village?
+not far. if we hurry, we'll make it.
+
+the sun is setting.
+time to go home. i don't like being out at night.
+me neither. see you tomorrow?
+see you tomorrow. sleep well.
+
+good morning!
+good morning! did you sleep well?
+not really. the zombies were loud last night.
+they always are. at least it's sunny now.
+
+hello there!
+hello! i haven't seen you around before.
+i just arrived. i'm looking for a place to stay.
+there's a bed in the inn. tell them i sent you.
+
+hey, how are you?
+i'm good, thanks. busy day at the market.
+what are you selling?
+apples and pumpkin pie. do you want some?
+sure, i'd love a slice.
+
+how was your day?
+long. i spent all day in the fields.
+you must be tired.
+very. but the wheat is almost ready.
+
+what's your favourite food?
+pumpkin pie. my mother makes the best one in the village.
+can i try it sometime?
+come over tomorrow. she always makes too much.
+
+what's your favourite colour?
+green, like the forest in spring.
+mine is blue.
+like the sea? that's a nice one too.
+
+what's your favourite thing about the village?
+the people. everyone helps each other here.
+that's nice.
+it is. i wouldn't want to live anywhere else.
+
+do you have any family?
+two brothers and a little sister.
+do they live here too?
+my sister does. my brothers went to work in the mines.
+
+do you have children?
+a son. he's seven and he never stops running.
+that sounds like fun.
+fun and exhausting.
+
+are you married?
+yes, for ten years now. her name is lily.
+how did you meet?
+at the market. she sold me a basket of apples and i kept coming back.
+
+where are you from?
+i was born here, in this village.
+have you ever left?
+once, to visit my aunt in the desert village. it was so hot.
+
+have you ever been to the mountains?
+once, when i was young. the view was amazing.
+would you go again?
+maybe, but the climb nearly killed me.
+
+can you help me?
+of course. what do you need?
+i'm looking for the church.
+go straight past the well, then turn left. it's the tall building.
+thank you!
+you're welcome.
+
+can you help me find my cat?
+oh no. what does she look like?
+small and grey with white paws.
+i think i saw her near the bakery. let's look there.
+
+i lost my dog yesterday.
+oh no. i'm so sorry. what happened?
+he ran after a rabbit into the woods.
+have you looked for him?
+all morning. i can't find him anywhere.
+i'll help you look. dogs usually come home when they're hungry.
+
+he's brown with a white tail.
+i'll keep an eye out for him.
+thank you. i miss him so much.
+we'll find him. don't worry.
+
+i got married last week!
+congratulations! that's wonderful news!
+her name is lily.
+what a lovely name. how did you meet?
+we met at the market.
+that's so sweet. i'm happy for you both.
+
+will you come visit us?
+i'd love to. just tell me when.
+how about this weekend?
+this weekend is perfect. i'll bring a pie.
+
+i'm sad today.
+oh no. what's wrong?
+my best friend moved away.
+i'm sorry. that's really hard.
+i know. i'll miss her.
+you can still write to her. and maybe visit someday.
+
+i'm so tired.
+did you sleep badly?
+i worked all night.
+you should rest. the work will still be there tomorrow.
+
+i'm really hungry.
+there's bread in the kitchen. help yourself.
+thank you!
+take some cheese too, if you want.
+
+i don't feel well.
+oh no. do you have a fever?
+i think so. my head hurts.
+go and see the cleric. she'll know what to do.
+
+i failed my test.
+oh no. i'm sorry. what happened?
+i didn't study enough.
+then next time you'll study more. it's not the end of the world.
+
+i finally finished my house!
+that's amazing! can i see it?
+of course. come over this evening.
+i can't wait. you worked so hard on it.
+
+i found diamonds in the mine!
+no way! how many?
+three. right at the bottom.
+that's incredible. what will you make?
+a pickaxe, i think.
+
+i built a farm today.
+really? what did you plant?
+wheat and carrots.
+nice. in a few days you'll have plenty to eat.
+
+what are you doing?
+planting potatoes. do you want to help?
+sure. what do i do?
+dig a small hole, drop one in and cover it up.
+
+what are you making?
+a fence for the sheep.
+why do they need a fence?
+so they don't wander into the forest at night.
+
+why are you crying?
+my brother broke my toy.
+oh no. did you tell your mother?
+not yet.
+let's go tell her together.
+
+why are you angry?
+someone stole the apples from my cart.
+that's awful. do you know who did it?
+no, but i'll find out.
+
+can i ask you something?
+sure, go ahead.
+do you like living here?
+very much. it's quiet, the people are kind and the bread is good.
+
+what do you think about the new guard?
+he seems strict, but fair.
+i heard he's very brave.
+they say he fought off a whole group of zombies alone.
+
+what do you think of the weather?
+too much rain lately. the fields are flooded.
+will the crops be okay?
+if the sun comes out soon, yes.
+
+it's raining again.
+good. the crops need it.
+i forgot my umbrella.
+then stay here until it stops. i'll make some tea.
+
+it's so hot today.
+the hottest day of the year, i think.
+let's go swim in the river.
+good idea. i'll meet you there.
+
+it's snowing!
+finally! let's build a snowman.
+i'll get a pumpkin for his head.
+and i'll find some coal for his eyes.
+
+thanks for listening.
+anytime. that's what friends are for.
+i feel better now.
+i'm glad. come talk to me whenever you need.
+
+thanks for your help.
+no problem. i was happy to help.
+let me know if i can ever return the favour.
+i will.
+
+i'm sorry i'm late.
+that's okay. what happened?
+i overslept.
+it happens. let's get started.
+
+sorry, i didn't mean to bump into you.
+no harm done. are you okay?
+yes, i'm fine. sorry again.
+don't worry about it.
+
+well, i should get going. bye!
+bye! it was nice talking to you.
+see you later.
+see you. take care on the road.
+
+goodbye, see you tomorrow.
+goodbye! sleep well.
+
+i have to go now.
+okay. come back soon.
+i will. thanks for everything.
+anytime.
+
+what's your name?
+i'm mara. what's yours?
+i'm josh. nice to meet you.
+nice to meet you too, josh.
+
+how old are you?
+i'm thirty two.
+you look younger.
+ha, thank you. it must be all the fresh air.
+
+do you have any pets?
+a cat named whiskers. she sleeps all day.
+lucky cat.
+i know. sometimes i wish i were her.
+
+can you teach me to farm?
+of course. first you need a hoe and some seeds.
+where can i get seeds?
+break some tall grass. seeds fall out sometimes.
+
+do you know where i can buy a horse?
+nobody sells them here. you'll have to tame a wild one.
+how do i do that?
+get on it again and again until it stops throwing you off.
+
+have you seen my brother?
+he was at the tavern a little while ago.
+thanks, i'll look there.
+good luck. he was singing very loudly.
+
+what's that smell?
+the baker is making cookies.
+they smell amazing.
+let's go buy some before they're gone.
+
+do you want to come to the festival tonight?
+i'd love to! what time does it start?
+right after sunset, in the square.
+i'll be there.
+
+why is everyone so busy today?
+it's market day. traders came from the next village.
+anything good?
+there's a man selling rare flowers and strange maps.
+
+where is the nearest village?
+two days to the east, past the big lake.
+is the road safe?
+during the day, mostly. find shelter before it gets dark.
+
+is it true there's a temple in the desert?
+that's what the old traders say.
+have you ever seen it?
+no, and i don't want to. they say it's full of traps.
+
+what's in the old mine?
+nobody knows. no one has been down there in years.
+why not?
+the tunnels collapsed, and people say there are spiders down there.
+
+what do you think happens when we die?
+i don't know. my grandmother said we become stars.
+that's a nice thought.
+i like to believe it.

@@ -1,0 +1,427 @@
+# What every villager knows from growing up: one plain fact per line, words split by spaces.
+# Counts
+a spider has eight legs .
+a bird has two legs .
+a dog has four legs .
+a cat has four legs .
+a horse has four legs .
+a cow has four legs .
+a pig has four legs .
+a sheep has four legs .
+a chicken has two legs .
+an ant has six legs .
+a bee has six legs .
+an insect has six legs .
+a person has two legs .
+a person has two arms .
+a person has two eyes .
+a person has two ears .
+a person has one nose .
+a person has ten fingers .
+a person has ten toes .
+a hand has five fingers .
+a foot has five toes .
+a car has four wheels .
+a bike has two wheels .
+a cart has four wheels .
+a wagon has four wheels .
+a triangle has three sides .
+a square has four sides .
+a week has seven days .
+there are seven days in a week .
+a year has twelve months .
+there are twelve months in a year .
+a day has twenty four hours .
+an hour has sixty minutes .
+a minute has sixty seconds .
+a year has four seasons .
+the four seasons are spring , summer , autumn and winter .
+an octopus has eight arms .
+a snake has no legs .
+a fish has no legs .
+a dozen is twelve .
+a pair is two .
+# Colours
+snow is white .
+milk is white .
+coal is black .
+the sky is blue .
+the sea is blue .
+grass is green .
+leaves are green .
+leaves turn red and yellow in autumn .
+blood is red .
+a tomato is red .
+an apple is red or green .
+a banana is yellow .
+a lemon is yellow .
+an orange is orange .
+a carrot is orange .
+a pumpkin is orange .
+the sun is yellow .
+gold is yellow .
+a crow is black .
+a swan is white .
+a frog is green .
+wheat is golden when it is ripe .
+lava is orange and hot .
+emeralds are green .
+diamonds are light blue .
+redstone is red .
+iron is grey .
+stone is grey .
+sand is yellow .
+dirt is brown .
+wood is brown .
+clay is grey .
+a pig is pink .
+a cow is black and white .
+a creeper is green .
+a zombie is green .
+the moon is white .
+# What animals do and eat
+a cow gives milk .
+a chicken lays eggs .
+a sheep gives wool .
+a bee makes honey .
+a spider spins webs .
+a dog barks .
+a cat says meow .
+a cow says moo .
+a pig says oink .
+a sheep says baa .
+a bird can fly .
+a fish can swim .
+a fish lives in water .
+a bird lives in a nest .
+a bee lives in a hive .
+a rabbit eats carrots .
+a cow eats grass .
+a sheep eats grass .
+a horse eats hay .
+a dog eats meat .
+a cat eats fish .
+a pig eats carrots and potatoes .
+a chicken eats seeds .
+a wolf hunts sheep .
+a fox eats chickens .
+a parrot eats seeds .
+a cat catches mice .
+an owl hunts at night .
+bats sleep in the day and fly at night .
+# Plants and food
+bread is made from wheat .
+cake is made from wheat , sugar , eggs and milk .
+cheese is made from milk .
+butter is made from milk .
+flour is made from wheat .
+sugar comes from sugar cane .
+wine is made from grapes .
+cider is made from apples .
+honey comes from bees .
+eggs come from chickens .
+wool comes from sheep .
+leather comes from cows .
+seeds grow into plants .
+plants need water and light to grow .
+trees grow from seeds .
+apples grow on trees .
+carrots grow in the ground .
+potatoes grow in the ground .
+wheat grows in fields .
+pumpkins grow on the ground .
+mushrooms grow in dark places .
+cactus grows in the desert .
+crops grow faster with bone meal .
+crops need water nearby .
+# Weather, nature and time
+rain falls from clouds .
+snow falls in winter .
+it is hot in summer .
+it is cold in winter .
+flowers bloom in spring .
+the sun rises in the east .
+the sun sets in the west .
+the sun shines in the day .
+the moon shines at night .
+it is dark at night .
+ice is frozen water .
+water turns to ice when it is cold .
+ice melts when it is warm .
+fire is hot .
+ice is cold .
+water is wet .
+lava is very hot .
+fire needs wood to burn .
+smoke comes from fire .
+thunder comes after lightning .
+a rainbow comes after rain .
+wind blows the clouds .
+rivers flow to the sea .
+the sea is salty .
+river water is fresh .
+mountains are high .
+caves are dark .
+the desert is hot and dry .
+a forest has many trees .
+a swamp is wet .
+the night comes after the day .
+morning comes before noon .
+evening comes after noon .
+# Things and what they are for
+a hammer is for nails .
+an axe is for chopping wood .
+a pickaxe is for mining stone .
+a shovel is for digging dirt .
+a hoe is for the soil .
+a sword is for fighting .
+a bow shoots arrows .
+a shield blocks attacks .
+a bucket carries water .
+a boat floats on water .
+a bed is for sleeping .
+a chest holds items .
+a furnace melts ore .
+a crafting table is for crafting .
+an anvil repairs tools .
+a torch gives light .
+a lantern gives light .
+a door keeps the cold out .
+a fence keeps animals in .
+a well gives water .
+a mill turns wheat into flour .
+a key opens a lock .
+a needle is for sewing .
+a pen is for writing .
+a book is for reading .
+a map shows the way .
+a compass points the way home .
+a clock tells the time .
+a ladder is for climbing .
+a saddle is for riding .
+shears cut wool from sheep .
+a fishing rod catches fish .
+a brush is for cleaning .
+a broom is for sweeping .
+a pot is for cooking .
+a knife is for cutting .
+a spoon is for eating soup .
+a cup is for drinking .
+glass is made from sand .
+bricks are made from clay .
+paper is made from sugar cane .
+charcoal is made from wood .
+iron comes from iron ore .
+gold comes from gold ore .
+tools wear out with use .
+diamond tools are the strongest .
+wooden tools are the weakest .
+iron is stronger than stone .
+stone is stronger than wood .
+diamond is harder than iron .
+# People and jobs
+a farmer grows crops .
+a baker makes bread .
+a butcher sells meat .
+a fisherman catches fish .
+a blacksmith makes tools and weapons .
+a smith works with iron .
+a mason works with stone .
+a librarian keeps books .
+a cleric heals people .
+a priest works in the church .
+a shepherd looks after sheep .
+a cartographer makes maps .
+a fletcher makes arrows .
+a leatherworker makes leather goods .
+a guard protects the village .
+a teacher teaches children .
+a doctor helps sick people .
+a merchant sells goods .
+a miner digs for ore .
+a carpenter works with wood .
+a tailor makes clothes .
+a cook makes food .
+a mother is a parent .
+a father is a parent .
+babies grow into children .
+children grow into adults .
+people sleep at night .
+people eat when they are hungry .
+people drink when they are thirsty .
+people rest when they are tired .
+people wear coats when it is cold .
+# Minecraft world
+zombies burn in the sun .
+skeletons burn in the sun .
+creepers explode .
+creepers are afraid of cats .
+spiders climb walls .
+an enderman hates water .
+an enderman carries blocks .
+an enderman can vanish and appear somewhere else .
+do not look an enderman in the eyes .
+phantoms come when you do not sleep .
+an iron golem protects the village .
+an iron golem is made of iron .
+a snow golem is made of snow .
+monsters come out at night .
+monsters appear in the dark .
+torches keep monsters away .
+zombies attack villagers .
+pillagers attack villages .
+the underworld is very hot .
+the underworld is full of lava .
+water dries up in the underworld .
+the end is far away .
+the ender dragon lives in the end .
+a portal to the underworld is made of black stone .
+diamonds are found deep underground .
+coal is found in stone .
+iron is found in caves .
+gold is found deep underground .
+emeralds are found in the mountains .
+emeralds are money for villagers .
+villagers trade emeralds .
+villagers sleep in beds .
+villagers work at their job site .
+a bell is in the middle of the village .
+the bell rings when raiders come .
+bees make honey in hives .
+you can tame a wolf with bones .
+you can tame a cat with fish .
+you can tame a horse by riding it .
+sheep can be dyed .
+cows can be milked with a bucket .
+a chicken can lay an egg .
+squids live in the sea .
+dolphins live in the sea .
+turtles lay eggs on the beach .
+foxes sleep in the day .
+polar bears live in the snow .
+camels live in the desert .
+llamas spit .
+goats live in the mountains .
+goats can ram you .
+slimes live in swamps .
+witches live in the swamp .
+a creeper has no arms .
+a zombie has two arms .
+a skeleton shoots arrows .
+a skeleton has a bow .
+webs slow you down .
+falling into lava is deadly .
+falling from high places hurts .
+soul sand slows you down .
+ice is slippery .
+sand falls when nothing is under it .
+gravel falls when nothing is under it .
+water flows downhill .
+lava flows slowly .
+a bed in the underworld explodes .
+# Kinds of things
+a wolf is an animal .
+a cow is an animal .
+a pig is an animal .
+a sheep is an animal .
+a horse is an animal .
+a chicken is a bird .
+a cat is an animal .
+a dog is an animal .
+a fish is an animal .
+a bear is an animal .
+a fox is an animal .
+a rabbit is an animal .
+an apple is a fruit .
+a pear is a fruit .
+a cherry is a fruit .
+a melon is a fruit .
+a carrot is a vegetable , not a fruit .
+a potato is a vegetable , not a fruit .
+a beet is a vegetable , not a fruit .
+wheat is a grain .
+a rose is a flower .
+an oak is a tree .
+a stone is not a fruit .
+a rock is not an animal .
+a chair is not an animal .
+a zombie is a monster .
+a skeleton is a monster .
+a creeper is a monster .
+a spider is a monster .
+iron is a metal .
+gold is a metal .
+copper is a metal .
+a diamond is a gem .
+an emerald is a gem .
+# What things can and can't do
+pigs can't fly .
+cows can't fly .
+fish can't walk .
+birds can fly .
+fish can swim .
+a stone can't swim .
+creepers are dangerous .
+zombies are dangerous .
+skeletons are dangerous .
+a sheep is not dangerous .
+# How to get things
+to get iron , you mine iron ore with a stone pickaxe .
+to get coal , you mine coal ore with a pickaxe .
+to get wood , you chop a tree with an axe .
+to get wool , you shear a sheep .
+to get milk , you milk a cow with a bucket .
+to get eggs , you keep chickens .
+to get food , you farm , fish or hunt .
+to get emeralds , you trade with villagers .
+to get stone , you mine it with a pickaxe .
+to get honey , you use a bottle on a hive .
+# What to do
+if you are hungry , you should eat some food .
+if you are cold , you should sit by a fire .
+if you are tired , you should sleep in a bed .
+if you are lost , you should follow the road home .
+if you are hurt , you should rest and eat .
+if it gets dark , you should go inside .
+if you see a creeper , you should run away .
+if you are thirsty , you should drink some water .
+you need a bed to sleep at night .
+the opposite of hot is cold .
+the opposite of up is down .
+the opposite of big is small .
+the opposite of old is young .
+the opposite of day is night .
+the opposite of left is right .
+the opposite of fast is slow .
+the opposite of happy is sad .
+the opposite of open is closed .
+the opposite of light is dark .
+the opposite of full is empty .
+the opposite of yes is no .
+the opposite of in is out .
+the opposite of wet is dry .
+the opposite of tall is short .
+the opposite of good is bad .
+the opposite of rich is poor .
+the opposite of north is south .
+the opposite of east is west .
+a whale is a sea animal , not a fish .
+summer comes after spring .
+autumn comes after summer .
+winter comes after autumn .
+spring comes after winter .
+autumn comes before winter .
+spring comes before summer .
+summer comes before autumn .
+winter comes before spring .
+snow is cold .
+you use a shovel to dig .
+you use a knife to cut bread .
+you use an axe to chop wood .
+you use a pickaxe to mine stone .
+you use a hoe to till the soil .
+you use a bucket to carry water .
+you use a bow to shoot arrows .
+you use a fishing rod to catch fish .
+you use shears to cut wool from sheep .
+there are twenty four hours in a day .

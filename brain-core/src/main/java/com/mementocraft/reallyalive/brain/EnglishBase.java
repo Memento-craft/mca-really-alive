@@ -57,10 +57,15 @@ public final class EnglishBase {
 
     /** Freezes a trained area's sheet, keeping synapses grown at least minCount times, and saves it. */
     public static void write(LanguageArea trained, int minCount, OutputStream out) throws IOException {
+        write(trained, minCount, LanguageArea.MAX_SYNAPSES, out);
+    }
+
+    /** As above, keeping at most the keep strongest synapses of each context cell. */
+    public static void write(LanguageArea trained, int minCount, int keep, OutputStream out) throws IOException {
         GZIPOutputStream zip = new GZIPOutputStream(new BufferedOutputStream(out));
         DataOutputStream o = new DataOutputStream(zip);
         trained.vocabulary.write(o, 0);
-        trained.own.frozen(minCount).write(o);
+        trained.own.frozen(minCount, keep).write(o);
         o.flush();
         zip.finish();
         zip.flush();

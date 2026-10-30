@@ -13,6 +13,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -44,6 +45,23 @@ public final class SpeechTests {
         BrainManager.Handle handle = attach(h, v);
         handle.hold(MotorCommand.IDLE);
         return handle;
+    }
+
+    /**
+     * Naming: with another villager near, a brain villager looking at a cow is now and then told the
+     * word "cow", the way parents name things for a child, so it can link the word to what its
+     * concept lobe holds.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1200)
+    public static void villagersAreToldWhatTheyAreLookingAt(GameTestHelper h) {
+        Villager v = spawnMcaVillager(h, new Vec3(3.5, 2, 12.5));
+        BrainManager.Handle handle = listener(h, v);
+        spawnMcaVillager(h, new Vec3(3.5, 2, 10.5));
+        h.spawnWithNoFreeWill(EntityType.COW, new Vec3(7.5, 2, 12.5));
+        h.succeedWhen(() -> {
+            v.setXRot(0f);
+            h.assertTrue(handle.frame().named.contains("cow"), "not told \"cow\" yet");
+        });
     }
 
     @GameTest(template = ARENA, timeoutTicks = 100)
@@ -332,6 +350,214 @@ public final class SpeechTests {
                         h.fail("never answered hello: " + answers);
                     }
                 }
+            }
+        });
+    }
+
+    /**
+     * A villager knows who it is: asked its name it gives the name MCA gave it, and asked its work
+     * it gives its profession. Runs in its own batch: villagers of other tests talking within earshot
+     * mix their words into the question it hears.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 900, batch = "self_knowledge")
+    public static void villagerSaysItsNameAndWork(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        v.setVillagerData(v.getVillagerData().setProfession(net.minecraft.world.entity.npc.VillagerProfession.FARMER));
+        if (!v.hasCustomName()) {
+            v.setCustomName(net.minecraft.network.chat.Component.literal("Tibbs"));
+        }
+        // Heard and said as words: "Jin-Woo" is "jin woo".
+        String name = String.join(" ", WordCode.tokenize(v.getCustomName().getString().trim().split("\\s+")[0]));
+        BrainManager.Handle handle = attach(h, v);
+        String[] questions = {"what's your name?", "what do you do for work?"};
+        String[] expected = {name, "farmer"};
+        List<List<String>> answers = List.of(new java.util.ArrayList<>(), new java.util.ArrayList<>());
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t < 0) {
+                return;
+            }
+            int q = t / 400;
+            if (t % 400 == 0 && q < 2) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), questions[q]);
+            }
+            // Other tests' villagers may talk nearby too, so every line it says after the
+            // question counts, not just the last one.
+            if (q < 2 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.get(q).add(handle.lastLine());
+            }
+            if (t % 400 == 399 && q < 2) {
+                LOG.info("self benchmark: asked \"{}\", the villager ({}) answered {}", questions[q], name, answers.get(q));
+                if (q == 1) {
+                    for (int i = 0; i < 2; i++) {
+                        String want = expected[i];
+                        h.assertTrue(answers.get(i).stream().anyMatch(a -> a.toLowerCase().contains(want)),
+                                "asked \"" + questions[i] + "\" it said " + answers.get(i) + ", not " + want);
+                    }
+                    h.succeed();
+                }
+            }
+        });
+    }
+
+    /**
+     * A villager knows its family as MCA's family tree has it: made the child of "Rosa" in the
+     * tree, asked "who is your mother?" it says "rosa is my mother .". Its own batch, as above.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "family")
+    public static void villagerKnowsItsMotherFromTheFamilyTree(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        try {
+            Class<?> treeClass = Class.forName("net.conczin.mca.server.world.data.FamilyTree");
+            Object tree = treeClass.getMethod("get", net.minecraft.server.level.ServerLevel.class).invoke(null, h.getLevel());
+            Object child = treeClass.getMethod("getOrCreate", net.minecraft.world.entity.Entity.class).invoke(tree, v);
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Object female = Enum.valueOf((Class) Class.forName("net.conczin.mca.entity.ai.relationship.Gender"), "FEMALE");
+            Object mother = treeClass.getMethod("getOrCreate", java.util.UUID.class, String.class, female.getClass())
+                    .invoke(tree, java.util.UUID.randomUUID(), "Rosa", female);
+            child.getClass().getMethod("setMother", mother.getClass()).invoke(child, mother);
+        } catch (ReflectiveOperationException e) {
+            h.fail("could not reach MCA's family tree: " + e);
+            return;
+        }
+        com.mementocraft.reallyalive.sense.Naming.whoItIs(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "who is your mother?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("family benchmark: asked \"who is your mother?\", the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("rosa")),
+                        "asked \"who is your mother?\" it said " + answers + ", not rosa");
+                h.succeed();
+            }
+        });
+    }
+
+    /** Asked "what time is it?" in the evening, a villager says it's evening. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "time_of_day")
+    public static void villagerKnowsTheTimeOfDay(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        long before = h.getLevel().getDayTime();
+        h.getLevel().setDayTime(before - Math.floorMod(before, 24000L) + 12500);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        com.mementocraft.reallyalive.sense.Naming.whoItIs(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "what time is it?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("time benchmark: asked \"what time is it?\" in the evening, the villager answered {}", answers);
+                h.getLevel().setDayTime(before);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("evening")),
+                        "asked \"what time is it?\" in the evening it said " + answers);
+                h.succeed();
+            }
+        });
+    }
+
+    /** Given three bread, asked "do you have any bread?", a villager says yes. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "carrying")
+    public static void villagerKnowsWhatItCarries(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        v.getInventory().addItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BREAD, 3));
+        com.mementocraft.reallyalive.sense.Naming.worldAround(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "do you have any bread?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("carrying benchmark: asked \"do you have any bread?\" with three bread, the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().startsWith("yes")),
+                        "asked \"do you have any bread?\" with three bread it said " + answers);
+                h.succeed();
+            }
+        });
+    }
+
+    /** With two cows in sight, asked "how many cows are there?", a villager says two. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "around")
+    public static void villagerCountsTheCreaturesItSees(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        for (Vec3 at : new Vec3[] {new Vec3(15.5, 2, 12.5), new Vec3(15.5, 2, 14.5)}) {
+            net.minecraft.world.entity.Mob cow = (net.minecraft.world.entity.Mob) h.spawn(EntityType.COW, at);
+            cow.setNoAi(true);
+        }
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                com.mementocraft.reallyalive.sense.Naming.worldAround(v, handle.brain());
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(-1.5, 0, 0), "how many cows are there?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("around benchmark: asked \"how many cows are there?\" with two cows in sight, the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("two cows")),
+                        "asked \"how many cows are there?\" with two cows in sight it said " + answers);
+                h.succeed();
+            }
+        });
+    }
+
+    /** Asked "how do i make bread?", a villager says it takes wheat, from the game's recipes. Its own batch, as above. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = "recipes")
+    public static void villagerKnowsHowThingsAreMade(GameTestHelper h) {
+        BrainManager.get().setLockstep(true);
+        Villager v = spawnMcaVillager(h, new Vec3(12.5, 2, 12.5));
+        BrainManager.Handle handle = attach(h, v);
+        com.mementocraft.reallyalive.sense.Naming.worldAround(v, handle.brain());
+        List<String> answers = new java.util.ArrayList<>();
+        int[] seen = {0};
+        h.onEachTick(() -> {
+            int t = (int) h.getTick() - 20;
+            if (t == 0) {
+                Speech.playerSays(h.getLevel(), v.getEyePosition().add(1.5, 0, 0), "how do i make bread?");
+            }
+            if (t > 0 && handle.lines() > seen[0]) {
+                seen[0] = handle.lines();
+                answers.add(handle.lastLine());
+            }
+            if (t == 400) {
+                LOG.info("recipe benchmark: asked \"how do i make bread?\", the villager answered {}", answers);
+                h.assertTrue(answers.stream().anyMatch(a -> a.toLowerCase().contains("three wheat")),
+                        "asked \"how do i make bread?\" it said " + answers);
+                h.succeed();
             }
         });
     }

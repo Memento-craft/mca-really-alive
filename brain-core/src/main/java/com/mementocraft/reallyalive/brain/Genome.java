@@ -32,7 +32,9 @@ public final class Genome {
         lobe[LobeId.OLFACTORY.ordinal()] = 0.04f;
         lobe[LobeId.OCCIPITAL.ordinal()] = 0.16f;
         lobe[LobeId.FEELY.ordinal()] = 0.06f;
-        lobe[LobeId.CONCEPT.ordinal()] = 0.25f;
+        // The concept system: frontal/temporal in the notebook, its frontal part a lobe of its own.
+        lobe[LobeId.CONCEPT.ordinal()] = 0.19f;
+        lobe[LobeId.FRONTAL.ordinal()] = 0.06f;
         lobe[LobeId.EMOTION.ordinal()] = 0.06f;
         lobe[LobeId.WERNICKE.ordinal()] = 0.06f;
         lobe[LobeId.MEMORY.ordinal()] = 0.14f;

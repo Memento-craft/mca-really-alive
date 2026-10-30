@@ -17,6 +17,7 @@ import com.mementocraft.reallyalive.brain.SensoryFrame;
 import com.mementocraft.reallyalive.brain.WordCode;
 import com.mementocraft.reallyalive.mixin.MobAccessor;
 import com.mementocraft.reallyalive.sense.Hearing;
+import com.mementocraft.reallyalive.sense.Naming;
 import com.mementocraft.reallyalive.sense.Senses;
 import com.mementocraft.reallyalive.speech.Speech;
 import com.mojang.logging.LogUtils;
@@ -86,6 +87,9 @@ public final class BrainManager {
         final JumpControl originalJump;
         final SensoryFrame frame = new SensoryFrame();
         final float[] vision = new float[frame.vision.length];
+        final float[] colour = new float[frame.colour.length];
+        /** Someone to talk to is near, checked now and then. */
+        boolean company;
         final float[] scent = new float[OlfactoryChannel.COUNT];
         CompletableFuture<MotorCommand> pending;
         MotorCommand command = MotorCommand.IDLE;
@@ -237,6 +241,8 @@ public final class BrainManager {
             brain = Brain.create(Genome.fromArray(data.genome()), v.getUUID().getMostSignificantBits(), maturity(v));
         }
 
+        Naming.whoItIs(v, brain);
+
         PlayerInputMoveControl move = new PlayerInputMoveControl(v);
         Handle h = new Handle(v.getUUID(), brain, move, v.getMoveControl(), v.getLookControl(), v.getJumpControl());
         MobAccessor body = (MobAccessor) v;
@@ -345,9 +351,14 @@ public final class BrainManager {
         SensoryFrame f = h.frame;
         f.clear();
         if (h.age % Config.VISION_INTERVAL.get() == 0) {
-            Senses.see(v, Config.VISION_RANGE.get(), h.vision);
+            Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour);
         }
         System.arraycopy(h.vision, 0, f.vision, 0, h.vision.length);
+        System.arraycopy(h.colour, 0, f.colour, 0, h.colour.length);
+        if (h.age % 10 == 0) {
+            h.company = Naming.someoneNear(v);
+        }
+        f.company = h.company ? 1f : 0f;
         Senses.feel(v, f);
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
@@ -362,11 +373,34 @@ public final class BrainManager {
             }
         }
         feelings(v, h, f);
+        if (Config.NAMING.get()) {
+            Naming.name(v, f);
+        }
         if (h.age % 200 == 0) {
             h.brain.grow(maturity(v), 5);
         }
+        if (h.age % 1200 == 0) {
+            // Its name or work may have changed since it was last told.
+            Naming.whoItIs(v, h.brain);
+        } else if (h.age % 200 == 0) {
+            // The time and the weather change more often.
+            Naming.worldAround(v, h.brain);
+        }
         Brain brain = h.brain;
-        h.pending = CompletableFuture.supplyAsync(() -> brain.step(f), workers);
+        h.pending = CompletableFuture.supplyAsync(() -> stepSafely(brain, f, v), workers);
+    }
+
+    /**
+     * One step of a brain; a fault in it (a bug) is logged and the villager stands idle for that
+     * tick, rather than the fault reaching the server thread.
+     */
+    private static MotorCommand stepSafely(Brain brain, SensoryFrame f, Villager v) {
+        try {
+            return brain.step(f);
+        } catch (RuntimeException e) {
+            LOG.error("Brain of villager {} failed a step", v.getUUID(), e);
+            return MotorCommand.IDLE;
+        }
     }
 
     /**
