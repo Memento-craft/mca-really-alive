@@ -1427,7 +1427,8 @@ public final class Brain {
             toldLineAsHeard = null;
             return new int[0];
         }
-        int[] ordered = withoutThen(inOrder(heard));
+        int[] chained = firstInChain(heard);
+        int[] ordered = chained != null ? chained : withoutThen(inOrder(heard));
         if (ordered != null) {
             // "tom fed the pigs." "then he milked the cow.": "what did tom do first?" "tom fed
             // the pigs ."; "what did he do after he fed the pigs?" "he milked the cow ."
@@ -2099,6 +2100,18 @@ public final class Brain {
     private int[] worked(int[] heard) {
         if (heard.length < 4 || heard[0] < 0 || !Set.of("what", "what's", "how", "whats").contains(language.vocabulary.word(heard[0]))) {
             return null;
+        }
+        for (int i = 1; i + 2 < heard.length; i++) {
+            // "what is half of ten?" "half of ten is five ."; "what is double four?"
+            String w = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
+            boolean half = w.equals("half") && heard[i + 1] == language.vocabulary.find("of");
+            int at = half ? i + 2 : i + 1;
+            int a = at < heard.length && heard[at] >= 0 ? number(language.vocabulary.word(heard[at])) : -1;
+            if (a >= 0 && (half && a % 2 == 0 || Set.of("double", "twice").contains(w))) {
+                int[] said = join(Arrays.copyOfRange(heard, i, at + 1), new int[] {language.vocabulary.find("is"),
+                    numberWord(half ? a / 2 : a * 2), language.vocabulary.find(".")});
+                return said[said.length - 2] < 0 ? null : said;
+            }
         }
         for (int i = 1; i + 1 < heard.length; i++) {
             if (heard[i - 1] < 0 || heard[i] < 0 || heard[i + 1] < 0) {
@@ -3699,6 +3712,67 @@ public final class Brain {
             return null;
         }
         return heard[end - 1] == first ? theirs.get(0) : theirs.get(theirs.size() - 1);
+    }
+
+    /**
+     * "who came first?" after "ivy came after leo ." "leo came after zed .": the one nothing was
+     * told to come before, worked out from what was told of the order, not from the order it was
+     * told in: "zed came first ."; null if it is no such question or what was told doesn't settle it.
+     */
+    private int[] firstInChain(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<String> q = wordsOf(heard);
+        if (q.size() != 4 || !Set.of("who", "what", "which").contains(q.get(0)) || !q.get(3).equals("?")
+                || !Set.of("first", "last").contains(q.get(2))) {
+            return null;
+        }
+        String verb = q.get(1);
+        int before = v.find("before"), after = v.find("after");
+        List<int[]> earlier = new ArrayList<>();
+        java.util.Map<Integer, int[]> named = new java.util.HashMap<>();
+        for (int k = 2; k <= TOLD_LINES && k <= heardLinesNext; k++) {
+            int[] line = heardLines[(heardLinesNext - k) % heardLines.length];
+            if (line == null || line.length < 4 || line[line.length - 1] == v.find("?")) {
+                continue;
+            }
+            for (int i = 2; i + 1 < line.length; i++) {
+                if ((line[i] == before || line[i] == after) && line[i - 1] >= 0 && v.word(line[i - 1]).equals(verb)) {
+                    int one = thingAt(line, i - 2, -1), other = thingAt(line, i + 1, 1);
+                    if (one >= 0 && other >= 0 && one != other) {
+                        earlier.add(line[i] == before ? new int[] {one, other} : new int[] {other, one});
+                        // How each was said, with its "the": "the miller woke first ."
+                        for (int j = 1; j < line.length; j++) {
+                            if ((line[j] == one || line[j] == other) && line[j - 1] >= 0
+                                    && Set.of("the", "my", "your", "our").contains(v.word(line[j - 1]))) {
+                                named.putIfAbsent(line[j], new int[] {line[j - 1], line[j]});
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (earlier.size() < 2) {
+            return null;
+        }
+        boolean first = q.get(2).equals("first");
+        int found = -1;
+        for (int[] e : earlier) {
+            int one = first ? e[0] : e[1];
+            boolean beaten = false;
+            for (int[] f : earlier) {
+                beaten |= (first ? f[1] : f[0]) == one;
+            }
+            if (!beaten) {
+                if (found >= 0 && found != one) {
+                    return null;
+                }
+                found = one;
+            }
+        }
+        if (found < 0) {
+            return null;
+        }
+        return join(named.getOrDefault(found, new int[] {found}), new int[] {heard[1], heard[2], v.find(".")});
     }
 
     /** The line of a story that says most of what an event says (at least one telling word), other than skip; -1 if none. */
