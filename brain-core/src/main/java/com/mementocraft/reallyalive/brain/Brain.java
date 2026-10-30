@@ -3936,17 +3936,27 @@ public final class Brain {
             "go", "went", "came", "still", "never", "always", "might", "may", "not", "can't", "won't");
 
     /**
-     * The deed a line tells of what its speaker did ("i lost my sword ." gives "lost"), or -1: a
-     * statement, not a question, saying "i" or "we" first and then a telling verb.
+     * The deed a line tells of ("i lost my sword ." gives "lost", "a wolf chased the sheep ."
+     * the doer and "chased"), or nothing: a statement, not a question, saying who did it first and then a telling verb.
      */
-    private int deedTold(int[] heard) {
+    private int[] deedTold(int[] heard) {
         Vocabulary v = language.vocabulary;
-        if (heard.length < 3 || heard[heard.length - 1] == v.find("?") || heard[0] < 0
-                || !Set.of("i", "we").contains(v.word(heard[0])) || heard[1] < 0) {
-            return -1;
+        if (heard.length < 3 || heard[heard.length - 1] == v.find("?") || heard[0] < 0) {
+            return new int[0];
         }
-        String word = v.word(heard[1]);
-        return NO_DEED.contains(word) || MARKS.contains(word) ? -1 : heard[1];
+        String first = v.word(heard[0]);
+        int at = Set.of("i", "we", "he", "she", "they").contains(first) ? 1
+                : Set.of("the", "a", "an", "my", "our", "his", "her", "their").contains(first) ? 2 : -1;
+        if (at < 0 || at >= heard.length - 1 || heard[at] < 0) {
+            return new int[0];
+        }
+        String word = v.word(heard[at]);
+        if (NO_DEED.contains(word) || MARKS.contains(word)) {
+            return new int[0];
+        }
+        // Of a thing or someone named, a line about the same doer: what was said of "i sold ..."
+        // speaks to the one who sold.
+        return at == 2 ? new int[] {heard[1], heard[at]} : new int[] {heard[at]};
     }
 
     /** Words a reply that only says where something is starts with. */

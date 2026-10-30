@@ -127,15 +127,15 @@ final class ExchangeMemory {
      * with the word ask ("?"); answers to the other kind of line count less.
      */
     int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, int ask) {
-        return recall(heard, before, beforeShare, k, match, ask, -1);
+        return recall(heard, before, beforeShare, k, match, ask, new int[0]);
     }
 
     /**
-     * As above; with a word that must have cued an answer ({@code mustCue}, the deed told in "i lost
-     * my sword ."), only answers to lines that said it come up, if any did: "i lost my sword" is not
-     * answered with what was said of a sword in a fight.
+     * As above; with words that must all have cued an answer ({@code mustCue}, the deed told in "i
+     * lost my sword ."), only answers to lines that said them come up, if any did: "i lost my sword"
+     * is not answered with what was said of a sword in a fight.
      */
-    int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, int ask, int mustCue) {
+    int[][] recall(int[] heard, int[] before, float beforeShare, int k, float[] match, int ask, int[] mustCue) {
         boolean asking = heard.length > 0 && heard[heard.length - 1] == ask;
         float[] score = new float[answers.length];
         int[] seen = new int[heard.length + before.length];
@@ -165,12 +165,25 @@ final class ExchangeMemory {
         if (heardNorm == 0f) {
             return new int[0][];
         }
-        if (mustCue >= 0 && mustCue < weight.length && weight[mustCue] > 0f && cuedBy[mustCue].length > 0) {
-            float[] only = new float[score.length];
-            for (int p : cuedBy[mustCue]) {
-                only[p] = score[p];
+        if (mustCue.length > 0) {
+            int[] times = new int[score.length];
+            boolean any = false;
+            boolean telling = true;
+            for (int w : mustCue) {
+                telling &= w >= 0 && w < weight.length && weight[w] > 0f;
+                if (telling) {
+                    for (int p : cuedBy[w]) {
+                        any |= ++times[p] == mustCue.length;
+                    }
+                }
             }
-            score = only;
+            if (telling && any) {
+                float[] only = new float[score.length];
+                for (int p = 0; p < score.length; p++) {
+                    only[p] = times[p] == mustCue.length ? score[p] : 0f;
+                }
+                score = only;
+            }
         }
         heardNorm = (float) Math.sqrt(heardNorm);
         // A line with few telling words ("what do you see?") brings memories up only faintly.
