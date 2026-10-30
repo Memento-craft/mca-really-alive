@@ -2161,7 +2161,8 @@ public final class WorkLearningTests {
                 regrow(h, v);
                 int made = carried(v, crank.get());
                 if (made > 0) {
-                    cranks[0] += made;
+                    // Counted below from what came out of the result slot: a crank put back in the
+                    // grid or set down in the world was made all the same.
                     v.getInventory().removeItemType(crank.get(), 64);
                     if (v.getMainHandItem().is(crank.get())) {
                         v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
@@ -2183,6 +2184,7 @@ public final class WorkLearningTests {
                     handedBack[0]++;
                 }
             }
+            cranks[0] = handle.hands().madeKinds.getOrDefault(crank.get(), 0);
             if (tick[0] % WINDOW == 0) {
                 LOG.info("{} newborn {}: by tick {}: cranks made {}; at the table {} times, {} ticks; screens {}, clicks {}, results formed {}, made {};"
                                 + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}; watched {}, moves copied {} (got to each {}); made kinds {}", name, which, tick[0], cranks[0],
