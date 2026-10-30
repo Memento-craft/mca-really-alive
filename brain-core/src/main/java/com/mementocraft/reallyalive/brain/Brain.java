@@ -1236,6 +1236,20 @@ public final class Brain {
             toldSure = true;
             return new int[0];
         }
+        int comma = indexOf(heard, language.vocabulary.find(","), 0);
+        if (comma > 2 && comma <= 4 && heard[heard.length - 1] == ask && heard[comma - 1] >= 0
+                && language.vocabulary.word(heard[comma - 1]).endsWith("est")) {
+            // "which is smallest , the boat , the cart or the barrel ?" asks what "which is
+            // smallest ?" does, of the things named.
+            int[] asked = Arrays.copyOf(heard, comma + 1);
+            asked[comma] = ask;
+            int[] most = mostOf(asked);
+            if (most != null) {
+                toldLine = most;
+                toldLineAsHeard = null;
+                return new int[] {most[most.length - 5]};
+            }
+        }
         if (memory != null && heard.length > TOLD_QUESTION_WORDS && heard.length <= TOLD_QUESTION_WORDS + 4
                 && heard[heard.length - 1] == ask) {
             // A longer question may still ask of the order of things ("what did the guard do
@@ -1986,7 +2000,9 @@ public final class Brain {
         int at = -1;
         for (int i = 1; i < heard.length; i++) {
             String w = heard[i] < 0 ? "" : language.vocabulary.word(heard[i]);
-            if (heard[i - 1] == the && w.endsWith("est") && w.length() > 4) {
+            // "which is smallest , the boat , the cart or the barrel ?" asks it too.
+            boolean is = heard[i - 1] >= 0 && Set.of("is", "was", "are").contains(language.vocabulary.word(heard[i - 1]));
+            if ((heard[i - 1] == the || is && i == 2) && w.endsWith("est") && w.length() > 4 && !w.equals("guest")) {
                 at = i;
             }
         }
@@ -3112,8 +3128,12 @@ public final class Brain {
         boolean whoHas = first.equals("who") && heard.length > 2 && heard[1] >= 0
                 && Set.of("has", "have", "had").contains(language.vocabulary.word(heard[1]));
         boolean yesNo = ASKS_YES_OR_NO.contains(first);
-        int state = yesNo && heard.length > 2 && heard[heard.length - 2] >= 0
-                && hasOpposite(language.vocabulary.word(heard[heard.length - 2])) ? heard[heard.length - 2] : -1;
+        // "is the gate locked now?" asks of being locked.
+        int last = heard.length > 3 && heard[heard.length - 2] >= 0
+                && Set.of("now", "still", "anymore", "yet").contains(language.vocabulary.word(heard[heard.length - 2]))
+                ? heard.length - 3 : heard.length - 2;
+        int state = yesNo && heard.length > 2 && heard[last] >= 0
+                && hasOpposite(language.vocabulary.word(heard[last])) ? heard[last] : -1;
         int doing = -1;
         if (where && heard.length > 3 && heard[1] >= 0 && Set.of("did", "does", "do").contains(language.vocabulary.word(heard[1]))) {
             doing = heard[heard.length - 2];
@@ -3503,6 +3523,12 @@ public final class Brain {
     }
 
     /** Whether a line says the opposite of a state ("closed" for "open"). */
+    /** Doings that leave a thing no longer so: a locked gate someone opened is not locked. */
+    private static final java.util.Map<String, Set<String>> UNDONE_BY = java.util.Map.of(
+            "locked", Set.of("opened", "unlocked", "broke"), "shut", Set.of("opened"),
+            "closed", Set.of("opened", "unlocked"), "broken", Set.of("fixed", "mended", "repaired"),
+            "empty", Set.of("filled"), "full", Set.of("emptied"), "asleep", Set.of("woke"), "dark", Set.of("lit"));
+
     private boolean saysOpposite(int[] line, int state) {
         String word = state < 0 ? null : language.vocabulary.word(state);
         if (word == null || !hasOpposite(word)) {
@@ -3511,6 +3537,7 @@ public final class Brain {
         String other = STATE_OPPOSITE.get(word);
         for (int w : line) {
             if (w >= 0 && (other != null && stem(language.vocabulary.word(w)).equals(stem(other))
+                    || UNDONE_BY.getOrDefault(word, Set.of()).contains(language.vocabulary.word(w))
                     || QUALITY_OPPOSITE.getOrDefault(word, Set.of()).contains(language.vocabulary.word(w)))) {
                 return true;
             }
@@ -5421,7 +5448,9 @@ public final class Brain {
         Vocabulary v = language.vocabulary;
         List<String> w = wordsOf(heard);
         int n = w.size();
-        if (n < 3 || n > TOLD_QUESTION_WORDS || !w.get(n - 1).equals("?") || w.get(0).equals("if")) {
+        if (n < 3 || n > TOLD_QUESTION_WORDS || !w.get(n - 1).equals("?") || w.get(0).equals("if")
+                || w.contains("together") || w.contains("altogether") || w.contains("both")) {
+            // "how many apples do they have together?" means all told of, not one of them.
             return null;
         }
         int at = -1;

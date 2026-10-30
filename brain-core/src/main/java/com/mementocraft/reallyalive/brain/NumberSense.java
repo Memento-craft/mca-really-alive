@@ -141,6 +141,17 @@ final class NumberSense {
         if (w.size() < 3 || w.get(0).equals("if") || w.get(0).equals("when")) {
             return;
         }
+        int and = w.indexOf("and");
+        if (and >= 3 && and + 3 < w.size() && HAVING.contains(w.get(and + 2)) && HAVING.stream().anyMatch(w.subList(0, and)::contains)) {
+            // "sam has six apples and eva has two .": two lines, the second of apples too.
+            read(new ArrayList<>(w.subList(0, and)));
+            List<String> second = new ArrayList<>(w.subList(and + 1, w.size()));
+            if (number(second.get(second.size() - 1)) >= 0 && lastThing != null) {
+                second.add(lastThing);
+            }
+            read(second);
+            return;
+        }
         int is = w.indexOf("is");
         if (is < 0) {
             is = w.indexOf("are");
@@ -575,6 +586,21 @@ final class NumberSense {
                 }
             }
             return null;
+        }
+        String[] many = who.split(" ", 2);
+        if (many.length == 2 && number(many[0]) > 1 && !counts.containsKey(who)) {
+            // "how many legs do two sheep have?" after "a sheep has four legs .": twice four.
+            String one = many[1];
+            Map<String, Integer> each = counts.get(one);
+            if (each == null && one.endsWith("s")) {
+                each = counts.get(one.substring(0, one.length() - (one.endsWith("es") && !one.endsWith("ses") ? 2 : 1)));
+            }
+            if (each == null || each.get(what) == null) {
+                return null;
+            }
+            List<String> said = new ArrayList<>(List.of(who.split(" ")));
+            said.addAll(List.of("have", say(number(many[0]) * each.get(what)), what, "."));
+            return said;
         }
         Map<String, Integer> has = counts.get(who);
         if (has == null) {
