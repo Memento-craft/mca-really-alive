@@ -55,6 +55,11 @@ public final class Motives {
      * needing two things in two places is not all or nothing.
      */
     public static final float MATCH_PICTURE = 0.15f;
+    /**
+     * Doing on one's own grid the next hand move one watched someone make there: picking up what
+     * they picked up, putting it where they put it. Felt once a move.
+     */
+    public static final float COPY_MOVE = 0.15f;
 
     private Motives() {}
 }

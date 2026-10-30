@@ -362,8 +362,9 @@ public final class BrainManager {
         SensoryFrame f = h.frame;
         f.clear();
         if (h.hands.screenOpen()) {
+            var copy = h.hands.copyTarget(h.hands.screen());
             ScreenSight.see(h.hands.screen(), h.hands.pointerX(), h.hands.pointerY(), h.vision, h.colour,
-                    h.hands.recipeHint(h.hands.screen()));
+                    h.hands.recipeHint(h.hands.screen()), copy == null ? null : copy.slot(), copy != null && copy.put());
             h.sawScreen = true;
         } else if (h.sawScreen || h.age % Config.VISION_INTERVAL.get() == 0) {
             Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour);

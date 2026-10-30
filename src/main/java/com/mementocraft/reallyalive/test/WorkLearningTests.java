@@ -2051,6 +2051,21 @@ public final class WorkLearningTests {
     }
 
     @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsACrankItWatched(GameTestHelper h) {
+        tableCrankBenchmark(h, "1", false, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsACrankItWatched(GameTestHelper h) {
+        tableCrankBenchmark(h, "2", false, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void thirdNewbornCraftsACrankItWatched(GameTestHelper h) {
+        tableCrankBenchmark(h, "3", false, true);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
     public static void newbornCraftsACrankWithABook(GameTestHelper h) {
         tableCrankBenchmark(h, "1", true);
     }
@@ -2071,10 +2086,18 @@ public final class WorkLearningTests {
      * the alloy under the first. The first power source made from scratch, and the first recipe
      * that needs a table's 3x3 grid and two kinds of thing. TABLECRANKBOOK adds a picture book of
      * the crank's recipe. Cranks it makes are taken from it and counted, and it is handed the
-     * planks and alloy again.
+     * planks and alloy again. TABLECRANKWATCH has someone at the table instead, making a crank
+     * every little while in front of whoever looks.
      */
     private static void tableCrankBenchmark(GameTestHelper h, String which, boolean withBook) {
-        String name = withBook ? "TABLECRANKBOOK" : "TABLECRANK";
+        tableCrankBenchmark(h, which, withBook, false);
+    }
+
+    /** How often the one at the table in TABLECRANKWATCH makes a crank. */
+    private static final int DEMO_EVERY = 200;
+
+    private static void tableCrankBenchmark(GameTestHelper h, String which, boolean withBook, boolean watch) {
+        String name = watch ? "TABLECRANKWATCH" : withBook ? "TABLECRANKBOOK" : "TABLECRANK";
         if (!selected(h, name)) {
             return;
         }
@@ -2095,6 +2118,18 @@ public final class WorkLearningTests {
         BlockPos table = new BlockPos(5, 2, 10);
         h.setBlock(table, Blocks.CRAFTING_TABLE);
         BrainManager.Handle handle = BrainManager.get().handle(v);
+        // Someone at work at the table: a villager without a brain, standing in for a player, and
+        // the hands it crafts with.
+        Villager crafter = watch ? spawnMcaVillager(h, new Vec3(6.5, 2, 9.5)) : null;
+        if (crafter != null) {
+            crafter.getInventory().clearContent();
+            attach(h, crafter).hold(com.mementocraft.reallyalive.brain.MotorCommand.IDLE);
+        }
+        Teacher teacher = watch ? new Teacher(h.getLevel(), "crank" + which) : null;
+        var crankRecipe = watch ? h.getLevel().getRecipeManager().getAllRecipesFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING).stream()
+                .filter(r -> r.value() instanceof net.minecraft.world.item.crafting.ShapedRecipe
+                        && r.value().getResultItem(h.getLevel().registryAccess()).is(crank.get()))
+                .map(r -> (net.minecraft.world.item.crafting.ShapedRecipe) r.value()).findFirst().orElseThrow() : null;
         int[] tick = {0};
         int[] cranks = {0};
         int[] tableTicks = {0};
@@ -2109,6 +2144,10 @@ public final class WorkLearningTests {
             tick[0]++;
             if (tick[0] % TIDY_EVERY == 0) {
                 tidyLitter(h);
+            }
+            if (teacher != null && tick[0] % DEMO_EVERY == 0 && crafter.isAlive()) {
+                teacher.stand(crafter.position(), v.getEyePosition());
+                teacher.craft(h.absolutePos(table), crankRecipe);
             }
             boolean atTable = handle.hands().screen() instanceof net.minecraft.world.inventory.CraftingMenu;
             tableTicks[0] += atTable ? 1 : 0;
@@ -2146,10 +2185,10 @@ public final class WorkLearningTests {
             }
             if (tick[0] % WINDOW == 0) {
                 LOG.info("{} newborn {}: by tick {}: cranks made {}; at the table {} times, {} ticks; screens {}, clicks {}, results formed {}, made {};"
-                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}; made kinds {}", name, which, tick[0], cranks[0],
+                                + " shared out {}, dealt one {}; recipes learnt {}, places matched {}; handed back {}; watched {}, moves copied {}; made kinds {}", name, which, tick[0], cranks[0],
                         tableOpened[0], tableTicks[0], handle.hands().screensOpened, handle.hands().screenClicks, handle.hands().formedTotal,
                         handle.hands().madeTotal, handle.hands().sharedOutTotal, handle.hands().dealtOneTotal, handle.hands().recipesLearnt,
-                        handle.hands().matchedTotal, handedBack[0], handle.hands().madeKinds);
+                        handle.hands().matchedTotal, handedBack[0], handle.hands().sawCraftedTotal, handle.hands().copiedTotal, handle.hands().madeKinds);
             }
             if (tick[0] == ticks) {
                 String report = String.format("%s: made %d hand cranks in %d ticks, at the table %d times", name, cranks[0], ticks, tableOpened[0]);

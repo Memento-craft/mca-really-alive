@@ -189,6 +189,13 @@ public final class Hands {
     private int matchedThisTick;
     /** Diagnostics: places filled as a remembered picture showed. */
     public int matchedTotal;
+    /** The hand moves watched with each remembered recipe; the recipe being copied on this screen and the move it is at. */
+    private final java.util.Map<net.minecraft.resources.ResourceLocation, java.util.List<Watching.Move>> movesSeen = new java.util.HashMap<>();
+    private net.minecraft.resources.ResourceLocation copying;
+    private int copyMove;
+    private int copiedThisTick;
+    /** Diagnostics: watched moves it has done again on its own grid. */
+    public int copiedTotal;
     /** Kinds of things it lately threw out or gave a machine: taking those out of a machine is not making them. */
     private final java.util.Map<net.minecraft.world.item.Item, Long> givenKinds = new java.util.HashMap<>();
     private static final long GIVEN_REMEMBERED = 6000L;
@@ -280,6 +287,8 @@ public final class Hands {
         formedThisTick = 0;
         pleasure += matchedThisTick * Motives.MATCH_PICTURE;
         matchedThisTick = 0;
+        pleasure += copiedThisTick * Motives.COPY_MOVE;
+        copiedThisTick = 0;
         movedThisTick = 0f;
         if (dugThisTick) {
             pleasure += Motives.DIG_PER_TICK;
@@ -531,6 +540,7 @@ public final class Hands {
         }
         madePleasureThisTick += Motives.MAKE;
         madeTotal++;
+        copyMove = 0;
         if (screen != null) {
             // What is still in the grid as the result is taken is what it was made from.
             for (Slot s : screen.slots) {
@@ -1062,8 +1072,109 @@ public final class Hands {
     /** Looking at a page of a recipe book long enough remembers the recipe on it. */
     /** Watched someone take what a crafting grid made: the grid is remembered as a book page is. */
     public void sawCrafted(net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
+        sawCrafted(recipe, java.util.List.of());
+    }
+
+    /** Watched someone craft, and the hand moves they made on the way: those are remembered with the recipe. */
+    public void sawCrafted(net.minecraft.world.item.crafting.RecipeHolder<?> recipe, java.util.List<Watching.Move> moves) {
         sawCraftedTotal++;
         remember(recipe);
+        if (!moves.isEmpty()) {
+            movesSeen.put(recipe.id(), moves);
+        }
+        movesSeen.keySet().retainAll(recipesSeen.keySet());
+    }
+
+    /** The slot the next watched move points at, and whether the pointer carries something to put there. */
+    public record CopyTarget(Slot slot, boolean put) {}
+
+    /**
+     * Where the next of the moves watched with the recipe now in mind would go on this screen, or
+     * null when none was watched or none can be followed. A move done (the thing picked up is on
+     * the pointer, the thing put down lies in its place) is felt and the next one comes to mind;
+     * one that cannot be done yet (the result is not showing) is passed over for now. Without
+     * this, the first plank put anywhere showed a button, and newborns took the button: of
+     * several thousand goes at a table in 300000 ticks, none got the four things of a hand crank
+     * in place.
+     */
+    public CopyTarget copyTarget(AbstractContainerMenu menu) {
+        var hint = recipeHint(menu);
+        java.util.List<Watching.Move> moves = hint == null ? null : movesSeen.get(hint.recipe());
+        if (moves == null) {
+            copying = null;
+            return null;
+        }
+        if (!hint.recipe().equals(copying)) {
+            copying = hint.recipe();
+            copyMove = 0;
+        }
+        for (int i = copyMove; i < moves.size(); i++) {
+            Watching.Move m = moves.get(i);
+            if (i == copyMove && done(menu, m)) {
+                copyMove++;
+                copiedThisTick++;
+                copiedTotal++;
+                continue;
+            }
+            Slot to = followed(menu, m);
+            if (to != null) {
+                return new CopyTarget(to, !menu.getCarried().isEmpty());
+            }
+        }
+        return null;
+    }
+
+    private static boolean done(AbstractContainerMenu menu, Watching.Move m) {
+        if (!m.put()) {
+            return menu.getCarried().is(m.item());
+        }
+        Slot at = Watching.gridSlot(menu, m.place());
+        return at != null && at.getItem().is(m.item());
+    }
+
+    /** The slot to click next to make this move: where the thing is to be put, or first where to get it from. */
+    private static Slot followed(AbstractContainerMenu menu, Watching.Move m) {
+        ItemStack carried = menu.getCarried();
+        if (m.put() && carried.is(m.item())) {
+            return Watching.gridSlot(menu, m.place());
+        }
+        if (!m.put() && !carried.isEmpty() && !carried.is(m.item())) {
+            // Something else is on the pointer: it goes back in a pocket first, to free the hand.
+            Slot free = null;
+            for (Slot s : menu.slots) {
+                if (s.container instanceof net.minecraft.world.entity.player.Inventory && s.mayPlace(carried)) {
+                    if (ItemStack.isSameItemSameComponents(s.getItem(), carried)) {
+                        return s;
+                    }
+                    free = free == null && s.getItem().isEmpty() ? s : free;
+                }
+            }
+            return free;
+        }
+        if (!m.put() && m.place() >= 0) {
+            Slot at = Watching.gridSlot(menu, m.place());
+            if (at != null && at.getItem().is(m.item())) {
+                return at;
+            }
+        }
+        if (m.place() == Watching.RESULT) {
+            Slot result = menu.getSlot(0);
+            return result instanceof net.minecraft.world.inventory.ResultSlot && result.getItem().is(m.item()) ? result : null;
+        }
+        // Get it from a pocket, or from a grid place holding more than one of it.
+        Slot spare = null;
+        for (Slot s : menu.slots) {
+            if (!s.getItem().is(m.item()) || s instanceof net.minecraft.world.inventory.ResultSlot) {
+                continue;
+            }
+            if (s.container instanceof net.minecraft.world.entity.player.Inventory) {
+                return s;
+            }
+            if (s.getItem().getCount() > 1 && spare == null) {
+                spare = s;
+            }
+        }
+        return spare;
     }
 
     private void remember(net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
@@ -1124,7 +1235,7 @@ public final class Hands {
                 }
             }
             if (hasToHand(menu, want.values())) {
-                return new com.mementocraft.reallyalive.sense.ScreenSight.RecipeHint(want);
+                return new com.mementocraft.reallyalive.sense.ScreenSight.RecipeHint(want, m.recipe().id());
             }
         }
         return null;
@@ -1292,6 +1403,8 @@ public final class Hands {
         resultShown = false;
         formedOnScreen.clear();
         matchedOnScreen = 0;
+        copying = null;
+        copyMove = 0;
         // The pointer starts in the middle of the screen, where a player's mouse appears.
         float[] b = bounds(menu);
         pointerX = (b[0] + b[2]) / 2f;

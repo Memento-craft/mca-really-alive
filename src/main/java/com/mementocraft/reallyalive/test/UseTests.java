@@ -677,6 +677,50 @@ public final class UseTests {
     }
 
     /**
+     * Watching someone craft shows the hand moves too: someone in front of a villager picks up
+     * planks, puts one in the top left of a table's grid and one under it, and takes the sticks.
+     * On a grid of its own the villager's next move then stands out each step of the way: the
+     * planks in its pocket, the first place, the place under it, and the sticks once they show.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 200)
+    public static void followsTheMovesItWatchedSomeoneCraft(GameTestHelper h) {
+        Villager watcher = worker(h, new ItemStack(Items.OAK_PLANKS, 4));
+        BrainManager.Handle handle = handle(watcher);
+        Teacher teacher = new Teacher(h.getLevel(), "sticks");
+        BlockPos table = h.absolutePos(new BlockPos(6, 2, 13));
+        h.setBlock(new BlockPos(6, 2, 13), Blocks.CRAFTING_TABLE);
+        h.runAtTickTime(5, () -> aim(h, watcher, new Vec3(6.5, 3.6, 12.5)));
+        h.runAtTickTime(8, () -> {
+            aim(h, watcher, new Vec3(6.5, 3.6, 12.5));
+            teacher.stand(h.absoluteVec(new Vec3(6.5, 2, 12.5)), watcher.getEyePosition());
+            teacher.craft(table, List.of(new ItemStack(Items.OAK_PLANKS, 4)), List.of(
+                    new Teacher.Click(Teacher.pocket(0), 0, net.minecraft.world.inventory.ClickType.PICKUP),
+                    new Teacher.Click(1, 1, net.minecraft.world.inventory.ClickType.PICKUP),
+                    new Teacher.Click(4, 1, net.minecraft.world.inventory.ClickType.PICKUP),
+                    new Teacher.Click(Teacher.pocket(0), 0, net.minecraft.world.inventory.ClickType.PICKUP),
+                    new Teacher.Click(0, 0, net.minecraft.world.inventory.ClickType.PICKUP)));
+            h.assertTrue(handle.hands().sawCraftedTotal == 1, "the villager did not see the sticks made");
+            Teacher learner = new Teacher(h.getLevel(), "learner");
+            CraftingMenu menu = learner.open(table, List.of(new ItemStack(Items.OAK_PLANKS, 4)));
+            // The last but one: the planks left over go back in a pocket (any), to free the hand for the sticks.
+            int[][] steps = {{Teacher.pocket(0), 0, 0}, {1, 1, 1}, {4, 1, 1}, {-1, 0, 1}, {0, 0, 0}};
+            for (int[] step : steps) {
+                var to = handle.hands().copyTarget(menu);
+                LOG.info("copy target {}", to == null ? null : to.slot().index + (to.put() ? " put" : " take"));
+                boolean where = to != null && (step[0] < 0 ? to.slot().container instanceof net.minecraft.world.entity.player.Inventory
+                        : to.slot().index == step[0]);
+                h.assertTrue(where && to.put() == (step[2] == 1),
+                        "the next watched move did not point at slot " + step[0] + ": " + (to == null ? null : to.slot().index + " " + to.put()));
+                learner.click(menu, new Teacher.Click(to.slot().index, step[1], net.minecraft.world.inventory.ClickType.PICKUP));
+            }
+            h.assertTrue(menu.getCarried().is(Items.STICK), "following the moves did not end with the sticks taken: " + menu.getCarried());
+            LOG.info("moves copied {}", handle.hands().copiedTotal);
+            h.assertTrue(handle.hands().copiedTotal == 3, "copied moves were not felt three times: " + handle.hands().copiedTotal);
+            h.succeed();
+        });
+    }
+
+    /**
      * With Create installed: a water wheel put against the side of a press, where a stream of
      * water runs past, turns the press. Placing it is an ordinary use on the press's side, and
      * the press it set going is felt.

@@ -242,7 +242,7 @@ public final class BrainEvents {
         if (e.getInventory() instanceof net.minecraft.world.inventory.CraftingContainer grid
                 && e.getEntity().level() instanceof net.minecraft.server.level.ServerLevel level && BrainManager.get() != null) {
             level.getRecipeManager().getRecipeFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING, grid.asCraftInput(), level)
-                    .ifPresent(recipe -> seenCrafting(level, e.getEntity(), recipe));
+                    .ifPresent(recipe -> seenCrafting(level, e.getEntity(), recipe, com.mementocraft.reallyalive.body.Watching.took(e.getEntity())));
         }
     }
 
@@ -258,6 +258,16 @@ public final class BrainEvents {
      */
     public static void seenCrafting(net.minecraft.server.level.ServerLevel level, net.minecraft.world.entity.LivingEntity crafter,
                                      net.minecraft.world.item.crafting.RecipeHolder<?> recipe) {
+        seenCrafting(level, crafter, recipe, java.util.List.of());
+    }
+
+    /**
+     * As above, and the hand moves the crafter made on the way are seen too: what it picked up
+     * where and put down where. A villager remembers them with the recipe and can follow them.
+     */
+    public static void seenCrafting(net.minecraft.server.level.ServerLevel level, net.minecraft.world.entity.LivingEntity crafter,
+                                     net.minecraft.world.item.crafting.RecipeHolder<?> recipe,
+                                     java.util.List<com.mementocraft.reallyalive.body.Watching.Move> moves) {
         Hands own = StandIn.owner(crafter);
         net.minecraft.world.phys.Vec3 at = crafter.getEyePosition();
         for (Villager v : level.getEntitiesOfClass(Villager.class, crafter.getBoundingBox().inflate(WATCH_RANGE))) {
@@ -270,7 +280,7 @@ public final class BrainEvents {
                     || !v.hasLineOfSight(crafter)) {
                 continue;
             }
-            h.hands().sawCrafted(recipe);
+            h.hands().sawCrafted(recipe, moves);
         }
     }
 

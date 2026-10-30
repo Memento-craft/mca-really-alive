@@ -72,7 +72,7 @@ public final class ScreenSight {
      * A recipe remembered from a book, laid on the grid of the screen being worked: which grid
      * slot (by menu index) the picture showed what in.
      */
-    public record RecipeHint(java.util.Map<Integer, net.minecraft.world.item.crafting.Ingredient> want) {
+    public record RecipeHint(java.util.Map<Integer, net.minecraft.world.item.crafting.Ingredient> want, net.minecraft.resources.ResourceLocation recipe) {
         /** Whether this slot is one the picture showed the carried thing in, still waiting for it. */
         boolean wants(Slot s, ItemStack carried) {
             var i = want.get(s.index);
@@ -110,6 +110,36 @@ public final class ScreenSight {
     }
 
     public static void see(AbstractContainerMenu menu, float pointerX, float pointerY, float[] vision, float[] colour, RecipeHint hint) {
+        see(menu, pointerX, pointerY, vision, colour, hint, null, false);
+    }
+
+    /** How much else still catches the eye while following a watched move, against the place it points at. */
+    private static final float NOT_COPIED = 0.3f;
+
+    /**
+     * As above, while following a move watched someone make: the slot it points at stands out
+     * from all the rest, as the thing to take (nothing on the pointer) or the place to put it.
+     */
+    public static void see(AbstractContainerMenu menu, float pointerX, float pointerY, float[] vision, float[] colour, RecipeHint hint,
+            Slot copy, boolean copyPut) {
+        seeAll(menu, pointerX, pointerY, vision, colour, hint);
+        if (copy == null || !copy.isActive()) {
+            return;
+        }
+        int x = cell(copy.x + 8 - pointerX, SenseLayout.VISION_W, VIEW_W);
+        int y = cell(copy.y + 8 - pointerY, SenseLayout.VISION_H, VIEW_H);
+        for (int cy = 0; cy < SenseLayout.VISION_H; cy++) {
+            for (int cx = 0; cx < SenseLayout.VISION_W; cx++) {
+                vision[SenseLayout.visionIndex(cx, cy, SenseLayout.CH_CLIMBABLE)] *= NOT_COPIED;
+                vision[SenseLayout.visionIndex(cx, cy, SenseLayout.CH_CREATURE)] *= NOT_COPIED;
+            }
+        }
+        if (x >= 0 && y >= 0 && x < SenseLayout.VISION_W && y < SenseLayout.VISION_H) {
+            glow(vision, x, y, copyPut ? SenseLayout.CH_CLIMBABLE : SenseLayout.CH_CREATURE, copyPut ? WORK_SLOT : 1f);
+        }
+    }
+
+    private static void seeAll(AbstractContainerMenu menu, float pointerX, float pointerY, float[] vision, float[] colour, RecipeHint hint) {
         Arrays.fill(vision, 0f);
         Arrays.fill(colour, 0f);
         float[] b = Hands.bounds(menu);
