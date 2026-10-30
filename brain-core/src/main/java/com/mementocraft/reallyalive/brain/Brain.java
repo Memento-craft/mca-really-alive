@@ -1285,6 +1285,15 @@ public final class Brain {
             toldSure = true;
             return new int[0];
         }
+        int[] more = moreOfTwo(heard);
+        if (more != null) {
+            // "sara is taller than tim .": "who is shorter?" "tim is shorter than sara ."
+            toldLine = more;
+            toldLineAsHeard = null;
+            toldInOwnWords = true;
+            toldSure = true;
+            return new int[0];
+        }
         int[] oldest = mostOf(heard);
         if (oldest != null) {
             // "who is the youngest?" from "lia is older than kai ." "kai is older than bo .", before
@@ -1395,15 +1404,6 @@ public final class Brain {
             toldLine = most;
             toldLineAsHeard = null;
             return new int[] {most[most.length - 5]};
-        }
-        int[] more = moreOfTwo(heard);
-        if (more != null) {
-            // "sara is taller than tim .": "who is shorter?" "tim is shorter than sara ."
-            toldLine = more;
-            toldLineAsHeard = null;
-            toldInOwnWords = true;
-            toldSure = true;
-            return new int[0];
         }
         int[] anyone = generalAsk ? null : askedOfAnyone(heard);
         if (anyone != null) {
@@ -1680,6 +1680,14 @@ public final class Brain {
                 if (toldLine != null && !toldSure) {
                     return r;
                 }
+            }
+            int[] known = saysAny(heard, OF_THE_MOMENT) ? null : knownAnswer(heard, memory, tones);
+            if (known != null) {
+                // "what do bees make?" after "i keep bees behind my house .": what everyone knows
+                // answers what the told line doesn't.
+                toldLine = known;
+                toldLineAsHeard = known;
+                return new int[0];
             }
             // "what colour is my cat?" after "i have a cat .": the line is of the cat, but says
             // nothing of what is asked.
@@ -3963,6 +3971,8 @@ public final class Brain {
         return a == b || a >= 0 && b >= 0 && stem(language.vocabulary.word(a)).equals(stem(language.vocabulary.word(b)));
     }
 
+    /** Words that say something no longer goes on ("they stop laying"), unless that is what is asked ("did the mill stop?"). */
+    private static final Set<String> STOPPING = Set.of("stop", "stops", "stopped");
     private static final Set<String> NOT = Set.of("no", "not", "never", "isn't", "wasn't", "aren't", "weren't", "don't",
             "doesn't", "didn't", "can't", "won't", "hasn't", "haven't", "nobody", "nothing");
 
@@ -3985,7 +3995,9 @@ public final class Brain {
             boolean no = false, saysAsked = false;
             for (; to < line.length && line[to] != comma && line[to] != stop; to++) {
                 if (line[to] >= 0) {
-                    no |= NOT.contains(language.vocabulary.word(line[to]));
+                    // "they stop laying" says they are not laying.
+                    no |= NOT.contains(language.vocabulary.word(line[to])) || line != heard && !saysAny(heard, STOPPING)
+                            && STOPPING.contains(language.vocabulary.word(line[to]));
                     says += saidIn(heard, line[to]) && Character.isLetter(language.vocabulary.word(line[to]).charAt(0)) ? 1 : 0;
                     saysAsked |= asked >= 0 && line != heard && line[to] == asked;
                 }
@@ -4935,6 +4947,45 @@ public final class Brain {
             }
         }
         return null;
+    }
+
+    /**
+     * The known fact that best answers a question of kinds of things: the one that says the most of
+     * its telling words and gives what is asked; null if none does.
+     */
+    private int[] knownAnswer(int[] heard, ExchangeMemory memory, ToneLinks tones) {
+        List<String> q = wordsOf(heard);
+        if (q.contains("the") || saysAny(heard, AGAIN) || q.stream().anyMatch(w -> w.endsWith("'s"))) {
+            // "who bought the cart?", "where is he?", "what colour is lisa's hat?" ask of one thing.
+            return null;
+        }
+        List<Integer> asked = new ArrayList<>();
+        for (int w : heard) {
+            if (w >= 0 && thingWord(w) && !ASKING_WORDS.contains(language.vocabulary.word(w))
+                    && !BEFORE_A_THING.contains(language.vocabulary.word(w))) {
+                asked.add(w);
+            }
+        }
+        if (asked.isEmpty()) {
+            return null;
+        }
+        int[] best = null;
+        float bestCue = 0f;
+        for (int[] fact : knownToAll(language.vocabulary)) {
+            float cue = 0f;
+            Set<Integer> cued = new java.util.HashSet<>();
+            for (int w : fact) {
+                if (w >= 0 && saidIn(heard, w) && cued.add(w)) {
+                    cue += toldWeight(w, memory, tones);
+                }
+            }
+            if (cue > bestCue + 1e-4f && asked.stream().allMatch(w -> saidIn(fact, w)) && answersAsked(heard, fact)
+                    && saysSome(heard, fact, memory, tones)) {
+                bestCue = cue;
+                best = fact;
+            }
+        }
+        return best;
     }
 
     /** A rule told of a kind: "all blicks are furry .", "no glorps can fly .", "some vims are green ." */

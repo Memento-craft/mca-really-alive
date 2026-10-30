@@ -49,6 +49,8 @@ final class NumberSense {
     /** Doings that leave fewer of what was had ("shot", "ate", "sold"), by their plain forms. */
     private static final Set<String> USED = Set.of("shot", "shoot", "eat", "sell", "lose", "lost", "give", "gave", "spend",
             "spent", "use", "us", "break", "drop", "dropp", "burn", "throw", "threw");
+    /** What was sold: {who, what, how many}. */
+    private final List<Object[]> sales = new ArrayList<>();
     /** "three of them did not grow .": {who had them, thing, how many, whether not, doing}. */
     private final List<Object[]> ofThem = new ArrayList<>();
     private static final Map<String, String> PAST = Map.of("grew", "grow", "ate", "eat", "came", "come", "ran", "run",
@@ -299,9 +301,15 @@ final class NumberSense {
             leftOn = w.get(on + 1);
             return;
         }
+        int sold = w.indexOf("sold");
+        if (sold > 0 && sold + 2 < w.size() && number(w.get(sold + 1)) >= 0) {
+            // "i sold four jars of honey ."
+            sales.add(new Object[] {thing(w.subList(0, sold)), w.get(sold + 2), number(w.get(sold + 1))});
+            return;
+        }
         int costs = Math.max(w.indexOf("costs"), w.indexOf("cost"));
         if (costs > 0 && costs + 2 < w.size() + 1 && costs + 1 < w.size() && number(w.get(costs + 1)) >= 0) {
-            String what = thing(w.subList(0, costs));
+            String what = thing(w.subList(w.get(0).equals("each") ? 1 : 0, costs));
             String unit = costs + 2 < w.size() ? w.get(costs + 2) : "";
             prices.put(what, new Object[] {number(w.get(costs + 1)), unit});
             return;
@@ -477,6 +485,20 @@ final class NumberSense {
 
     /** "how many animals do i have?", "how many apples does mia have?", "how many doors are there?", "how many eggs are left?" */
     private List<String> howMany(List<String> q) {
+        if (q.size() == 6 && q.get(3).equals("did") && Set.of("get", "earn", "make").contains(q.get(5))) {
+            // "how many emeralds did i get?" after "i sold four jars ." "each jar cost three emeralds ."
+            String who = thing(q.subList(4, 5));
+            for (Object[] sale : sales) {
+                String what = (String) sale[1];
+                for (Map.Entry<String, Object[]> e : prices.entrySet()) {
+                    String one = e.getKey();
+                    if (sale[0].equals(who) && (what.equals(one) || what.startsWith(one)) && q.get(2).equals(e.getValue()[1])) {
+                        int got = (int) sale[2] * (Integer) e.getValue()[0];
+                        return List.of(who.equals("i") ? "you" : who, "got", say(got), q.get(2), ".");
+                    }
+                }
+            }
+        }
         if (q.size() == 7 && q.get(2).equals("more") && q.get(4).equals("do") && Set.of("i", "we").contains(q.get(5))
                 && q.get(6).equals("need")) {
             // "how many more emeralds do i need?" after "a sword costs ten emeralds ." "i have six emeralds ."
