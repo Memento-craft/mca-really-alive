@@ -968,9 +968,34 @@ public final class Brain {
         recalledFocus = new int[0];
         int[] best = thoughtBest;
         if (best != null) {
+            best = countsAsHeard(best, language.heardLine());
             said[saidNext++ % said.length] = best;
         }
         return best;
+    }
+
+    /**
+     * A reply that counts something the line it answers counted, with the count heard: "i ate two
+     * apples ." is not answered with "three apples ? ..." but "two apples ? ...".
+     */
+    private int[] countsAsHeard(int[] reply, int[] heard) {
+        if (heard == null) {
+            return reply;
+        }
+        int[] out = reply;
+        Vocabulary v = language.vocabulary;
+        for (int i = 0; i + 1 < reply.length; i++) {
+            if (reply[i] < 0 || reply[i + 1] < 0 || number(v.word(reply[i])) < 0) {
+                continue;
+            }
+            for (int j = 0; j + 1 < heard.length; j++) {
+                if (heard[j] >= 0 && heard[j] != reply[i] && number(v.word(heard[j])) >= 0 && heard[j + 1] == reply[i + 1]) {
+                    out = out == reply ? reply.clone() : out;
+                    out[i] = heard[j];
+                }
+            }
+        }
+        return out;
     }
 
     /**
