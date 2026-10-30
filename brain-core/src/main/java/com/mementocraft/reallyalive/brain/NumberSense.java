@@ -332,6 +332,25 @@ final class NumberSense {
             }
             return;
         }
+        if (lastHaver != null && lastThing != null && thing(w.subList(0, 1)).equals(lastHaver)) {
+            // "i ate three and gave two away .": five fewer of what was had, each doing told once.
+            Integer before = counts.getOrDefault(lastHaver, new LinkedHashMap<>()).get(lastThing);
+            int used = 0;
+            for (int i = 1; i + 1 < w.size(); i++) {
+                int n = number(w.get(i + 1));
+                String after = i + 2 < w.size() ? w.get(i + 2) : ".";
+                boolean same = after.equals(lastThing) || Set.of("and", "away", ".", "to", "of", "then", ",").contains(after);
+                if (n >= 0 && USED.contains(plainVerb(w.get(i))) && same && !(after.equals("of") && i + 3 < w.size()
+                        && !w.get(i + 3).equals("them"))) {
+                    used += n;
+                }
+            }
+            if (before != null && used > 0 && used <= before) {
+                count(lastHaver, lastThing, before - used);
+                derived.add(lastHaver + " " + lastThing);
+                return;
+            }
+        }
         if (w.contains("half") && w.contains("of") && lastHaver != null && lastThing != null) {
             Integer before = counts.getOrDefault(lastHaver, new LinkedHashMap<>()).get(lastThing);
             if (before != null) {

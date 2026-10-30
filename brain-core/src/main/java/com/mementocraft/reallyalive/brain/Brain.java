@@ -920,7 +920,7 @@ public final class Brain {
             if (talk.you.length == 0) {
                 talk.you = java.util.stream.Stream.of("you", "your", "yourself").mapToInt(language.vocabulary::find).filter(w -> w >= 0).sorted().toArray();
             }
-            int[][] recalled = memory.recall(heard, before, RECALL_BEFORE, RECALLED, match, talk.ask, deedTold(heard));
+            int[][] recalled = memory.recall(asNamed(heard), before, RECALL_BEFORE, RECALLED, match, talk.ask, deedTold(heard));
             int keep = 0;
             for (int r = 0; r < recalled.length; r++) {
                 int[] kept = keptTrue(heard, recalled[r]);
@@ -3897,6 +3897,13 @@ public final class Brain {
             // "i didn't kill anyone !" denies what no one said it did.
             return null;
         }
+        int love = language.vocabulary.find("love"), you = language.vocabulary.find("you");
+        int loveAt = indexOf(answer, love, 0);
+        if (loveAt >= 0 && loveAt + 1 < answer.length && answer[loveAt + 1] == you && heard.length <= 3 && !saysAny(heard, Set.of("love"))) {
+            // "i love you too ." to a bare "goodbye !" was said to one close to them, as an
+            // answer to more than a goodbye.
+            return null;
+        }
         answer = withoutCalling(heard, answer);
         int yes = language.vocabulary.find("yes"), no = language.vocabulary.find("no");
         if (answer.length < 3 || answer[0] != yes && answer[0] != no) {
@@ -3927,6 +3934,27 @@ public final class Brain {
             return turned;
         }
         return answer;
+    }
+
+    /**
+     * A line that gives the speaker's name another way ("i'm called nora .", "call me nora .") as
+     * "my name is nora .", for the answers others gave to that to come to mind; any other line as
+     * it is.
+     */
+    private int[] asNamed(int[] heard) {
+        Vocabulary v = language.vocabulary;
+        List<String> w = wordsOf(heard);
+        int n = w.size();
+        boolean called = n == 4 && w.get(0).equals("i'm") && w.get(1).equals("called")
+                || n == 5 && w.get(0).equals("i") && w.get(1).equals("am") && w.get(2).equals("called")
+                || n == 4 && w.get(0).equals("call") && w.get(1).equals("me")
+                || n == 5 && Set.of("they", "people", "everyone", "folks").contains(w.get(0)) && w.get(1).equals("call")
+                        && w.get(2).equals("me");
+        int my = v.find("my"), name = v.find("name"), is = v.find("is");
+        if (!called || my < 0 || name < 0 || is < 0 || !MARKS.contains(w.get(n - 1))) {
+            return heard;
+        }
+        return new int[] {my, name, is, heard[heard.length - 2], heard[heard.length - 1]};
     }
 
     /** Words after "i" or "we" that tell no deed of their own. */
@@ -3983,6 +4011,13 @@ public final class Brain {
             boolean marked = i + 1 < answer.length && answer[i + 1] >= 0 && MARKS.contains(v.word(answer[i + 1]));
             String before = i > 0 && answer[i - 1] >= 0 ? v.word(answer[i - 1]) : "";
             String twoBefore = i > 1 && answer[i - 2] >= 0 ? v.word(answer[i - 2]) : "";
+            if (word.equals("name") && marked && before.endsWith("'s") && twoBefore.equals(",")) {
+                // "goodbye , girlfriend's name ." stood for a name the one who wrote it left out.
+                out.remove(out.size() - 1);
+                out.remove(out.size() - 1);
+                dropped = true;
+                continue;
+            }
             if (CALLINGS.contains(word) && marked && !OWNING.contains(before) && !OWNING.contains(twoBefore)
                     && !Set.of("and", "or").contains(before) && indexOf(heard, answer[i], 0) < 0) {
                 dropped = true;
