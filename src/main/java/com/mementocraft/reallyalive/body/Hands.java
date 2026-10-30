@@ -196,6 +196,17 @@ public final class Hands {
     private int copiedThisTick;
     /** For tracing: the slot the last watched move pointed at, or -1. */
     private int copyTraced = -1;
+    /** The slot the next watched move points at, which the hand is drawn to; null when not copying. */
+    private Slot copyAim;
+    /**
+     * How much of the way to the slot the next watched move points at the pointer goes by itself
+     * each tick, and at most how far. With only the eye's pull (an orienting reflex summed over
+     * all it sees) the pointer stopped short of the place half the time, a plank went in the
+     * place beside it, and newborns copying a crank never got all seven moves done in 150000
+     * ticks. The hand follows the eye, as it does when one copies a move.
+     */
+    private static final float AIM_PULL = 0.25f;
+    private static final float AIM_MAX = 6f;
     /** Diagnostics: watched moves it has done again on its own grid, and how often it got to each move. */
     public int copiedTotal;
     public final int[] copyReached = new int[33];
@@ -1102,6 +1113,7 @@ public final class Hands {
      */
     public CopyTarget copyTarget(AbstractContainerMenu menu) {
         copyTraced = -1;
+        copyAim = null;
         var hint = recipeHint(menu);
         java.util.List<Watching.Move> moves = hint == null ? null : movesSeen.get(hint.recipe());
         if (moves == null) {
@@ -1124,6 +1136,7 @@ public final class Hands {
             Slot to = followed(menu, m, moves);
             if (to != null) {
                 copyTraced = to.index;
+                copyAim = to;
                 return new CopyTarget(to, !menu.getCarried().isEmpty());
             }
         }
@@ -1165,7 +1178,18 @@ public final class Hands {
         }
         if (m.place() == Watching.RESULT) {
             Slot result = menu.getSlot(0);
-            return result instanceof net.minecraft.world.inventory.ResultSlot && result.getItem().is(m.item()) ? result : null;
+            if (result instanceof net.minecraft.world.inventory.ResultSlot && result.getItem().is(m.item())) {
+                return result;
+            }
+            // Not made yet: something lying where the watched moves never put it spoils the
+            // pattern, and is taken out. Newborns got all the crank's things in place and a
+            // plank left over in a corner kept it from showing.
+            for (Slot s : menu.slots) {
+                if (s.hasItem() && Watching.placeOf(menu, s) >= 0 && !putIn(menu, s, s.getItem().getItem(), moves)) {
+                    return s;
+                }
+            }
+            return null;
         }
         // Get it from a pocket, or from a grid place holding more than one of it, or one it was
         // never put in: a plank meant for the top right that went in the middle is picked up
@@ -1425,6 +1449,7 @@ public final class Hands {
         matchedOnScreen = 0;
         copying = null;
         copyMove = 0;
+        copyAim = null;
         // The pointer starts in the middle of the screen, where a player's mouse appears.
         float[] b = bounds(menu);
         pointerX = (b[0] + b[2]) / 2f;
@@ -1479,6 +1504,10 @@ public final class Hands {
             float[] b = bounds(screen);
             pointerX = Mth.clamp(pointerX + keys.yawDelta() * POINTER_PER_DEGREE, b[0] - THROW_MARGIN, b[2] + THROW_MARGIN);
             pointerY = Mth.clamp(pointerY + keys.pitchDelta() * POINTER_PER_DEGREE, b[1] - THROW_MARGIN, b[3] + THROW_MARGIN);
+            if (copyAim != null && copyAim.isActive()) {
+                pointerX += Mth.clamp((copyAim.x + 8 - pointerX) * AIM_PULL, -AIM_MAX, AIM_MAX);
+                pointerY += Mth.clamp((copyAim.y + 8 - pointerY) * AIM_PULL, -AIM_MAX, AIM_MAX);
+            }
             pointed = slotAt(screen, pointerX, pointerY);
             // Carrying a stack about is doing something, and something just made is worth looking
             // at; only an empty pointer over nothing new gets bored.
