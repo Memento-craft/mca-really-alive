@@ -3872,6 +3872,19 @@ public final class Brain {
      * mouse bigger than a dog?"; null if it tells of other things than were asked about.
      */
     private int[] keptTrue(int[] heard, int[] answer) {
+        if (answer.length > 0 && answer[0] >= 0 && Set.of("thanks", "thank").contains(language.vocabulary.word(answer[0]))
+                && !saysAny(heard, Set.of("you", "your", "you're", "yours", "thanks", "thank", "congratulations", "congrats", "!"))
+                && heard.length > 0 && heard[heard.length - 1] != language.vocabulary.find("?")) {
+            // "the mayor gave a speech ." told of someone else is no cause to thank ("thank you , i
+            // was really nervous ..." was the mayor's own answer).
+            return null;
+        }
+        if (answer.length > 0 && answer[0] >= 0 && Set.of("they", "they're").contains(language.vocabulary.word(answer[0]))
+                && !anyMany(heard)) {
+            // "they are everywhere !" to "i lost my sword ." speaks of no one said.
+            return null;
+        }
+        answer = withoutCalling(heard, answer);
         int yes = language.vocabulary.find("yes"), no = language.vocabulary.find("no");
         if (answer.length < 3 || answer[0] != yes && answer[0] != no) {
             return answer;
@@ -3901,6 +3914,57 @@ public final class Brain {
             return turned;
         }
         return answer;
+    }
+
+    /** What a remembered reply called the one it answered, which the one talking now may not be. */
+    private static final Set<String> CALLINGS = Set.of("mom", "mum", "mommy", "dad", "daddy", "son", "honey",
+            "sweetie", "sweetheart", "grandma", "grandpa", "kiddo", "babe", "darling");
+    /** Words before a calling that make it a thing spoken of: "my son .", "a great mom !". */
+    private static final Set<String> OWNING = Set.of("my", "your", "his", "her", "our", "their", "the", "a", "its");
+    private static final Set<String> MARKS = Set.of(",", ".", "!", "?");
+
+    /**
+     * A remembered reply without what it called its hearer ("i promise i'll take care of the cat ,
+     * mom ." to "my cat is sick ."; "that's great son !"), unless the line heard says it too.
+     */
+    private int[] withoutCalling(int[] heard, int[] answer) {
+        Vocabulary v = language.vocabulary;
+        List<Integer> out = new ArrayList<>();
+        boolean dropped = false;
+        for (int i = 0; i < answer.length; i++) {
+            String word = answer[i] >= 0 ? v.word(answer[i]) : "";
+            boolean marked = i + 1 < answer.length && answer[i + 1] >= 0 && MARKS.contains(v.word(answer[i + 1]));
+            String before = i > 0 && answer[i - 1] >= 0 ? v.word(answer[i - 1]) : "";
+            String twoBefore = i > 1 && answer[i - 2] >= 0 ? v.word(answer[i - 2]) : "";
+            if (CALLINGS.contains(word) && marked && !OWNING.contains(before) && !OWNING.contains(twoBefore)
+                    && !Set.of("and", "or").contains(before) && indexOf(heard, answer[i], 0) < 0) {
+                dropped = true;
+                if (before.equals(",")) {
+                    out.remove(out.size() - 1);
+                } else if (i == 0 || before.equals(".") || before.equals("!") || before.equals("?")) {
+                    i++;
+                }
+                continue;
+            }
+            out.add(answer[i]);
+        }
+        return dropped && !out.isEmpty() ? out.stream().mapToInt(Integer::intValue).toArray() : answer;
+    }
+
+    /** Whether a line names more than one of something, or people, that "they" could be. */
+    private boolean anyMany(int[] line) {
+        Vocabulary v = language.vocabulary;
+        for (int w : line) {
+            String word = w >= 0 ? v.word(w) : "";
+            if (Set.of("they", "them", "their", "we", "people", "everyone", "both", "and", "children", "men", "women",
+                    "sheep", "fish", "folk", "villagers").contains(word) || number(word) > 1
+                    || word.length() > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("'s")
+                    && !Set.of("this", "was", "has", "his", "does", "is", "always", "yes", "its", "us", "thus", "plus",
+                            "bus", "news", "sometimes", "perhaps", "towards").contains(word)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Words that put two things one way round: "older than", "north of", "came before", "in". */
