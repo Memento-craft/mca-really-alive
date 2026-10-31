@@ -193,6 +193,8 @@ public final class Hands {
     private final java.util.Map<net.minecraft.resources.ResourceLocation, java.util.List<Watching.Move>> movesSeen = new java.util.HashMap<>();
     private net.minecraft.resources.ResourceLocation copying;
     private int copyMove;
+    /** The furthest move done since the screen opened or a thing was last made by the moves. */
+    private int copyBest;
     private int copiedThisTick;
     /** For tracing: the slot the last watched move pointed at, or -1. */
     private int copyTraced = -1;
@@ -555,6 +557,7 @@ public final class Hands {
         madePleasureThisTick += Motives.MAKE;
         madeTotal++;
         copyMove = 0;
+        copyBest = 0;
         if (screen != null) {
             // What is still in the grid as the result is taken is what it was made from.
             for (Slot s : screen.slots) {
@@ -1123,14 +1126,29 @@ public final class Hands {
         if (!hint.recipe().equals(copying)) {
             copying = hint.recipe();
             copyMove = 0;
+            copyBest = 0;
+        }
+        // A thing put in its place and since taken out again is put back first: newborns copying a
+        // water wheel got all nine things in place 16 times in 40000 ticks, but had knocked a
+        // plank out of the ring on the way each time, and none was made.
+        for (int j = 0; j < copyMove; j++) {
+            if (moves.get(j).put() && !done(menu, moves.get(j))) {
+                copyMove = j;
+                break;
+            }
         }
         for (int i = copyMove; i < moves.size(); i++) {
             Watching.Move m = moves.get(i);
             if (i == copyMove && done(menu, m)) {
                 copyMove++;
-                copiedThisTick++;
-                copiedTotal++;
-                copyReached[Math.min(copyMove, copyReached.length - 1)]++;
+                if (copyMove > copyBest) {
+                    // Felt only the first time it gets this far, or taking a thing out and putting
+                    // it back would be felt over and over.
+                    copyBest = copyMove;
+                    copiedThisTick++;
+                    copiedTotal++;
+                    copyReached[Math.min(copyMove, copyReached.length - 1)]++;
+                }
                 continue;
             }
             Slot to = followed(menu, m, moves);
@@ -1449,6 +1467,7 @@ public final class Hands {
         matchedOnScreen = 0;
         copying = null;
         copyMove = 0;
+        copyBest = 0;
         copyAim = null;
         // The pointer starts in the middle of the screen, where a player's mouse appears.
         float[] b = bounds(menu);
