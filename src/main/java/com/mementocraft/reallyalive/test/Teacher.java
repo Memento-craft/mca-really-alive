@@ -51,20 +51,12 @@ final class Teacher {
     }
 
     /**
-     * Makes a shaped recipe at a table the way a player does: for each kind of thing in it, picks
-     * the stack up from its pocket, puts one down in each place it goes with the right button and
-     * puts the rest back, then takes what was made.
+     * Makes a recipe at a table the way a player does: for each kind of thing in it, picks the
+     * stack up from its pocket and puts one down in each place it goes with the right button,
+     * then takes what was made.
      */
-    void craft(BlockPos table, net.minecraft.world.item.crafting.ShapedRecipe recipe) {
-        java.util.LinkedHashMap<net.minecraft.world.item.Item, java.util.List<Integer>> places = new java.util.LinkedHashMap<>();
-        var ingredients = recipe.getIngredients();
-        for (int i = 0; i < ingredients.size(); i++) {
-            var items = ingredients.get(i).getItems();
-            if (items.length > 0) {
-                places.computeIfAbsent(items[0].getItem(), k -> new java.util.ArrayList<>())
-                        .add(1 + (i / recipe.getWidth()) * 3 + i % recipe.getWidth());
-            }
-        }
+    void craft(BlockPos table, net.minecraft.world.item.crafting.CraftingRecipe recipe) {
+        var places = places(recipe);
         List<ItemStack> things = new java.util.ArrayList<>();
         List<Click> clicks = new java.util.ArrayList<>();
         int pocket = 0;
@@ -78,6 +70,35 @@ final class Teacher {
         }
         clicks.add(new Click(0, 0, ClickType.PICKUP));
         craft(table, things, clicks);
+    }
+
+    /**
+     * Which grid slots of a table each kind of thing of a recipe goes in: as its pattern shows for
+     * a shaped one, one after another from the top left for a shapeless one.
+     */
+    static java.util.LinkedHashMap<net.minecraft.world.item.Item, java.util.List<Integer>> places(net.minecraft.world.item.crafting.CraftingRecipe recipe) {
+        java.util.LinkedHashMap<net.minecraft.world.item.Item, java.util.List<Integer>> places = new java.util.LinkedHashMap<>();
+        int width = recipe instanceof net.minecraft.world.item.crafting.ShapedRecipe shaped ? shaped.getWidth() : 3;
+        var ingredients = recipe.getIngredients();
+        int place = 0;
+        for (int i = 0; i < ingredients.size(); i++) {
+            var items = ingredients.get(i).getItems();
+            if (recipe instanceof net.minecraft.world.item.crafting.ShapedRecipe) {
+                place = (i / width) * 3 + i % width;
+            }
+            if (items.length > 0) {
+                places.computeIfAbsent(items[0].getItem(), k -> new java.util.ArrayList<>()).add(1 + place);
+                place++;
+            }
+        }
+        return places;
+    }
+
+    /** What a recipe takes, one stack of each kind. */
+    static List<ItemStack> things(net.minecraft.world.item.crafting.CraftingRecipe recipe) {
+        List<ItemStack> things = new java.util.ArrayList<>();
+        places(recipe).forEach((item, at) -> things.add(new ItemStack(item, at.size())));
+        return things;
     }
 
     /** Opens a crafting screen at a table, with only these things in its pockets. */

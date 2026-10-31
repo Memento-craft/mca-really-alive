@@ -2093,6 +2093,165 @@ public final class WorkLearningTests {
         tableCrankBenchmark(h, which, withBook, false);
     }
 
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsShaftItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHSHAFT", "1", "shaft");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsShaftItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHSHAFT", "2", "shaft");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsCogwheelItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHCOG", "1", "cogwheel");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsCogwheelItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHCOG", "2", "cogwheel");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsWaterWheelItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHWATERWHEEL", "1", "water_wheel");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsWaterWheelItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHWATERWHEEL", "2", "water_wheel");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsWhiteSailItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHSAIL", "1", "white_sail");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsWhiteSailItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHSAIL", "2", "white_sail");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsWindmillBearingItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHBEARING", "1", "windmill_bearing");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsWindmillBearingItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHBEARING", "2", "windmill_bearing");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsSteamEngineItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHENGINE", "1", "steam_engine");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsSteamEngineItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHENGINE", "2", "steam_engine");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsFluidTankItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHTANK", "1", "fluid_tank");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsFluidTankItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHTANK", "2", "fluid_tank");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void newbornCraftsMechanicalPumpItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHPUMP", "1", "mechanical_pump");
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = CRAFT_TICKS_MAX + 400, required = false)
+    public static void secondNewbornCraftsMechanicalPumpItWatched(GameTestHelper h) {
+        watchCraftBenchmark(h, "WATCHPUMP", "2", "mechanical_pump");
+    }
+    /**
+     * With Create installed: someone at a table in the pen makes one of the parts of a power
+     * source every little while, in front of whoever looks, and a newborn carries exactly what it
+     * takes. Parts it makes are counted (from what came out of the result slot) and it is handed
+     * the things again whenever it has lost or used them.
+     */
+    private static void watchCraftBenchmark(GameTestHelper h, String name, String which, String product) {
+        if (!selected(h, name)) {
+            return;
+        }
+        var made = BuiltInRegistries.ITEM.getOptional(ResourceLocation.fromNamespaceAndPath("create", product));
+        var recipe = made.flatMap(item -> h.getLevel().getRecipeManager().getAllRecipesFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING).stream()
+                .map(r -> r.value())
+                .filter(r -> r.getResultItem(h.getLevel().registryAccess()).is(item) && r.getIngredients().size() <= 9)
+                .findFirst());
+        if (recipe.isEmpty()) {
+            LOG.info("{}: Create is not installed or has no table recipe for {}, nothing to learn", name, product);
+            h.succeed();
+            return;
+        }
+        List<ItemStack> things = Teacher.things(recipe.get());
+        int ticks = Math.min(CRAFT_TICKS_MAX, Integer.getInteger("reallyalive.craftTicks", CRAFT_TICKS));
+        Villager v = pen(h, ItemStack.EMPTY, ticks);
+        things.forEach(t -> v.getInventory().addItem(t.copy()));
+        BlockPos table = new BlockPos(5, 2, 10);
+        h.setBlock(table, Blocks.CRAFTING_TABLE);
+        BrainManager.Handle handle = BrainManager.get().handle(v);
+        Villager crafter = spawnMcaVillager(h, new Vec3(6.5, 2, 9.5));
+        crafter.getInventory().clearContent();
+        attach(h, crafter).hold(com.mementocraft.reallyalive.brain.MotorCommand.IDLE);
+        Teacher teacher = new Teacher(h.getLevel(), name + which);
+        LOG.info("{} newborn {}: someone makes {} from {}", name, which, product, things);
+        int[] tick = {0};
+        int[] handedBack = {0};
+        h.onEachTick(() -> {
+            if (!v.isAlive()) {
+                h.fail("the villager died at tick " + tick[0]);
+                return;
+            }
+            tick[0]++;
+            if (tick[0] % TIDY_EVERY == 0) {
+                tidyLitter(h);
+            }
+            if (tick[0] % DEMO_EVERY == 0 && crafter.isAlive()) {
+                teacher.stand(crafter.position(), v.getEyePosition());
+                teacher.craft(h.absolutePos(table), recipe.get());
+            }
+            if (tick[0] % REGROW == 0 && !handle.hands().screenOpen()) {
+                clearPen(h, table);
+                if (!h.getBlockState(table).is(Blocks.CRAFTING_TABLE)) {
+                    h.setBlock(table, Blocks.CRAFTING_TABLE);
+                }
+                regrow(h, v);
+                boolean short_ = things.stream().anyMatch(t -> carried(v, t.getItem()) < t.getCount());
+                if (short_) {
+                    // Whatever was lost, used or turned into something else is handed over again.
+                    v.getInventory().clearContent();
+                    v.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                    things.forEach(t -> v.getInventory().addItem(t.copy()));
+                    handedBack[0]++;
+                }
+            }
+            int count = handle.hands().madeKinds.getOrDefault(made.get(), 0);
+            if (tick[0] % WINDOW == 0) {
+                LOG.info("{} newborn {}: by tick {}: made {} {}; watched {}, moves copied {} (got to each {}); handed back {}; made kinds {}",
+                        name, which, tick[0], count, product, handle.hands().sawCraftedTotal, handle.hands().copiedTotal,
+                        java.util.Arrays.toString(java.util.Arrays.copyOf(handle.hands().copyReached, 12)), handedBack[0], handle.hands().madeKinds);
+            }
+            if (tick[0] == ticks) {
+                String report = String.format("%s: made %d %s in %d ticks", name, count, product, ticks);
+                LOG.info("{} newborn {} learning result: {}", name, which, report);
+                if (count >= 3) {
+                    h.succeed();
+                } else {
+                    h.fail("not learned yet: " + report);
+                }
+            }
+        });
+    }
+
     /** How often the one at the table in TABLECRANKWATCH makes a crank. */
     private static final int DEMO_EVERY = 200;
 
