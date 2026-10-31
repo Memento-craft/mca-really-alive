@@ -18,7 +18,10 @@ import com.mementocraft.reallyalive.brain.WordCode;
 import com.mementocraft.reallyalive.mixin.MobAccessor;
 import com.mementocraft.reallyalive.sense.Hearing;
 import com.mementocraft.reallyalive.sense.Naming;
+import com.mementocraft.reallyalive.sense.ScreenSight;
 import com.mementocraft.reallyalive.sense.Senses;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import com.mementocraft.reallyalive.speech.Speech;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -88,6 +91,8 @@ public final class BrainManager {
         final SensoryFrame frame = new SensoryFrame();
         final float[] vision = new float[frame.vision.length];
         final float[] colour = new float[frame.colour.length];
+        /** The eyes last saw a screen, so the world must be looked at again as soon as it closes. */
+        boolean sawScreen;
         /** Someone to talk to is near, checked now and then. */
         boolean company;
         final float[] scent = new float[OlfactoryChannel.COUNT];
@@ -233,7 +238,10 @@ public final class BrainManager {
         }
         BrainData data = v.getData(Attachments.BRAIN);
         if (!data.hasGenome()) {
-            data.setGenome(Genome.random(new Rng(v.getUUID().getLeastSignificantBits())).toArray());
+            // -Dreallyalive.sameGenes=true gives every new brain the same default genes, so a
+            // benchmark can tell how much of its spread between villagers comes from their genes.
+            data.setGenome((Boolean.getBoolean("reallyalive.sameGenes") ? Genome.defaults()
+                    : Genome.random(new Rng(v.getUUID().getLeastSignificantBits()))).toArray());
         }
         data.setEnabled(true);
         Brain brain = load(v.getUUID());
@@ -282,6 +290,7 @@ public final class BrainManager {
         Handle h = handles.remove(v.getUUID());
         if (h != null) {
             h.settle();
+            h.hands.release();
         }
         Path file = file(v.getUUID());
         io.execute(() -> {
@@ -304,8 +313,10 @@ public final class BrainManager {
             h.pending = null;
         }
         MotorCommand keys = h.held != null ? h.held : h.command;
-        PlayerMovement.applyBeforeTick(v, keys);
-        h.move.setCommand(keys);
+        // With a screen open the mouse moves the pointer and the keys do nothing to the body.
+        MotorCommand bodyKeys = h.hands.screenOpen() ? MotorCommand.IDLE : keys;
+        PlayerMovement.applyBeforeTick(v, bodyKeys);
+        h.move.setCommand(bodyKeys);
         h.hands.tick(keys);
         speak(v, h, keys);
     }
@@ -350,8 +361,14 @@ public final class BrainManager {
         h.age++;
         SensoryFrame f = h.frame;
         f.clear();
-        if (h.age % Config.VISION_INTERVAL.get() == 0) {
+        if (h.hands.screenOpen()) {
+            var copy = h.hands.copyTarget(h.hands.screen());
+            ScreenSight.see(h.hands.screen(), h.hands.pointerX(), h.hands.pointerY(), h.vision, h.colour,
+                    h.hands.recipeHint(h.hands.screen()), copy == null ? null : copy.slot(), copy != null && copy.put());
+            h.sawScreen = true;
+        } else if (h.sawScreen || h.age % Config.VISION_INTERVAL.get() == 0) {
             Senses.see(v, Config.VISION_RANGE.get(), h.vision, h.colour);
+            h.sawScreen = false;
         }
         System.arraycopy(h.vision, 0, f.vision, 0, h.vision.length);
         System.arraycopy(h.colour, 0, f.colour, 0, h.colour.length);
@@ -363,6 +380,25 @@ public final class BrainManager {
         f.set(FeelChannel.HOLDING_BLOCK, h.hands.holdingBlock() ? 1f : 0f);
         f.set(FeelChannel.TARGET_IN_REACH, h.hands.targetInReach() ? 1f : 0f);
         f.set(FeelChannel.DIG_PROGRESS, h.hands.digProgress());
+        f.set(FeelChannel.USING_ITEM, h.hands.usingProgress());
+        f.set(FeelChannel.CURIOUS, h.hands.curiosity());
+        if (h.hands.screenOpen()) {
+            // The screen is felt the more the longer nothing is done on it, which drives the urge to
+            // leave it. The head does not move while a screen is open, so its tilt is not felt as
+            // something to correct; what is under the pointer is in focus, and a stack on the
+            // pointer is held.
+            f.set(FeelChannel.SCREEN_OPEN, h.hands.screenBoredom());
+            f.set(FeelChannel.HEAD_UP, 0f);
+            f.set(FeelChannel.HEAD_DOWN, 0f);
+            ItemStack onPointer = h.hands.onPointer();
+            f.set(FeelChannel.POINTER_HOLDING, onPointer.isEmpty() ? 0f : 1f);
+            Slot slot = h.hands.pointedSlot();
+            ScreenSight.item(slot == null ? ItemStack.EMPTY : slot.getItem(), f.focus);
+            ScreenSight.item(onPointer.isEmpty() ? v.getMainHandItem() : onPointer, f.held);
+        } else {
+            ScreenSight.target(h.hands.target(), v.level(), f.focus);
+            ScreenSight.item(v.getMainHandItem(), f.held);
+        }
         Senses.smell(v, f, h.scent, h.goal);
         h.heard = Hearing.listen(v, f, h.heard);
         // Someone else ending a line starts the villager's answer; words it babbled before are
@@ -444,6 +480,7 @@ public final class BrainManager {
             }
         }
         pleasure += h.hands.motivePleasure();
+        pain += h.hands.motivePain();
         f.pain = Math.min(1f, pain);
         f.pleasure = Math.min(1f, pleasure);
     }

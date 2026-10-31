@@ -96,8 +96,55 @@ public final class Brain {
     static final int CANDIDATES = 3;
     static final float REFLEX_WEIGHT = 2.0f;
     static final float ORIENT_WEIGHT = 0.8f;
+    /** The pull of a creature above or below the gaze, gentler than the pull to either side. */
+    static final float VERTICAL_ORIENT_WEIGHT = 0.4f;
     static final float PLACING_WEIGHT = 2.0f;
     static final float CLIMB_WEIGHT = 1.5f;
+    /**
+     * An open screen gently drives the inventory key, the urge to get back to the world: without it a
+     * babbling brain that toggles the key at random sat in its inventory half its life, standing still.
+     * The screen is felt more the longer nothing is done on it (boredom), so the urge is weak just
+     * after opening it or clicking on it and strong once it has sat idle; learning can change it.
+     */
+    static final float LEAVE_SCREEN_WEIGHT = 0.6f;
+    /**
+     * An open screen also drives the left button a little, the urge to fiddle with what is in
+     * front of the hands: without it a newborn clicked a slot about once per screen and never put
+     * anything in the crafting grid.
+     */
+    static final float FIDDLE_WEIGHT = 0.3f;
+    /**
+     * Past this much boredom with an open screen, an inborn urge presses the inventory key that
+     * learning cannot take away, growing to full strength at total boredom. The learnable leave
+     * reflex alone was unlearned by some brains, which then sat in a screen 20-45% of their life.
+     */
+    static final float LEAVE_URGE_FROM = 0.8f;
+    /** How hard that urge drives the inventory key's motor pool, as strong as full babbling. */
+    static final float LEAVE_URGE = BABBLE_GAIN;
+    /** Ticks after leaving a screen during which the inventory key is held back. */
+    static final int SCREEN_SATIETY_TICKS = 200;
+    /** Ticks a held left button lasts on a screen before it tires and lets go. */
+    static final int BUTTON_TIRES_TICKS = 20;
+    /** How hard a tired left button is held back, enough to override full babbling. */
+    static final float BUTTON_RELEASE = 2f * BABBLE_GAIN;
+    /** How hard an eye-catching thing in reach, right ahead, drives the use key. */
+    static final float POKE_URGE = 0.5f * BABBLE_GAIN;
+    /**
+     * Ticks of pressing use on things in reach with nothing to show for it, after which an inborn
+     * urge turns the mouse wheel to try the next thing it carries; and how long that turn lasts.
+     */
+    static final int FUTILE_USE_TICKS = 40;
+    static final int TRY_ANOTHER_TICKS = 3;
+    /** How brightly a place must shine under the pointer for the urge to deal one out there. */
+    static final float DEAL_OUT_FROM = 0.9f;
+    /** Curiosity about what it carries -> inventory key, to look it over. */
+    static final float CURIOUS_WEIGHT = 0.6f;
+    /**
+     * How much the inventory key and the mouse wheel babble, against the other keys. A player
+     * presses them now and then, not as often as they walk or look about.
+     */
+    static final float INVENTORY_BABBLE = 0.3f;
+    static final float WHEEL_BABBLE = 0.5f;
     /**
      * Neurons sit on a sheet in their lobe, and connections between lobes favour neurons at the
      * same place on the sheet. This keeps maps intact, like the retinotopic maps of a real visual
@@ -200,7 +247,11 @@ public final class Brain {
     static final int IN_SOUND = IN_EMOTION + SenseLayout.EMOTION_RECEPTORS;
     static final int IN_WORDS = IN_SOUND + SoundChannel.COUNT;
     static final int IN_COLOUR = IN_WORDS + SenseLayout.WORD_FEATURES;
-    static final int INPUT_SIZE = IN_COLOUR + SenseLayout.COLOUR_RECEPTORS;
+    static final int IN_FOCUS = IN_COLOUR + SenseLayout.COLOUR_RECEPTORS;
+    static final int IN_HELD = IN_FOCUS + SenseLayout.THING_FEATURES;
+    static final int INPUT_SIZE = IN_HELD + SenseLayout.THING_FEATURES;
+    /** Receptors per feature of the thing in focus and the thing in hand. */
+    static final int THING_PER_FEATURE = 2;
 
     final Genome genome;
     final Rng rng;
@@ -299,6 +350,13 @@ public final class Brain {
     long ticks;
     long resets;
     MotorCommand lastCommand = MotorCommand.IDLE;
+    /** Ticks the left button has been held down with a screen open. */
+    private int screenButtonHeld;
+    /** Ticks of use pressed without pleasure, and ticks left of the urge to turn the wheel. */
+    private int futileUse;
+    private int tryAnother;
+    /** Ticks since a screen was last open. */
+    private int sinceScreen = Integer.MAX_VALUE / 2;
 
     Brain(Genome genome, long seed, int capacity) {
         this.genome = genome;
@@ -352,9 +410,10 @@ public final class Brain {
      * horizon instead of drifting to the floor or sky. A creature seen to one side drives turning
      * toward it. The placing reflex lifts the body when the front of it bumps into something, and
      * being in water drives the jump pool, which is how a player swims up. A ladder seen to one side
-     * turns the gaze toward it like a creature does, and holding on to a ladder drives walking
-     * into it, which is how a player climbs. Learning can still
-     * strengthen, weaken or override these synapses.
+     * turns the gaze toward it like a creature does, and either one above or below tips it up or
+     * down, more gently. Holding on to a ladder drives walking into it, which is how a player
+     * climbs. An open screen drives the inventory key a little, the urge to get back to the world,
+     * so screens get closed again. Learning can still strengthen, weaken or override these synapses.
      */
     private void wireReflexes() {
         int headDown = IN_FEEL + FeelChannel.HEAD_DOWN.ordinal();
@@ -370,6 +429,7 @@ public final class Brain {
                     connect(i, m, w);
                 }
             }
+            wireHandReflexes(i);
             if (inputSlot[i] == onClimbable) {
                 // Climbing: holding a ladder drives walking into it, which is how a player climbs.
                 for (int m : motorPools[MotorChannel.FORWARD.ordinal()]) {
@@ -389,6 +449,14 @@ public final class Brain {
                 for (int m : motorPools[turn.ordinal()]) {
                     connect(i, m, ORIENT_WEIGHT * Math.abs(offset));
                 }
+                // And up or down, more gently: a creature or a ladder above or below draws the eyes
+                // to it, as a thing on a screen draws the pointer to its row.
+                int row = slot / SenseLayout.VISION_CHANNELS / SenseLayout.VISION_W;
+                float rise = (row + 0.5f) / SenseLayout.VISION_H * 2f - 1f;
+                MotorChannel tilt = rise < 0 ? MotorChannel.PITCH_UP : MotorChannel.PITCH_DOWN;
+                for (int m : motorPools[tilt.ordinal()]) {
+                    connect(i, m, VERTICAL_ORIENT_WEIGHT * Math.abs(rise));
+                }
             }
             int[] pool = inputSlot[i] == headDown ? motorPools[MotorChannel.PITCH_UP.ordinal()]
                     : inputSlot[i] == headUp ? motorPools[MotorChannel.PITCH_DOWN.ordinal()] : null;
@@ -396,6 +464,30 @@ public final class Brain {
                 for (int m : pool) {
                     connect(i, m, REFLEX_WEIGHT);
                 }
+            }
+        }
+    }
+
+    /**
+     * The reflexes of the hands, added after the first brains were saved: an open screen drives the
+     * inventory key and the left button, and curiosity about what it carries drives the inventory
+     * key too, so a villager now and then looks over its things as a player does.
+     */
+    private void wireHandReflexes(int i) {
+        if (role[i] != ROLE_RECEPTOR) {
+            return;
+        }
+        if (inputSlot[i] == IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()) {
+            for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                connect(i, m, LEAVE_SCREEN_WEIGHT);
+            }
+            for (int m : motorPools[MotorChannel.ATTACK.ordinal()]) {
+                connect(i, m, FIDDLE_WEIGHT);
+            }
+        }
+        if (inputSlot[i] == IN_FEEL + FeelChannel.CURIOUS.ordinal()) {
+            for (int m : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                connect(i, m, CURIOUS_WEIGHT);
             }
         }
     }
@@ -454,12 +546,10 @@ public final class Brain {
             }
         }
         buildColourReceptors();
+        buildThingReceptors();
         // The Motor lobe's sheet: controls in the lower half, the voice in the upper half.
         for (int c = 0; c < MotorChannel.COUNT; c++) {
-            for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
-                motorPools[c][k] = addNeuron(LobeId.MOTOR, ROLE_MOTOR, rng.nextFloat(),
-                        Wiring.Band.KEYS.into(rng.nextFloat()));
-            }
+            buildMotorPool(c);
         }
         for (int w = 0; w < SenseLayout.WORD_FEATURES; w++) {
             for (int k = 0; k < SenseLayout.SPEECH_POOL_SIZE; k++) {
@@ -469,30 +559,102 @@ public final class Brain {
         }
     }
 
+    private void buildMotorPool(int c) {
+        for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
+            motorPools[c][k] = addNeuron(LobeId.MOTOR, ROLE_MOTOR, rng.nextFloat(),
+                    Wiring.Band.KEYS.into(rng.nextFloat()));
+        }
+    }
+
     private void buildColourReceptors() {
         for (int i = 0; i < SenseLayout.COLOUR_RECEPTORS; i++) {
             receptor(LobeId.OCCIPITAL, IN_COLOUR + i);
         }
     }
 
-    /** Brains saved before they had colour vision get their colour receptors. */
+    /**
+     * What the crosshair rests on is seen at the centre of the eye, so it sits at the middle of the
+     * occipital sheet; the thing in hand is felt, in Feely.
+     */
+    private void buildThingReceptors() {
+        for (int c = 0; c < SenseLayout.THING_FEATURES; c++) {
+            for (int k = 0; k < THING_PER_FEATURE; k++) {
+                receptor(LobeId.OCCIPITAL, IN_FOCUS + c);
+                receptor(LobeId.FEELY, IN_HELD + c);
+            }
+        }
+    }
+
+    /**
+     * Brains saved before a sense existed (colour vision, the newer body channels and keys, the
+     * thing in focus and in hand) get its receptors, wired in as if they had always been there.
+     */
     void addMissingReceptors() {
+        boolean[] has = new boolean[INPUT_SIZE];
         for (int i = 0; i < n; i++) {
-            if (role[i] == ROLE_RECEPTOR && inputSlot[i] >= IN_COLOUR) {
-                return;
+            if (role[i] == ROLE_RECEPTOR && inputSlot[i] >= 0 && inputSlot[i] < INPUT_SIZE) {
+                has[inputSlot[i]] = true;
             }
         }
         int first = n;
-        buildColourReceptors();
+        for (int c = 0; c < FeelChannel.COUNT; c++) {
+            for (int k = 0; k < FEELY_PER_CHANNEL && !has[IN_FEEL + c]; k++) {
+                receptor(LobeId.FEELY, IN_FEEL + c);
+            }
+        }
+        for (int c = 0; c < MotorChannel.COUNT; c++) {
+            for (int k = 0; k < FEELY_PER_CHANNEL && !has[IN_EFFERENCE + c]; k++) {
+                receptor(LobeId.FEELY, IN_EFFERENCE + c);
+            }
+        }
+        if (!has[IN_COLOUR]) {
+            buildColourReceptors();
+        }
+        if (!has[IN_FOCUS]) {
+            buildThingReceptors();
+        }
         for (int i = first; i < n; i++) {
             wireOut(i);
+            wireHandReflexes(i);
+        }
+    }
+
+    /**
+     * Moves the receptors of a brain saved with fewer body channels and keys to where those inputs
+     * are now: the newer channels were added at the end of the body sense and of the efference copy,
+     * so everything after them moved along.
+     */
+    void remapLegacyInputs(int feelCount, int motorCount) {
+        int oldEfference = IN_FEEL + feelCount;
+        int oldSmell = oldEfference + motorCount;
+        int shiftEfference = FeelChannel.COUNT - feelCount;
+        int shiftRest = shiftEfference + MotorChannel.COUNT - motorCount;
+        for (int i = 0; i < n; i++) {
+            int slot = inputSlot[i];
+            if (role[i] != ROLE_RECEPTOR || slot < oldEfference) {
+                continue;
+            }
+            inputSlot[i] = slot < oldSmell ? slot + shiftEfference : slot + shiftRest;
+        }
+    }
+
+    /** Brains saved before a key existed get its motor pool, reached from the cerebellum. */
+    void addMissingMotorPools(int have) {
+        for (int c = have; c < MotorChannel.COUNT; c++) {
+            buildMotorPool(c);
+            for (int i : motorPools[c]) {
+                wireIn(i);
+            }
         }
     }
 
     private int receptor(LobeId l, int slot) {
         float x = rng.nextFloat();
         float y = rng.nextFloat();
-        if (slot >= IN_COLOUR) {
+        if (slot >= IN_FOCUS && slot < IN_HELD) {
+            x = 0.5f + (rng.nextFloat() - 0.5f) * 0.2f;
+            y = 0.5f + (rng.nextFloat() - 0.5f) * 0.2f;
+        } else if (slot >= IN_COLOUR && slot < IN_FOCUS) {
             int cell = (slot - IN_COLOUR) / SenseLayout.COLOUR_CHANNELS;
             x = (cell % SenseLayout.COLOUR_CELLS_W + 0.5f) / SenseLayout.COLOUR_CELLS_W;
             y = (cell / SenseLayout.COLOUR_CELLS_W + 0.5f) / SenseLayout.COLOUR_CELLS_H;
@@ -560,6 +722,8 @@ public final class Brain {
         input[IN_EMOTION + SenseLayout.EMO_CURIOSITY] = SensoryFrame.clamp01(surprise * CURIOSITY_GAIN);
         System.arraycopy(f.sound, 0, input, IN_SOUND, SoundChannel.COUNT);
         System.arraycopy(f.words, 0, input, IN_WORDS, SenseLayout.WORD_FEATURES);
+        System.arraycopy(f.focus, 0, input, IN_FOCUS, SenseLayout.THING_FEATURES);
+        System.arraycopy(f.held, 0, input, IN_HELD, SenseLayout.THING_FEATURES);
         for (int cy = 0; cy < SenseLayout.COLOUR_CELLS_H; cy++) {
             for (int cx = 0; cx < SenseLayout.COLOUR_CELLS_W; cx++) {
                 for (int c = 0; c < SenseLayout.COLOUR_CHANNELS; c++) {
@@ -6433,12 +6597,161 @@ public final class Brain {
         float amp = genome.get(Genome.BABBLE) * (1f - 0.7f * experience) * babbleScale;
         for (int c = 0; c < MotorChannel.COUNT; c++) {
             babble[c] += -0.1f * babble[c] + 0.3f * rng.gaussian();
-            float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN;
+            float gain = c == MotorChannel.INVENTORY.ordinal() ? INVENTORY_BABBLE
+                    : c == MotorChannel.HOTBAR.ordinal() ? WHEEL_BABBLE : 1f;
+            float drive = amp * Math.max(0f, babble[c]) * BABBLE_GAIN * gain;
             for (int k = 0; k < SenseLayout.MOTOR_POOL_SIZE; k++) {
                 extInput[motorPools[c][k]] = drive;
             }
         }
+        float bored = input[IN_FEEL + FeelChannel.SCREEN_OPEN.ordinal()];
+        if (bored > LEAVE_URGE_FROM) {
+            float urge = LEAVE_URGE * (bored - LEAVE_URGE_FROM) / (1f - LEAVE_URGE_FROM);
+            for (int i : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                extInput[i] += urge;
+            }
+        }
+        drivePoke(bored);
+        driveButtonRelease(bored);
+        driveScreenSatiety(bored);
+        driveTryAnother(bored);
         driveSpeechBabble(amp);
+    }
+
+    /**
+     * Having just left a screen, the urge to open one again is held back for a while, as a player
+     * who has just looked through their inventory does not open it again at once. Without this some
+     * brains toggled their inventory open and shut hundreds of times and spent 20-45% of their
+     * time in it instead of walking.
+     */
+    private void driveScreenSatiety(float screen) {
+        sinceScreen = screen > 0f ? 0 : sinceScreen + 1;
+        if (sinceScreen > 0 && sinceScreen <= SCREEN_SATIETY_TICKS) {
+            for (int i : motorPools[MotorChannel.INVENTORY.ordinal()]) {
+                extInput[i] -= BUTTON_RELEASE;
+            }
+        }
+    }
+
+    /**
+     * On a screen, a left button held for a second tires and lets go. A click on a screen is a
+     * press and a release; some brains learned to hold the button down the whole time a screen
+     * was open, which clicks nothing, and never moved a thing again. In the world a held button
+     * digs, so it does not tire there.
+     */
+    private void driveButtonRelease(float screen) {
+        screenButtonHeld = screen > 0f && lastCommand.attack() ? screenButtonHeld + 1 : 0;
+        if (screenButtonHeld > BUTTON_TIRES_TICKS) {
+            for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+                extInput[i] -= BUTTON_RELEASE;
+            }
+        }
+    }
+
+    /**
+     * Pressing use on things in reach for a while with nothing to show for it gives an inborn
+     * urge to turn the mouse wheel and try the next thing it carries, as a child that cannot get
+     * one toy to do anything picks up another. A newborn that held iron at an unpowered press
+     * kept pressing use with it for 40000 ticks and never once brought the shafts it also carried
+     * into its hand.
+     */
+    private void driveTryAnother(float screen) {
+        boolean pleased = input[IN_EMOTION + SenseLayout.EMO_PLEASURE] > 0f;
+        boolean trying = screen <= 0f && lastCommand.use() && input[IN_FEEL + FeelChannel.TARGET_IN_REACH.ordinal()] >= 0.5f;
+        futileUse = pleased ? 0 : trying ? futileUse + 1 : futileUse;
+        if (futileUse > FUTILE_USE_TICKS) {
+            futileUse = 0;
+            tryAnother = TRY_ANOTHER_TICKS;
+        }
+        if (tryAnother > 0) {
+            tryAnother--;
+            for (int i : motorPools[MotorChannel.HOTBAR.ordinal()]) {
+                extInput[i] += 2f * BABBLE_GAIN;
+            }
+        }
+    }
+
+    /**
+     * An eye-catching thing right in the middle of the view and within reach (a creature, a
+     * brewing stand) gets a gentle, inborn urge to press use on it, the way a child pokes at what
+     * it is looking at. Not while a screen is open: there the middle of the view is the pointer.
+     */
+    private void drivePoke(float screen) {
+        if (screen > 0f) {
+            dealOut();
+            grasp();
+            return;
+        }
+        if (input[IN_FEEL + FeelChannel.TARGET_IN_REACH.ordinal()] < 0.5f) {
+            return;
+        }
+        float seen = 0f;
+        for (int y = SenseLayout.VISION_H / 2 - 1; y <= SenseLayout.VISION_H / 2; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 1; x <= SenseLayout.VISION_W / 2; x++) {
+                seen = Math.max(seen, input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)]);
+            }
+        }
+        if (seen <= 0f) {
+            return;
+        }
+        for (int i : motorPools[MotorChannel.USE.ordinal()]) {
+            extInput[i] += POKE_URGE * seen;
+        }
+    }
+
+    /**
+     * On a screen, with a stack on the pointer and a place that takes it shining right under the
+     * pointer, the same poking urge presses the right button, which puts down one of the stack
+     * and, held while the pointer moves on, one in each place it passes, as a player deals things
+     * out, and holds the left button back. Recipes needing one stack in two places (two alloys
+     * for shafts) were never made: the left button puts the whole stack down in one.
+     */
+    private void dealOut() {
+        if (input[IN_FEEL + FeelChannel.POINTER_HOLDING.ordinal()] < 0.5f) {
+            return;
+        }
+        float shining = 0f;
+        for (int y = SenseLayout.VISION_H / 2 - 1; y <= SenseLayout.VISION_H / 2; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 1; x <= SenseLayout.VISION_W / 2; x++) {
+                shining = Math.max(shining, input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CLIMBABLE)]);
+            }
+        }
+        if (shining < DEAL_OUT_FROM) {
+            return;
+        }
+        for (int i : motorPools[MotorChannel.USE.ordinal()]) {
+            extInput[i] += POKE_URGE * shining;
+        }
+        // And the other hand is held back there, or the left button, learnt first for moving
+        // whole stacks, pressed first and put both alloys down in one place: newborns handed
+        // exactly two alloys saw a shaft form 0-4 times in 150000 ticks.
+        for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+            extInput[i] -= BUTTON_RELEASE * shining;
+        }
+    }
+
+    /**
+     * On a screen, with nothing on the pointer and a thing that catches the eye right under it,
+     * the same poking urge presses the left button and takes it, as a baby grasps what is put in
+     * its palm. Newborns that had shared two alloys over the grid and had eight shafts showing
+     * kept the pointer on them for 65 ticks and took them 2 times out of 13.
+     */
+    private void grasp() {
+        if (input[IN_FEEL + FeelChannel.POINTER_HOLDING.ordinal()] >= 0.5f) {
+            return;
+        }
+        float seen = 0f;
+        for (int y = SenseLayout.VISION_H / 2 - 1; y <= SenseLayout.VISION_H / 2; y++) {
+            for (int x = SenseLayout.VISION_W / 2 - 1; x <= SenseLayout.VISION_W / 2; x++) {
+                seen = Math.max(seen, input[IN_VISION + SenseLayout.visionIndex(x, y, SenseLayout.CH_CREATURE)]);
+            }
+        }
+        if (seen < DEAL_OUT_FROM) {
+            return;
+        }
+        for (int i : motorPools[MotorChannel.ATTACK.ordinal()]) {
+            extInput[i] += POKE_URGE * seen;
+        }
     }
 
     /**

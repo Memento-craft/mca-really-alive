@@ -4,6 +4,7 @@ import com.mementocraft.reallyalive.brain.FeelChannel;
 import com.mementocraft.reallyalive.brain.OlfactoryChannel;
 import com.mementocraft.reallyalive.brain.SenseLayout;
 import com.mementocraft.reallyalive.brain.SensoryFrame;
+import com.mementocraft.reallyalive.body.Machines;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.tags.BlockTags;
@@ -37,6 +38,8 @@ import java.util.Optional;
  * that picks up scents drifting from nearby things. Runs on the server thread.
  */
 public final class Senses {
+    /** Degrees below the horizon the head rests at while the hands hold something. */
+    static final float WORK_TILT = 30f;
     /** A player's default vertical field of view, and the matching horizontal span at 16:9. */
     public static final float FOV_V = 70f;
     public static final float FOV_H = 100f;
@@ -52,6 +55,12 @@ public final class Senses {
     private static final int SKY = 0x78A7FF;
     /** People (players, villagers) have no spawn egg colours: a skin and clothes tone. */
     private static final int PERSON = 0xB08A6A;
+    /** How strongly a block that opens a screen catches the eye, against a creature's 1. */
+    private static final float WORKSTATION = 0.8f;
+    /** How strongly a turning machine part catches the eye. */
+    private static final float TURNING = 0.8f;
+    /** How strongly a machine part standing still catches the eye. */
+    private static final float STILL_MACHINE = 0.3f;
 
     /** Casts the eye rays. Column 0 is the left edge of view, row 0 the top. */
     public static void see(LivingEntity body, double range, float[] vision) {
@@ -109,6 +118,24 @@ public final class Senses {
                     solid = liquid ? 0.4f : 1f;
                     hazard = isHazard(level, block.getBlockPos(), state) ? 1f : 0f;
                     climbable = state.is(BlockTags.CLIMBABLE) || state.is(Blocks.SCAFFOLDING) ? 1f : 0f;
+                    // A block that opens a screen (a crafting table, a brewing stand, a chest, a
+                    // furnace) stands out from the ground and walls around it, as it does to a
+                    // player, and draws the eye the way a creature does. Without this a newborn
+                    // with a brewing stand beside it looked at it 0 ticks in 10000.
+                    creature = state.getMenuProvider(level, block.getBlockPos()) != null ? WORKSTATION : 0f;
+                    // Something turning catches the eye as anything moving does: a newborn with
+                    // shafts beside a turning motor looked at it 15 ticks in 60000.
+                    if (Machines.turning(level, block.getBlockPos())) {
+                        creature = Math.max(creature, TURNING);
+                    } else if (Machines.holdsThings(level, block.getBlockPos())) {
+                        // Machinery that holds things (a depot, a millstone) is a workstation too.
+                        creature = Math.max(creature, WORKSTATION);
+                    } else if (Machines.isWorker(level, block.getBlockPos())) {
+                        // A working machine standing still (a press with no drive) stands out a
+                        // little. Shafts and cogs do not: lying about, they pulled the eye from
+                        // the turning motor and newborns set fewer of them going.
+                        creature = Math.max(creature, STILL_MACHINE);
+                    }
                 } else {
                     near = 0f;
                 }
@@ -201,8 +228,12 @@ public final class Senses {
         f.set(FeelChannel.VEL_UP, (float) v.y * 2.5f);
         f.set(FeelChannel.VEL_DOWN, (float) -v.y * 2.5f);
 
-        f.set(FeelChannel.HEAD_UP, -body.getXRot() / 90f);
-        f.set(FeelChannel.HEAD_DOWN, body.getXRot() / 90f);
+        // The head is felt against its resting tilt, which the level-head reflex holds. With something
+        // in hand it rests lower, on the ground in front where the hands can work, as a player looks
+        // at what they are doing; with empty hands it rests on the horizon.
+        float rest = body.getMainHandItem().isEmpty() ? 0f : WORK_TILT;
+        f.set(FeelChannel.HEAD_UP, (rest - body.getXRot()) / 90f);
+        f.set(FeelChannel.HEAD_DOWN, (body.getXRot() - rest) / 90f);
         f.set(FeelChannel.FALL_DISTANCE, body.fallDistance / 10f);
         f.set(FeelChannel.HEALTH, body.getHealth() / body.getMaxHealth());
         f.set(FeelChannel.HUNGER, 0f);

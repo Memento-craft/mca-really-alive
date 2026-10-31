@@ -376,6 +376,9 @@ public final class LearningTests {
     private enum Outcome { REACHED, FELL, TIMED_OUT }
 
     private static void learns(GameTestHelper h, Course c, boolean adult) {
+        if (!WorkLearningTests.selected(h, c.name())) {
+            return;
+        }
         String who = c + (adult ? " adult" : " newborn");
         // Run the server as fast as it can: learning takes many tries. Lockstep keeps the brain
         // stepping once per tick, as it would in real time.
@@ -399,6 +402,9 @@ public final class LearningTests {
         // Ticks in the last tries on a ladder, and of those, pushing forward into it.
         int[] onLadder = {0, 0};
         int[] pushingLadder = {0, 0};
+        // Ticks in the last tries with a screen open (its own inventory, opened by the inventory key).
+        int[] inScreen = {0, 0};
+        java.util.Map<String, Integer> screenKinds = new java.util.TreeMap<>();
         // Ticks holding a block, and of those, pressing use, in the first and the last tries; and
         // blocks placed in the first and the last tries.
         int[] useHeldFirst = {0, 0};
@@ -419,6 +425,11 @@ public final class LearningTests {
             }
             if (outcomes.size() >= c.episodes - WINDOW) {
                 onLadder[1]++;
+                inScreen[1]++;
+                if (handle.hands().screenOpen()) {
+                    inScreen[0]++;
+                    screenKinds.merge(handle.hands().screen().getClass().getSimpleName(), 1, Integer::sum);
+                }
                 if (v.onClimbable()) {
                     onLadder[0]++;
                     pushingLadder[1]++;
@@ -481,8 +492,10 @@ public final class LearningTests {
             int last = count(outcomes, c.episodes - WINDOW, Outcome.REACHED);
             int lastFalls = count(outcomes, c.episodes - WINDOW, Outcome.FELL);
             String report = String.format("%s: reached the goal in %d of the first %d tries and %d of the last %d (%d falls);"
-                            + " in the last tries jump was held %d%% of the time in water, %d%% on land%s",
-                    c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry),
+                            + " in the last tries jump was held %d%% of the time in water, %d%% on land,"
+                            + " a screen was open %d%% of the time (%d screens opened in all, carrying %s; ticks per screen %s)%s",
+                    c, first, WINDOW, last, WINDOW, lastFalls, percent(jumpWet), percent(jumpDry), percent(inScreen),
+                    handle.hands().screensOpened, carriedList(v), screenKinds,
                     c == Course.LEDGE ? String.format("; sneaking %d%% of the time near the edge",
                             percent(sneakNearEdge)) : "")
                     + (c == Course.STEP ? String.format("; holding a block, it pressed place %d%% of the time in the first tries"
@@ -610,5 +623,15 @@ public final class LearningTests {
             }
         }
         return n;
+    }
+
+    private static String carriedList(net.minecraft.world.entity.npc.Villager v) {
+        StringBuilder b = new StringBuilder(v.getMainHandItem().toString());
+        for (int i = 0; i < v.getInventory().getContainerSize(); i++) {
+            if (!v.getInventory().getItem(i).isEmpty()) {
+                b.append(", ").append(v.getInventory().getItem(i));
+            }
+        }
+        return b.toString();
     }
 }

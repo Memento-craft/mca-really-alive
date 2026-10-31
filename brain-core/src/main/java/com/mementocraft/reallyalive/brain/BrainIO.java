@@ -7,7 +7,7 @@ import java.io.IOException;
 /** Saves and loads a whole brain, every neuron and synapse included. */
 public final class BrainIO {
     private static final int MAGIC = 0x4252414E; // "BRAN"
-    private static final int VERSION = 7;
+    private static final int VERSION = 9;
 
     public static void write(Brain b, DataOutput out) throws IOException {
         out.writeInt(MAGIC);
@@ -107,7 +107,7 @@ public final class BrainIO {
             throw new IOException("Not a brain file");
         }
         int version = in.readInt();
-        if (version != VERSION && version != 6 && version != 5 && version != 4) {
+        if (version < 4 || version > VERSION) {
             throw new IOException("Unsupported brain version " + version);
         }
         float[] genes = new float[in.readInt()];
@@ -124,10 +124,12 @@ public final class BrainIO {
         float surprise = in.readFloat();
         long ticks = in.readLong();
         long resets = in.readLong();
-        float[] poolRates = readFloats(in, MotorChannel.COUNT);
-        float[] babble = readFloats(in, MotorChannel.COUNT);
+        // Version 8 added keys (the inventory key, the mouse wheel) and body channels.
+        int motorCount = version >= 8 ? MotorChannel.COUNT : MotorChannel.COUNT_V7;
+        float[] poolRates = readFloats(in, motorCount);
+        float[] babble = readFloats(in, motorCount);
         float[] emotionRates = readFloats(in, SenseLayout.EMOTION_RECEPTORS);
-        int[] decoderState = new int[7];
+        int[] decoderState = new int[version >= 8 ? MotorDecoder.STATE_SIZE : MotorDecoder.STATE_SIZE_V7];
         for (int i = 0; i < decoderState.length; i++) {
             decoderState[i] = in.readInt();
         }
@@ -183,7 +185,13 @@ public final class BrainIO {
                 b.inDegree[s.target[k]]++;
             }
         }
-        for (int[] pool : b.motorPools) {
+        if (version < 8) {
+            b.remapLegacyInputs(FeelChannel.COUNT_V7, MotorChannel.COUNT_V7);
+        } else if (version == 8) {
+            b.remapLegacyInputs(FeelChannel.COUNT_V8, MotorChannel.COUNT);
+        }
+        for (int c = 0; c < motorCount; c++) {
+            int[] pool = b.motorPools[c];
             for (int k = 0; k < pool.length; k++) {
                 pool[k] = in.readInt();
             }
@@ -237,6 +245,7 @@ public final class BrainIO {
         if (version >= 7) {
             readTalk(b, in);
         }
+        b.addMissingMotorPools(motorCount);
         b.addMissingReceptors();
         return b;
     }

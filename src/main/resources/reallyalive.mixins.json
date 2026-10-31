@@ -4,6 +4,8 @@
   "package": "com.mementocraft.reallyalive.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "BehaviorMixin",
+    "ContainerMenuMixin",
     "EntityMixin",
     "LivingEntityMixin",
     "McaMessengerMixin",
